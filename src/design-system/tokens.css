@@ -1,0 +1,190 @@
+/* Cambrian Web UI — the 4-layer token system.
+ *
+ * Per PRD-01 §3 + UI-001 v0.2 (Tailwind v4 + shadcn/ui component library).
+ *
+ * Layer order: primitive → semantic → component → density.
+ * Each layer is consumed by the layer above it. No layer skips a level.
+ * Hard rule: no #hex, no rem(), no rgba() literals in component code (PRD-01 §11).
+ *
+ * Theme + density switching: `data-theme="dark|light"` and `data-density="compact|default|spacious"`
+ * on <html>. Dark is the default (LD-3).
+ */
+
+@import "tailwindcss";
+
+/* -----------------------------------------------------------------------------
+ * Custom variants for theme + density.
+ * These power the `dark:`, `compact:`, `spacious:` Tailwind utility prefixes.
+ * --------------------------------------------------------------------------- */
+
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+@custom-variant compact (&:where([data-density="compact"], [data-density="compact"] *));
+@custom-variant spacious (&:where([data-density="spacious"], [data-density="spacious"] *));
+
+/* -----------------------------------------------------------------------------
+ * Primitive layer — raw values.
+ * --------------------------------------------------------------------------- */
+
+@theme {
+  /* Neutral ramp (12 steps, oklch for perceptually uniform lightness) */
+  --color-neutral-50:  oklch(0.985 0 0);
+  --color-neutral-100: oklch(0.970 0 0);
+  --color-neutral-200: oklch(0.922 0 0);
+  --color-neutral-300: oklch(0.870 0 0);
+  --color-neutral-400: oklch(0.740 0 0);
+  --color-neutral-500: oklch(0.550 0 0);
+  --color-neutral-600: oklch(0.430 0 0);
+  --color-neutral-700: oklch(0.320 0 0);
+  --color-neutral-800: oklch(0.220 0 0);
+  --color-neutral-900: oklch(0.150 0 0);
+  --color-neutral-950: oklch(0.100 0 0);
+
+  /* Brand accent (one accent; the only saturated colour) */
+  --color-accent-brand: oklch(0.65 0.18 250);
+
+  /* Status colours (6; per LD-2 reserved for status pills, destructive
+     confirmations, and the realtime pulse) */
+  --color-status-ok:    oklch(0.65 0.15 145);
+  --color-status-warn:  oklch(0.75 0.15 80);
+  --color-status-err:   oklch(0.60 0.20 25);
+  --color-status-info:  oklch(0.65 0.15 230);
+  --color-status-pulse: oklch(0.70 0.10 250);
+  --color-status-muted: oklch(0.55 0 0);
+
+  /* Spacing (8-step; 4-step base per PRD-01 §4.3) */
+  --spacing-0:  0;
+  --spacing-1:  0.25rem;  /* 4 */
+  --spacing-2:  0.5rem;   /* 8 */
+  --spacing-3:  0.75rem;  /* 12 */
+  --spacing-4:  1rem;     /* 16 */
+  --spacing-5:  1.25rem;  /* 20 */
+  --spacing-6:  1.5rem;   /* 24 */
+  --spacing-8:  2rem;     /* 32 */
+  --spacing-10: 2.5rem;   /* 40 */
+  --spacing-12: 3rem;     /* 48 */
+
+  /* Type scale (6 sizes; per PRD-01 §4.2) */
+  --text-xs:   0.75rem;    /* 12 */
+  --text-sm:   0.8125rem;  /* 13 — body in compact density */
+  --text-base: 0.875rem;   /* 14 — body in default density */
+  --text-md:   1rem;       /* 16 */
+  --text-lg:   1.25rem;    /* 20 */
+  --text-xl:   1.75rem;    /* 28 */
+
+  /* Radius (4 steps; per PRD-01 §4.3) */
+  --radius-sm: 0.25rem;  /* 4  — inputs, list rows */
+  --radius-md: 0.375rem; /* 6  — cards, popovers */
+  --radius-lg: 0.5rem;   /* 8  — modals */
+  --radius-xl: 0.75rem;  /* 12 — large surfaces */
+
+  /* Motion (per PRD-01 §4.4) */
+  --ease-in:  cubic-bezier(0.2, 0, 0, 1);     /* deceleration */
+  --ease-out: cubic-bezier(0.4, 0, 1, 1);     /* acceleration */
+  --duration-fast: 150ms;
+  --duration-base: 250ms;  /* pulse in-budget */
+  --duration-slow: 600ms;  /* pulse out-budget, trail in/out */
+}
+
+/* -----------------------------------------------------------------------------
+ * Semantic layer — what a value means.
+ * Resolves to primitives; consumed by component tokens.
+ *
+ * Light mode is the default (LD-3). Dark mode flips the values.
+ * --------------------------------------------------------------------------- */
+
+:root {
+  --bg-canvas:    var(--color-neutral-50);
+  --bg-surface:   var(--color-neutral-100);
+  --bg-elevated:  var(--color-neutral-50);
+  --bg-pulse:     var(--color-neutral-200);
+
+  --fg-primary:   var(--color-neutral-900);
+  --fg-secondary: var(--color-neutral-700);
+  --fg-muted:     var(--color-neutral-500);
+  --fg-on-accent: var(--color-neutral-50);
+
+  --border-subtle: var(--color-neutral-200);
+  --border-strong: var(--color-neutral-400);
+
+  --accent-bg: var(--color-accent-brand);
+  --accent-fg: var(--color-neutral-50);
+
+  --status-ok:    var(--color-status-ok);
+  --status-warn:  var(--color-status-warn);
+  --status-err:   var(--color-status-err);
+  --status-info:  var(--color-status-info);
+  --status-pulse: var(--color-status-pulse);
+  --status-muted: var(--color-status-muted);
+}
+
+:root[data-theme="dark"] {
+  --bg-canvas:    var(--color-neutral-950);
+  --bg-surface:   var(--color-neutral-900);
+  --bg-elevated:  var(--color-neutral-800);
+  --bg-pulse:     var(--color-neutral-700);
+
+  --fg-primary:   var(--color-neutral-50);
+  --fg-secondary: var(--color-neutral-300);
+  --fg-muted:     var(--color-neutral-500);
+  --fg-on-accent: var(--color-neutral-950);
+
+  --border-subtle: var(--color-neutral-800);
+  --border-strong: var(--color-neutral-600);
+}
+
+/* -----------------------------------------------------------------------------
+ * Component layer — what a value means inside a specific component.
+ * Resolves to semantics; consumed by component code.
+ *
+ * The 4-layer rule: component tokens read semantics; semantics read primitives.
+ * --------------------------------------------------------------------------- */
+
+:root {
+  --button-primary-bg:        var(--accent-bg);
+  --button-primary-bg-hover:  oklch(0.58 0.18 250);
+  --button-primary-fg:        var(--accent-fg);
+  --button-primary-border:    var(--accent-bg);
+
+  --button-secondary-bg:      var(--bg-elevated);
+  --button-secondary-fg:      var(--fg-primary);
+  --button-secondary-border:  var(--border-subtle);
+
+  --button-danger-bg:         var(--status-err);
+  --button-danger-fg:         var(--color-neutral-50);
+
+  --input-bg:          var(--bg-elevated);
+  --input-border:      var(--border-subtle);
+  --input-fg:          var(--fg-primary);
+  --input-placeholder: var(--fg-muted);
+  --input-border-focus: var(--accent-bg);
+
+  --card-bg:       var(--bg-elevated);
+  --card-border:   var(--border-subtle);
+  --card-fg:       var(--fg-primary);
+  --card-padding:  1rem;     /* default density; overridden per density mode below */
+
+  --list-row-bg:        var(--bg-elevated);
+  --list-row-bg-hover:  var(--bg-surface);
+  --list-row-border:    var(--border-subtle);
+  --list-row-h:         2.25rem;  /* default density; overridden per density mode below */
+
+  --nav-rail-w:        15rem;     /* 240 px (PRD-02 §3.1) */
+  --inspector-w:       22.5rem;   /* 360 px (PRD-02 §3.1) */
+  --status-strip-h:    2rem;      /* 32 px (PRD-02 §3.1) */
+}
+
+/* -----------------------------------------------------------------------------
+ * Density layer — per density mode.
+ * Switching: `data-density="compact|default|spacious"` on <html>.
+ * Default is compact for the console; default for the chat (sub-decision).
+ * --------------------------------------------------------------------------- */
+
+:root[data-density="compact"] {
+  --card-padding: 0.75rem;   /* 12 px */
+  --list-row-h:   1.75rem;   /* 28 px */
+}
+
+:root[data-density="spacious"] {
+  --card-padding: 1.25rem;   /* 20 px */
+  --list-row-h:   2.75rem;   /* 44 px */
+}

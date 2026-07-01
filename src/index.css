@@ -1,0 +1,67 @@
+/* Cambrian Web UI — the entry CSS.
+ *
+ * Wires Tailwind v4 + the design system token files.
+ * Per UI-001 v0.2 (Tailwind v4 + shadcn/ui component library), PRD-01 §3.
+ *
+ * The @theme inline block exposes our CSS custom properties as Tailwind utility
+ * classes (bg-canvas, text-fg-primary, etc.) so components can use either
+ * Tailwind utilities or the typed tokens.ts mirror.
+ */
+
+@import "tailwindcss";
+@import "./design-system/styles/tokens.css";
+@import "./design-system/styles/globals.css";
+@import "./design-system/styles/motion.css";
+@import "./design-system/styles/a11y.css";
+
+@theme inline {
+  /* Background colors → bg-* utilities */
+  --color-canvas: var(--bg-canvas);
+  --color-surface: var(--bg-surface);
+  --color-elevated: var(--bg-elevated);
+  --color-pulse: var(--bg-pulse);
+
+  /* Foreground colors → text-* utilities */
+  --color-fg: var(--fg-primary);
+  --color-fg-secondary: var(--fg-secondary);
+  --color-fg-muted: var(--fg-muted);
+  --color-fg-on-accent: var(--fg-on-accent);
+
+  /* Border colors → border-* utilities */
+  --color-border: var(--border-subtle);
+  --color-border-strong: var(--border-strong);
+
+  /* Accent */
+  --color-accent: var(--accent-bg);
+  --color-accent-fg: var(--accent-fg);
+
+  /* Status */
+  --color-ok: var(--status-ok);
+  --color-warn: var(--status-warn);
+  --color-err: var(--status-err);
+  --color-info: var(--status-info);
+  --color-status-pulse: var(--status-pulse);
+  --color-muted: var(--status-muted);
+
+  /* Typography */
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+  --text-xs: var(--text-xs);
+  --text-sm: var(--text-sm);
+  --text-base: var(--text-base);
+  --text-md: var(--text-md);
+  --text-lg: var(--text-lg);
+  --text-xl: var(--text-xl);
+  --text-2xl: var(--text-2xl);
+  --text-3xl: var(--text-3xl);
+
+  /* Radii → rounded-* utilities */
+  --radius-sm: var(--radius-sm);
+  --radius-md: var(--radius-md);
+  --radius-lg: var(--radius-lg);
+  --radius-xl: var(--radius-xl);
+
+  --shadow-elevation-1: var(--elevation-1);
+  --shadow-elevation-2: var(--elevation-2);
+  --shadow-elevation-3: var(--elevation-3);
+}

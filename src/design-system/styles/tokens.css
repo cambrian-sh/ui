@@ -1,0 +1,228 @@
+/* Tokens.css - Cambrian Design System (4-layer Token System)
+ * 
+ * Architecture: primitive → semantic → component → density
+ * - Primitive: raw color/spacing/typography values
+ * - Semantic: contextual meaning (canvas, surface, fg-primary, etc)
+ * - Component: component-specific (button-primary-bg, etc)
+ * - Density: spacing variants (compact, default, spacious)
+ * 
+ * The 4-layer token system is the foundation. Everything else builds on this.
+ * Tailwind v4 reads these as @theme tokens and generates utilities.
+ */
+
+:root {
+  /* === Primitives: Raw color palette === */
+  --color-gray-50: oklch(98% 0.005 250);
+  --color-gray-100: oklch(95% 0.008 250);
+  --color-gray-200: oklch(90% 0.012 250);
+  --color-gray-300: oklch(80% 0.015 250);
+  --color-gray-400: oklch(70% 0.018 250);
+  --color-gray-500: oklch(60% 0.020 250);
+  --color-gray-600: oklch(50% 0.022 250);
+  --color-gray-700: oklch(40% 0.020 250);
+  --color-gray-800: oklch(30% 0.018 250);
+  --color-gray-900: oklch(20% 0.015 250);
+  --color-gray-950: oklch(15% 0.012 250);
+
+  --color-teal-100: oklch(96% 0.02 195);
+  --color-teal-200: oklch(92% 0.05 195);
+  --color-teal-300: oklch(78% 0.12 195);
+  --color-teal-400: oklch(72% 0.14 195);
+  --color-teal-500: oklch(65% 0.16 195);
+  --color-teal-600: oklch(58% 0.18 195);
+  --color-teal-700: oklch(48% 0.14 195);
+  --color-teal-800: oklch(38% 0.11 195);
+  --color-teal-900: oklch(28% 0.08 195);
+
+  --color-amber-400: oklch(78% 0.16 75);
+  --color-amber-500: oklch(72% 0.18 75);
+
+  --color-red-500: oklch(65% 0.22 25);
+
+  --color-blue-500: oklch(65% 0.20 240);
+
+  --color-green-500: oklch(70% 0.18 145);
+
+  /* === Semantic: Contextual application === */
+  --bg-canvas: var(--color-gray-950);
+  --bg-surface: var(--color-gray-900);
+  --bg-elevated: var(--color-gray-800);
+  --bg-pulse: var(--color-teal-600);
+
+  --fg-primary: var(--color-gray-50);
+  --fg-secondary: var(--color-gray-200);
+  --fg-muted: var(--color-gray-400);
+  --fg-on-accent: var(--color-gray-950);
+
+  --accent-bg: var(--color-teal-400);
+  --accent-fg: var(--color-gray-950);
+
+  --border-subtle: var(--color-gray-700);
+  --border-strong: var(--color-gray-600);
+
+  /* Status semantic colors */
+  --status-ok: var(--color-green-500);
+  --status-warn: var(--color-amber-400);
+  --status-err: var(--color-red-500);
+  --status-info: var(--color-blue-500);
+  --status-pulse: var(--color-teal-400);
+  --status-muted: var(--color-gray-500);
+
+  /* Session state colors (PRD-06 §4) */
+  --state-running: var(--color-green-500);
+  --state-paused: var(--color-amber-400);
+  --state-dormant: var(--color-gray-500);
+  --state-completed: var(--color-blue-500);
+
+  /* === Component: Button === */
+  --button-primary-bg: var(--accent-bg);
+  --button-primary-bg-hover: var(--color-teal-300);
+  --button-primary-fg: var(--accent-fg);
+  --button-primary-border: transparent;
+
+  --button-secondary-bg: transparent;
+  --button-secondary-bg-hover: var(--bg-elevated);
+  --button-secondary-fg: var(--fg-primary);
+  --button-secondary-border: var(--border-strong);
+
+  --button-danger-bg: var(--status-err);
+  --button-danger-fg: var(--fg-primary);
+
+  /* === Component: Input === */
+  --input-bg: var(--color-gray-950);
+  --input-border: var(--border-subtle);
+  --input-fg: var(--fg-primary);
+  --input-placeholder: var(--fg-muted);
+  --input-border-focus: var(--accent-bg);
+
+  /* === Component: Card === */
+  --card-bg: var(--bg-surface);
+  --card-border: var(--border-subtle);
+  --card-fg: var(--fg-primary);
+  --card-padding: 1rem;
+
+  /* === Component: Tooltip (inverted-surface pattern) === */
+  --tooltip-bg: var(--fg-primary);
+  --tooltip-fg: var(--bg-canvas);
+
+  /* === Component: Dialog (modal scrim) === */
+  --dialog-overlay-bg: oklch(0% 0 0 / 0.6);
+  --dialog-padding: 1.5rem;
+
+  /* === Component: Popover === */
+  --popover-padding: 1rem;
+
+  /* === Focus ring (per PRD-01 §8) === */
+  --focus-ring: var(--input-border-focus);
+
+  /* === Component: List === */
+  --list-row-bg: transparent;
+  --list-row-bg-hover: var(--bg-elevated);
+  --list-row-border: var(--border-subtle);
+  --list-row-h: 32px;
+  --list-row-padding-x: 0.75rem;
+
+  /* === Layout: Geometric dimensions === */
+  --nav-rail-w: 240px;
+  --inspector-w: 360px;
+  --status-strip-h: 32px;
+
+  /* === Density: Spacing variants === */
+  --density-compact: 0.75rem;
+  --density-default: 1rem;
+  --density-spacious: 1.5rem;
+
+  /* === Elevation: 3 levels (per PRD-01 §4.3) ===
+   * Dark mode is the default; shadows are forbidden per LD-7 §11, so the
+   * elevation is expressed as a 1px inset border + a low-opacity background
+   * tint. The light-mode override block adds the brand-tinted drop shadow
+   * reserved for floating elements (popovers, menus, dialogs). */
+  --elevation-1: 0 0 0 1px var(--border-subtle);
+  --elevation-2: 0 0 0 1px var(--border-subtle);
+  --elevation-3: 0 0 0 1px var(--border-strong);
+
+  /* === Typography === */
+  --text-xs: 0.75rem;
+  --text-sm: 0.8125rem;
+  --text-base: 0.875rem;
+  --text-md: 0.9375rem;
+  --text-lg: 1rem;
+  --text-xl: 1.125rem;
+  --text-2xl: 1.375rem;
+  --text-3xl: 1.75rem;
+  --font-sans: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+    "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
+    "Liberation Mono", monospace;
+
+  /* === Motion: duration tokens === */
+  --duration-instant: 0ms;
+  --duration-fast: 150ms;
+  --duration-base: 250ms;
+  --duration-slow: 600ms;
+
+  /* === Motion: easing curves === */
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --ease-out: cubic-bezier(0, 0, 0.2, 1);
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-linear: linear;
+
+  /* === Radius: border-radius tokens === */
+  --radius-sm: 0.25rem;
+  --radius-md: 0.375rem;
+  --radius-lg: 0.5rem;
+  --radius-xl: 0.75rem;
+}
+
+[data-density="compact"] {
+  --density-compact: 0.5rem;
+  --density-default: 0.75rem;
+  --density-spacious: 1rem;
+  --list-row-h: 28px;
+  --list-row-padding-x: 0.5rem;
+  --card-padding: 0.75rem;
+}
+
+[data-density="default"] {
+  --list-row-h: 36px;
+  --list-row-padding-x: 0.75rem;
+  --card-padding: 1rem;
+}
+
+[data-density="spacious"] {
+  --density-compact: 1rem;
+  --density-default: 1.5rem;
+  --density-spacious: 2rem;
+  --list-row-h: 44px;
+  --list-row-padding-x: 1rem;
+  --card-padding: 1.25rem;
+}
+
+[data-theme="light"] {
+  --bg-canvas: var(--color-gray-50);
+  --bg-surface: var(--color-gray-100);
+  --bg-elevated: var(--color-gray-200);
+  --bg-pulse: var(--color-teal-300);
+
+  --fg-primary: var(--color-gray-950);
+  --fg-secondary: var(--color-gray-700);
+  --fg-muted: var(--color-gray-500);
+  --fg-on-accent: var(--color-gray-50);
+
+  --accent-bg: var(--color-teal-600);
+  --accent-fg: var(--color-gray-50);
+
+  --border-subtle: var(--color-gray-200);
+  --border-strong: var(--color-gray-300);
+
+  --button-primary-bg-hover: var(--color-teal-500);
+  --button-secondary-bg-hover: var(--color-gray-200);
+
+  --input-bg: var(--color-gray-50);
+  --input-border: var(--color-gray-300);
+  --input-border-focus: var(--accent-bg);
+
+  /* Light mode: add brand-tinted drop shadow to floating elements per LD-7 §11. */
+  --elevation-2: 0 0 0 1px var(--border-subtle), 0 4px 12px oklch(0% 0 0 / 0.04);
+  --elevation-3: 0 0 0 1px var(--border-strong), 0 8px 24px oklch(0% 0 0 / 0.08);
+}

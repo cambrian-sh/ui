@@ -1,0 +1,87 @@
+/* Cambrian Web UI — motion tokens + keyframes.
+ *
+ * Per PRD-01 §4.4 (motion budget) + §7 (realtime visual grammar).
+ *
+ * Motion budget: ≤ 250 ms in, ≤ 600 ms out. No scale, no rotation, no glow.
+ * Three primitives: pulse (background tint), trail (2 px vertical mark),
+ * skeleton shimmer (1.5 s loop).
+ *
+ * Respects `prefers-reduced-motion`.
+ */
+
+:root {
+  --motion-pulse-duration:   var(--duration-base);  /* 250 ms */
+  --motion-trail-duration-in: var(--duration-base);  /* 250 ms */
+  --motion-trail-duration-out: var(--duration-slow);  /* 600 ms */
+  --motion-shimmer-duration:  1.5s;                  /* the only loop */
+  --motion-ease-in:           var(--ease-in);
+  --motion-ease-out:          var(--ease-out);
+}
+
+@keyframes cambrian-pulse {
+  0%   { background-color: var(--bg-surface); }
+  50%  { background-color: var(--bg-pulse); }
+  100% { background-color: var(--bg-surface); }
+}
+
+@keyframes cambrian-trail-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes cambrian-trail-out {
+  from { opacity: 1; }
+  to   { opacity: 0; }
+}
+
+@keyframes cambrian-shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+/* Pulse: 250 ms background tint. Used on rows that just received new data,
+   PlanCard step transitions, bid panel arrivals, intervention pins. */
+.cambrian-pulse {
+  animation: cambrian-pulse var(--motion-pulse-duration) var(--motion-ease-in);
+}
+
+/* Trail: 2 px vertical mark in the right margin. Fades in 250 ms, holds,
+   fades out 600 ms. */
+.cambrian-trail {
+  position: relative;
+}
+
+.cambrian-trail::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--status-pulse);
+  animation: cambrian-trail-in var(--motion-trail-duration-in) var(--motion-ease-in),
+             cambrian-trail-out var(--motion-trail-duration-out) var(--motion-ease-out) var(--motion-trail-duration-in) forwards;
+}
+
+/* Skeleton: 1.5 s shimmer loop. The only looped motion in the app. */
+.cambrian-skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--bg-surface) 0%,
+    var(--bg-elevated) 50%,
+    var(--bg-surface) 100%
+  );
+  background-size: 200% 100%;
+  animation: cambrian-shimmer var(--motion-shimmer-duration) linear infinite;
+  border-radius: var(--radius-sm);
+}
+
+/* Honour the user's motion preference. Status pills + text remain (LD-2). */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

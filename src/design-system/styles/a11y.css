@@ -1,0 +1,50 @@
+/* Cambrian Web UI — accessibility helpers.
+ *
+ * Per PRD-01 §8 (a11y built in, not a follow-on).
+ * WCAG AA minimum in dark mode; AAA preferred.
+ * Status colours are tuned per mode to meet AA against the canvas.
+ */
+
+/* Visually hidden but accessible to screen readers. */
+.cambrian-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Focus rings: brand accent, 2 px, offset 2 px, never removed. */
+*:focus-visible {
+  outline: 2px solid var(--accent-bg);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+/* Skip link: visible on focus, hidden otherwise. */
+.cambrian-skip-link {
+  position: absolute;
+  top: -100px;
+  left: 0.5rem;
+  background: var(--accent-bg);
+  color: var(--accent-fg);
+  padding: 0.5rem 1rem;
+  border-radius: var(--radius-md);
+  z-index: 9999;
+  font-weight: 500;
+  transition: top var(--duration-base) var(--ease-in);
+}
+
+.cambrian-skip-link:focus {
+  top: 0.5rem;
+}
+
+/* High-contrast text helper. */
+.cambrian-high-contrast {
+  color: var(--fg-primary);
+  font-weight: 500;
+}
