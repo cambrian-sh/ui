@@ -11,6 +11,7 @@ import { ipc } from '@/ipc';
 import { projectionStore } from '@/store/projection';
 import { useStore } from '@/store/useStore';
 import type { PlanInFlight, PlanStatus } from '@/ipc/types';
+import { useFocusedPlan } from '@/lib/useFocusedPlan';
 import { PlanStepList, type PlanStep } from './PlanStepList';
 
 const PlanGraph = lazy(() => import('./PlanGraph').then((m) => ({ default: m.PlanGraph })));
@@ -47,7 +48,7 @@ export function PlanWorkSurface() {
   const [selectedStepIndex, setSelectedStepIndex] = useState<number | null>(null);
   const [actionReason, setActionReason] = useState('');
 
-  const plan = plans[0] ?? null;
+  const plan = useFocusedPlan(plans);
   const steps = useMemo(() => (plan ? placeholderSteps(plan) : []), [plan]);
 
   if (!plan) {
