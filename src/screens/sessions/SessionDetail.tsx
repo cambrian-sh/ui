@@ -20,8 +20,10 @@ import {
   TabsTrigger,
 } from '@/design-system/components';
 import { relativeTime } from '@/lib/relativeTime';
+import { useMutation } from '@/lib/useMutation';
 import { SessionStatePill } from './SessionStatePill';
 import { ConfirmMutationDialog } from './ConfirmMutationDialog';
+import { ErrorState } from '@/design-system/components/cambrian/error-state';
 
 interface SessionDetailProps {
   session: SessionSummary;
@@ -65,18 +67,20 @@ export function SessionDetail({ session, role }: SessionDetailProps) {
   const canResume = isOperator && session.state === 'paused';
   const canComplete = isOperator && session.state !== 'completed';
 
+  const { mutate, isLoading, error } = useMutation(
+    async (args: { kind: MutationKind; reason: string }) => {
+      if (args.kind === 'pause') {
+        return ipc.pauseSession({ session_id: session.session_id, reason: args.reason });
+      }
+      if (args.kind === 'resume') {
+        return ipc.resumeSession({ session_id: session.session_id, reason: args.reason });
+      }
+      return ipc.completeSession({ session_id: session.session_id, reason: args.reason });
+    },
+  );
+
   const handleMutation = async (kind: MutationKind, reason: string) => {
-    switch (kind) {
-      case 'pause':
-        await ipc.pauseSession({ session_id: session.session_id, reason });
-        break;
-      case 'resume':
-        await ipc.resumeSession({ session_id: session.session_id, reason });
-        break;
-      case 'complete':
-        await ipc.completeSession({ session_id: session.session_id, reason });
-        break;
-    }
+    await mutate({ kind, reason });
   };
 
   return (
@@ -142,7 +146,7 @@ export function SessionDetail({ session, role }: SessionDetailProps) {
             <CardContent className="flex flex-col gap-2">
               <Button
                 variant="default"
-                disabled={!canPause}
+                disabled={!canPause || isLoading}
                 onClick={() => setPending('pause')}
                 aria-label="Pause session"
               >
@@ -150,7 +154,7 @@ export function SessionDetail({ session, role }: SessionDetailProps) {
               </Button>
               <Button
                 variant="default"
-                disabled={!canResume}
+                disabled={!canResume || isLoading}
                 onClick={() => setPending('resume')}
                 aria-label="Resume session"
               >
@@ -158,12 +162,13 @@ export function SessionDetail({ session, role }: SessionDetailProps) {
               </Button>
               <Button
                 variant="danger"
-                disabled={!canComplete}
+                disabled={!canComplete || isLoading}
                 onClick={() => setPending('complete')}
                 aria-label="Complete session"
               >
                 Complete
               </Button>
+              {error && <ErrorState reason={error} />}
               {!isOperator && (
                 <p className="mt-2 text-xs text-[var(--fg-muted)]">
                   These actions require the Operator role.
@@ -192,7 +197,9 @@ export function SessionDetail({ session, role }: SessionDetailProps) {
           description={MUTATION_META[pending].description}
           confirmLabel={MUTATION_META[pending].confirmLabel}
           destructive={MUTATION_META[pending].destructive}
-          onConfirm={(reason) => handleMutation(pending, reason)}
+          onConfirm={async (reason) => {
+            if (pending) await handleMutation(pending, reason);
+          }}
         />
       )}
     </div>

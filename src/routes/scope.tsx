@@ -15,44 +15,11 @@
  */
 
 import { createFileRoute } from '@tanstack/react-router';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/design-system/components";
-
-export function Scope() {
-  return (
-    <div className="flex h-full flex-col gap-4 p-6 overflow-y-auto">
-      <header className="flex flex-col gap-1">
-        <h1 className="text-xl font-semibold tracking-tight">Scope</h1>
-        <p className="text-sm text-[var(--fg-muted)]">
-          Per-agent scope declarations and the kernel-computed EffectiveScope.
-          Every widen / narrow is a Tier-1 mutation with a blast-radius preview
-          before commit.
-        </p>
-      </header>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Agent scope</CardTitle>
-          <CardDescription>
-            Declared (the agent's manifest) vs. effective (caller ∩ agent,
-            computed by the kernel). Diff is the live blast radius.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex flex-col gap-1.5">
-            <div className="h-12 rounded-sm bg-[var(--bg-elevated)] border border-[var(--border-subtle)]" />
-            <div className="h-12 rounded-sm bg-[var(--bg-elevated)] border border-[var(--border-subtle)] opacity-60" />
-          </div>
-        </CardContent>
-      </Card>
-
-      <p className="text-xs text-[var(--fg-muted)] mt-auto">
-        Surface lands in UI-IMPL-15.
-      </p>
-    </div>
-  );
-}
-export default Scope;
+import { ScopeConsole } from '@/screens/scope/ScopeConsole';
 
 export const Route = createFileRoute('/scope')({
-  component: Scope,
+  validateSearch: (search: Record<string, unknown>) => ({
+    focus: search.focus as string | undefined,
+  }),
+  component: ScopeConsole,
 });

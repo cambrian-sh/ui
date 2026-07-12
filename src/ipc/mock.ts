@@ -35,6 +35,30 @@ class MockIPC {
       sessions: [],
       audit_tail: [],
       pending_hitl: [],
+      agents: [],
+      tools: [],
+      skills: [],
+      mcp_servers: [],
+      scope: {},
+      watch_configs: [],
+      lifecycle: {
+        scheduler_state: 'idle',
+        pending_jobs: 0,
+        last_consolidation: null,
+        dormancy_events: [],
+      },
+      verifier_pool: {
+        pool_agents: [],
+        recent_rounds: [],
+        surveillance_triggers: [],
+      },
+      cost_dashboard: {
+        spend_rate_usd: 0,
+        circuit_breakers: [],
+        max_energy_per_step: 0.5,
+        price_ledger: [],
+        recent_acquires: [],
+      },
     };
   }
 
@@ -129,6 +153,22 @@ class MockIPC {
     return { deduped: false };
   }
 
+  async setScope(_params: t.SetScopeParams): Promise<t.CommandAck> {
+    return { deduped: false };
+  }
+
+  async registerSkill(_params: t.RegisterSkillParams): Promise<t.CommandAck> {
+    return { deduped: false };
+  }
+
+  async registerMCP(_params: t.RegisterMCPParams): Promise<t.CommandAck> {
+    return { deduped: false };
+  }
+
+  async triggerConsolidation(_params: t.TriggerConsolidationParams): Promise<t.CommandAck> {
+    return { deduped: false };
+  }
+
   async getBlastRadiusPreview(_mutation: t.BlastRadiusMutation): Promise<t.BlastRadiusPreviewResponse> {
     return {
       affected_agents: [],
@@ -145,6 +185,76 @@ class MockIPC {
       schema_hash: 'mock-hash',
       editable_keys: [],
       kernel_only_keys: [],
+    };
+  }
+
+  // --------------------------------------------------------------------------
+  // UI-IMPL-21a: subsystem read RPCs (9 new)
+  // --------------------------------------------------------------------------
+
+  async listAgents(): Promise<t.AgentSummary[]> {
+    return this.state.agents;
+  }
+
+  async getAgent(agentId: string): Promise<t.AgentDetail> {
+    const summary = this.state.agents.find((a) => a.id === agentId);
+    if (!summary) throw new Error(`Agent not found: ${agentId}`);
+    return { ...summary, manifest_version: '1.0', manifest_json: '{}', cognitive_fingerprint: '', scope: { required_tags: [], any_of_tags: [], forbidden_tags: [] }, trust_score_ewma: summary.trust_score, recent_verification_outcomes: [], last_error: '', last_successful_plan_id: '' };
+  }
+
+  async listTools(): Promise<t.ToolSummary[]> {
+    return this.state.tools;
+  }
+
+  async getTool(toolId: string): Promise<t.ToolDetail> {
+    const summary = this.state.tools.find((t) => t.id === toolId);
+    if (!summary) throw new Error(`Tool not found: ${toolId}`);
+    return { ...summary, manifest_version: '1.0', schema_json: '{}', granted_agents: [] };
+  }
+
+  async listSkills(): Promise<t.SkillSummary[]> {
+    return this.state.skills;
+  }
+
+  async getSkill(skillId: string): Promise<t.SkillDetail> {
+    const summary = this.state.skills.find((s) => s.id === skillId);
+    if (!summary) throw new Error(`Skill not found: ${skillId}`);
+    return { ...summary, skill_md: '# Skill', bundled_tool_grants: [], where_loaded: [] };
+  }
+
+  async listMCPServers(): Promise<t.MCPServerSummary[]> {
+    return this.state.mcp_servers;
+  }
+
+  async getMCPServer(serverId: string): Promise<t.MCPServerDetail> {
+    const summary = this.state.mcp_servers.find((s) => s.id === serverId);
+    if (!summary) throw new Error(`MCP server not found: ${serverId}`);
+    return { ...summary, health_check_history: [], discovered_tools: [] };
+  }
+
+  async getScope(agentId: string): Promise<t.ScopeDetail> {
+    const entry = this.state.scope[agentId];
+    if (!entry) throw new Error(`Scope not found for agent: ${agentId}`);
+    return {
+      agent_id: entry.agent_id,
+      effective_scope: { required_tags: [], any_of_tags: [], forbidden_tags: [] },
+      default_write_tags: entry.default_write_tags,
+      caller_scope: { required_tags: [], any_of_tags: [], forbidden_tags: [] },
+      k_anonymity_floor: 3,
+      scope_change_history: [],
+    };
+  }
+
+  async getWatchConfig(id: string): Promise<t.WatchConfigDetail> {
+    const summary = this.state.watch_configs.find(w => w.id === id);
+    if (!summary) throw new Error(`Watch config not found: ${id}`);
+    return {
+      ...summary,
+      rule: `name: ${id}\ncondition: "true"\naction: "notify"`,
+      last_fires: [
+        { status: summary.last_fire_status, duration_ms: 120, output: "Success", fired_at: summary.last_fire_at || new Date().toISOString() }
+      ],
+      errors: summary.error_count > 0 ? ["Failed to execute rule"] : [],
     };
   }
 
@@ -196,6 +306,56 @@ class MockIPC {
   /** Add an audit entry to the in-memory state. */
   __addAuditEntry(entry: t.AuditEntry) {
     this.state = { ...this.state, audit_tail: [...this.state.audit_tail, entry] };
+    this.emitState();
+  }
+
+  /** Set the agents list and emit state. */
+  __seedAgents(agents: t.AgentSummary[]) {
+    this.state = { ...this.state, agents };
+    this.emitState();
+  }
+
+  /** Set the tools list and emit state. */
+  __seedTools(tools: t.ToolSummary[]) {
+    this.state = { ...this.state, tools };
+    this.emitState();
+  }
+
+  /** Set the skills list and emit state. */
+  __seedSkills(skills: t.SkillSummary[]) {
+    this.state = { ...this.state, skills };
+    this.emitState();
+  }
+
+  /** Set the MCP servers list and emit state. */
+  __seedMCPServers(servers: t.MCPServerSummary[]) {
+    this.state = { ...this.state, mcp_servers: servers };
+    this.emitState();
+  }
+
+  /** Set the scope map and emit state. */
+  __seedScope(scope: Record<string, t.ScopeSummary>) {
+    this.state = { ...this.state, scope };
+    this.emitState();
+  }
+
+  __seedWatchConfigs(configs: t.WatchConfigSummary[]) {
+    this.state = { ...this.state, watch_configs: configs };
+    this.emitState();
+  }
+
+  __seedLifecycle(lifecycle: t.LifecycleState) {
+    this.state = { ...this.state, lifecycle };
+    this.emitState();
+  }
+
+  __seedVerifierPool(pool: t.VerifierPoolState) {
+    this.state = { ...this.state, verifier_pool: pool };
+    this.emitState();
+  }
+
+  __seedCostDashboard(dashboard: t.CostDashboard) {
+    this.state = { ...this.state, cost_dashboard: dashboard };
     this.emitState();
   }
 

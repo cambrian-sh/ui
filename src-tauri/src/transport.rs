@@ -15,7 +15,7 @@ use tonic::{Request, Status};
 
 use crate::pb;
 use crate::pb::operator_console_client::OperatorConsoleClient;
-use crate::state::{ConnectionStatus, StateOfRecord};
+use crate::state::{ConnectionState, ConnectionStatus, StateOfRecord};
 
 /// Tauri event names emitted to the webview.
 const EV_STATE: &str = "kernel://state";
@@ -117,7 +117,7 @@ impl Transport {
     async fn set_connection(&self, app: &AppHandle, status: ConnectionStatus) {
         {
             let mut s = self.state.lock().await;
-            s.connection = status;
+            s.connection.status = status;
         }
         self.emit_state(app).await;
     }
@@ -135,7 +135,7 @@ impl Transport {
         *self.endpoint.lock().await = Some(endpoint);
         *self.channel.lock().await = None; // force reconnect to the (new) endpoint
         self.set_token(None);
-        self.set_connection(app, ConnectionStatus::Connecting).await;
+        self.set_connection(app, ConnectionStatus::Reconnecting).await;
 
         let mut client = self.client().await?;
         let resp = client
@@ -163,10 +163,18 @@ impl Transport {
             .map_err(|e| format!("snapshot: {}", e.message()))?
             .into_inner();
         let mut s = self.state.lock().await;
-        let conn = s.connection;
+        let conn_status = s.connection.status;
+        let conn_endpoint = s.connection.endpoint.clone();
+        let conn_last_state = s.connection.last_known_state_at.clone();
+        let conn_reason = s.connection.reason.clone();
         let role = s.role.clone();
         s.apply_snapshot(&snap);
-        s.connection = conn;
+        s.connection = ConnectionState {
+            status: conn_status,
+            endpoint: conn_endpoint,
+            last_known_state_at: conn_last_state,
+            reason: conn_reason,
+        };
         s.role = role;
         Ok(())
     }
@@ -295,6 +303,78 @@ impl Transport {
         Ok(ack.deduped)
     }
 
+    pub async fn set_scope(
+        &self,
+        agent_id: String,
+        required_tags: Vec<String>,
+        any_of_tags: Vec<String>,
+        forbidden_tags: Vec<String>,
+        reason: String,
+    ) -> Result<bool, String> {
+        let mut client = self.client().await?;
+        let ack = client
+            .set_scope(Request::new(pb::SetScopeRequest {
+                command_id: new_command_id(),
+                reason,
+                agent_id,
+                required_tags,
+                any_of_tags,
+                forbidden_tags,
+            }))
+            .await
+            .map_err(map_status)?
+            .into_inner();
+        Ok(ack.deduped)
+    }
+
+    pub async fn register_skill(
+        &self,
+        name: String,
+        description: String,
+        instructions: String,
+        tool_grants: Vec<String>,
+        scope_tags: Vec<String>,
+        reason: String,
+    ) -> Result<bool, String> {
+        let mut client = self.client().await?;
+        let ack = client
+            .register_skill(Request::new(pb::RegisterSkillRequest {
+                command_id: new_command_id(),
+                reason,
+                name,
+                description,
+                instructions,
+                tool_grants,
+                scope_tags,
+            }))
+            .await
+            .map_err(map_status)?
+            .into_inner();
+        Ok(ack.deduped)
+    }
+
+    pub async fn register_mcp(
+        &self,
+        name: String,
+        command: String,
+        url: String,
+        reason: String,
+    ) -> Result<bool, String> {
+        let mut client = self.client().await?;
+        let ack = client
+            .register_mcp(Request::new(pb::RegisterMcpRequest {
+                command_id: new_command_id(),
+                reason,
+                name,
+                command,
+                url,
+            }))
+            .await
+            .map_err(map_status)?
+            .into_inner();
+        Ok(ack.deduped)
+    }
+
     // ---- The feed loop ---------------------------------------------------
 
     fn start_feed(&self, app: AppHandle) {
@@ -317,7 +397,7 @@ impl Transport {
         loop {
             self.set_connection(
                 &app,
-                if attempt == 0 { ConnectionStatus::Connecting } else { ConnectionStatus::Reconnecting },
+                ConnectionStatus::Reconnecting,
             )
             .await;
 
@@ -424,7 +504,7 @@ impl Transport {
             .min(RECONNECT_CAP);
         *attempt += 1;
         if delay >= UNREACHABLE_AFTER {
-            self.set_connection(app, ConnectionStatus::Unreachable).await;
+            self.set_connection(app, ConnectionStatus::Down).await;
         }
         *self.channel.lock().await = None;
         tokio::time::sleep(delay).await;

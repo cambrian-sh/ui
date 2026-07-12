@@ -102,9 +102,10 @@ Tauri build prerequisites: `protoc` with Google well-known types (vendored via `
 | UI-IMPL-01…18 (vertical slice) | ✅ Done | covered |
 | UI-IMPL-19 (Console Sessions, PRD-06 §4) | ✅ Done | 5 tests |
 | UI-IMPL-20 (Console Plans in Flight, PRD-06 §5) | ✅ Done | 17 tests (8 plans + 5 plan-filters + 4 useFocusedPlan) |
-| **Total** | **20/47 tickets** | **29/29 pass** |
+| UI-IMPL-21a (Data model extension, webview-side) | ✅ Done | 5 tests (mock IPC subsystem entities) |
+| **Total** | **21/47 tickets** | **34/34 pass** |
 
-**The next 5 tickets are Phase 2 (P1 subsystems read views).** See §10 below for the full plan. The data model bridge (UI-IMPL-21a) is a prerequisite for the 4 UI screens.
+**The next 4 tickets are Phase 2 (P1 subsystems read views).** See §10 below for the full plan. The data model bridge (UI-IMPL-21a) is done. Agents (UI-IMPL-22) is next.
 
 ---
 

@@ -29,5 +29,14 @@ afterEach(() => {
     sessions: [],
     audit_tail: [],
     pending_hitl: [],
+    agents: [],
+    tools: [],
+    skills: [],
+    mcp_servers: [],
+    scope: {},
+    watch_configs: [],
+    lifecycle: { scheduler_state: 'idle', pending_jobs: 0, last_consolidation: null, dormancy_events: [] },
+    verifier_pool: { pool_agents: [], recent_rounds: [], surveillance_triggers: [] },
+    cost_dashboard: { spend_rate_usd: 0, circuit_breakers: [], max_energy_per_step: 0.5, price_ledger: [], recent_acquires: [] },
   });
 });

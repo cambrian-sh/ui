@@ -36,4 +36,5 @@ uuid = { version = "1", features = ["v4"] }
 keyring = "3"
 thiserror = "1"
 tracing = "0.1"
+chrono = "0.4"
 

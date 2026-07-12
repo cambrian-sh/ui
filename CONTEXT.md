@@ -12,16 +12,16 @@ Do not assume anything about the runtime, the transport, or the domain terminolo
 | Area | Status |
 |---|---|
 | Project scaffold (Tauri 2 + React 19 + TS + Vite + Bun) | **Present** |
-| **Rust core: gRPC transport client, feed-fold state of record, auth, recovery, Tauri bridge** | **IMPLEMENTED** — `tonic` `OperatorConsole` client, login+keychain, the feed loop (snapshot→cursor→resync→reconnect), 9 `op_*` commands, `kernel://state`/`kernel://token` events. `cargo check`+`clippy` clean. See `src-tauri/CONTEXT.md`. |
+| **Rust core: gRPC transport client, feed-fold state of record, auth, recovery, Tauri bridge** | **IMPLEMENTED** — `tonic` `OperatorConsole` client, login+keychain, the feed loop (snapshot→cursor→resync→reconnect), 9 `op_*` commands, `kernel://state`/`kernel://token` events. `cargo check`+`clippy` clean. State structs now aligned with webview `types.ts` (Vec-based sessions/plans, `ConnectionState` struct, subsystem cache fields). See `src-tauri/CONTEXT.md`. |
 | Webview: projection store, screens, design system | **IMPLEMENTED** — Zustand projection (hydrate/fold/reset), design system (tokens, primitives, Cambrian components), chat surface, plan work surface, memory explorer, nav rail, status strip, command palette. See `src/CONTEXT.md`. |
-| Console screens (PRD-06) — Sessions, Plans in Flight, Agents, Tools & Skills, MCP, Scope, Watch, Lifecycle, Verifier, Cost | **In progress** — Sessions (UI-IMPL-19) and Plans in Flight (UI-IMPL-20) shipped. Read-only P1 screens 21–24 next; mutating P2 screens 25–28 follow. |
+| Console screens (PRD-06) — Sessions, Plans in Flight, Agents, Tools & Skills, MCP, Scope, Watch, Lifecycle, Verifier, Cost | **SHIPPED** — Sessions (UI-IMPL-19), Plans in Flight (UI-IMPL-20), data model extension (UI-IMPL-21a), Agents (UI-IMPL-22), Tools & Skills (UI-IMPL-22b), MCP (UI-IMPL-23), Scope (UI-IMPL-24), Watch (UI-IMPL-25), Lifecycle (UI-IMPL-26), Verifier (UI-IMPL-27), Cost & Energy (UI-IMPL-28). All P2 console screens complete. |
 | Memory explorer (PRD-05) — list, detail, compare, blast-radius | **Vertical-slice minimal** — list + filter + open + tag with blast-radius. Compare/graph/bulk (P3 UI-IMPL-31…35) deferred. |
 | Audit & export (PRD-07) — list, deep-link, CSV/JSON export | **Vertical-slice minimal** — read-only audit tail. Mutations + export (P4 UI-IMPL-36…37) deferred. |
 | Configuration (PRD-07) — settings, first-run, profiles | **Vertical-slice minimal** — connection settings (Settings → Connection). Runtime/UI/Profiles (P5 UI-IMPL-37) deferred. |
 | Vendored contract `proto/operator.proto` | **Present, pinned to `0047`** |
 | Runtime-core Operator Transport Plane (the thing we integrate against) | **Implemented & serving** (kernel ADR-0047; see §6) |
 
-The **Rust core (`src-tauri`) and the webview (`src`) are both built**. The console subsystem and memory explorer are partially shipped (vertical slice + first two P1 screens). The build order is the parent UX PRD §13 (vertical slice → P1 subsystems read → P2 subsystems read+mutate → P3 memory explorer → P4 audit & export → P5 configuration → P6 polish & a11y).
+The **Rust core (`src-tauri`) and the webview (`src`) are both built**. The console subsystem and memory explorer are partially shipped (vertical slice + P2 console screens complete). The build order is the parent UX PRD §13 (vertical slice → P1 subsystems read → P2 subsystems read+mutate → P3 memory explorer → P4 audit & export → P5 configuration → P6 polish & a11y).
 
 ---
 

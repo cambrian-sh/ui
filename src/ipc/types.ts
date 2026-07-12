@@ -142,6 +142,38 @@ export interface SetToolGrantParams {
   reason: string;
 }
 
+export interface SetScopeParams {
+  command_id: string;
+  reason: string;
+  agent_id: string;
+  required_tags: string[];
+  any_of_tags: string[];
+  forbidden_tags: string[];
+}
+
+export interface RegisterSkillParams {
+  command_id: string;
+  reason: string;
+  name: string;
+  description: string;
+  instructions: string;
+  tool_grants: string[];
+  scope_tags: string[];
+}
+
+export interface RegisterMCPParams {
+  command_id: string;
+  reason: string;
+  name: string;
+  command: string;
+  url: string;
+}
+
+export interface TriggerConsolidationParams {
+  command_id: string;
+  reason: string;
+}
+
 // ============================================================================
 // StateOfRecord — the projection's shape (mirrors the kernel's StateOfRecord).
 // Per ui/src-tauri/state.rs.
@@ -215,6 +247,206 @@ export interface StateOfRecord {
   sessions: SessionSummary[];
   audit_tail: AuditEntry[];
   pending_hitl: HITLIntervention[];
+  // UI-IMPL-21a: subsystem entity caches (projected from snapshots/events)
+  agents: AgentSummary[];
+  tools: ToolSummary[];
+  skills: SkillSummary[];
+  mcp_servers: MCPServerSummary[];
+  scope: Record<string, ScopeSummary>;
+  watch_configs: WatchConfigSummary[];
+  lifecycle: LifecycleState;
+  verifier_pool: VerifierPoolState;
+  cost_dashboard: CostDashboard;
+}
+
+// ============================================================================
+// UI-IMPL-21a: subsystem entity types (mirrors proto UI-IMPL-21a addition)
+// ============================================================================
+
+export interface AgentSummary {
+  id: string;
+  trait: string; // "Cognitive" | "Model" | "Daemon"
+  scope_summary: string;
+  trust_score: number;
+  last_activity_at: string; // ISO 8601
+  last_state: string;
+}
+
+export interface AgentDetail extends AgentSummary {
+  manifest_version: string;
+  manifest_json: string;
+  cognitive_fingerprint: string; // TraitCognitive only
+  scope: ScopeConfig;
+  trust_score_ewma: number;
+  recent_verification_outcomes: string[];
+  last_error: string;
+  last_successful_plan_id: string;
+}
+
+export interface ToolSummary {
+  id: string;
+  description: string;
+  danger: boolean;
+  granted_agent_count: number;
+  recent_invocation_count: number;
+  last_cost: number;
+}
+
+export interface ToolDetail extends ToolSummary {
+  manifest_version: string;
+  schema_json: string;
+  granted_agents: string[];
+}
+
+export interface SkillSummary {
+  id: string;
+  description: string;
+  scope_tags: string[];
+  loaded_in_count: number;
+  last_loaded_at: string; // ISO 8601
+}
+
+export interface SkillDetail extends SkillSummary {
+  skill_md: string;
+  bundled_tool_grants: string[];
+  where_loaded: string[];
+}
+
+export interface MCPServerSummary {
+  id: string;
+  connection_state: string; // "Up" | "Reconnecting" | "Down"
+  tool_count: number;
+  last_health_check_at: string; // ISO 8601
+  default_price: number;
+}
+
+export interface MCPServerDetail extends MCPServerSummary {
+  health_check_history: string[];
+  discovered_tools: string[];
+}
+
+export interface ScopeSummary {
+  agent_id: string;
+  effective_scope_summary: string;
+  default_write_tags: string[];
+  last_scope_change_at: string; // ISO 8601
+}
+
+export interface ScopeDetail {
+  agent_id: string;
+  effective_scope: ScopeConfig;
+  default_write_tags: string[];
+  caller_scope: ScopeConfig;
+  k_anonymity_floor: number;
+  scope_change_history: string[];
+}
+
+// ============================================================================
+// P2: Watch & Reactive (PRD-06 §11)
+// ============================================================================
+
+export interface WatchConfigSummary {
+  id: string;
+  target_streams: string[];
+  last_fire_at: string | null; // ISO 8601
+  last_fire_status: string; // "ok" | "error" | "pending"
+  error_count: number;
+}
+
+export interface WatchConfigDetail extends WatchConfigSummary {
+  rule: string; // YAML or structured
+  last_fires: WatchFire[];
+  errors: string[];
+}
+
+export interface WatchFire {
+  status: string;
+  duration_ms: number;
+  output: string;
+  fired_at: string; // ISO 8601
+}
+
+// ============================================================================
+// P2: Lifecycle (PRD-06 §12)
+// ============================================================================
+
+export interface LifecycleState {
+  scheduler_state: string; // "idle" | "consolidating" | "dormant"
+  pending_jobs: number;
+  last_consolidation: ConsolidationJob | null;
+  dormancy_events: DormancyEvent[];
+}
+
+export interface ConsolidationJob {
+  timestamp: string; // ISO 8601
+  duration_ms: number;
+  status: string; // "running" | "completed" | "failed"
+}
+
+export interface DormancyEvent {
+  agent_id: string;
+  event_type: string; // "dormant" | "reactivated"
+  timestamp: string; // ISO 8601
+}
+
+// ============================================================================
+// P2: Verifier Pool (PRD-06 §13)
+// ============================================================================
+
+export interface VerifierPoolState {
+  pool_agents: VerifierPoolAgent[];
+  recent_rounds: VerifierRound[];
+  surveillance_triggers: SurveillanceTrigger[];
+}
+
+export interface VerifierPoolAgent {
+  agent_id: string;
+  merit_score: number;
+}
+
+export interface VerifierRound {
+  task_id: string;
+  verifier_id: string;
+  target_agent: string;
+  quality_score: number;
+  cross_verification_status: string; // "pending" | "passed" | "failed"
+}
+
+export interface SurveillanceTrigger {
+  agent_id: string;
+  reason: string;
+  fired_at: string; // ISO 8601
+}
+
+// ============================================================================
+// P2: Cost & Energy (PRD-06 §14, UI-014)
+// ============================================================================
+
+export interface CostDashboard {
+  spend_rate_usd: number;
+  circuit_breakers: CircuitBreaker[];
+  max_energy_per_step: number;
+  price_ledger: PriceLedgerEntry[];
+  recent_acquires: AcquireOutcome[];
+}
+
+export interface CircuitBreaker {
+  model_id: string;
+  state: string; // "ok" | "warn" | "err"
+  reason: string;
+}
+
+export interface PriceLedgerEntry {
+  model_id: string;
+  cost_per_token: number;
+  currency: string;
+}
+
+export interface AcquireOutcome {
+  model_id: string;
+  acquired: boolean;
+  latency_ms: number;
+  timestamp: string; // ISO 8601
 }
 
 // ============================================================================

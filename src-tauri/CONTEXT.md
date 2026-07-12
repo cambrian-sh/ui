@@ -40,6 +40,10 @@ The Rust core is the **only** thing that talks gRPC to the runtime-core. The web
 | `op_pause_session` / `op_resume_session` | `session_id, reason` | `deduped: bool` |
 | `op_resolve_hitl` | `intervention_id, approve, reason` | `deduped: bool` |
 | `op_set_tool_grant` | `agent_id, tool_name, granted, reason` | `deduped: bool` |
+| `op_set_scope` | `agent_id, required_tags[], any_of_tags[], forbidden_tags[], reason` | `deduped: bool` |
+| `op_register_skill` | `name, description, instructions, tool_grants[], scope_tags[], reason` | `deduped: bool` |
+| `op_register_mcp` | `name, command, url, reason` | `deduped: bool` |
+| `op_blast_radius_preview` | `mutation: BlastRadiusMutation` | `BlastRadiusPreviewResponse` (computed locally from the current projection; no kernel RPC) |
 
 > `command_id` (UUID) is generated **inside the core** per call; `reason` is mandatory (the kernel rejects empty). The webview never sends a token or actor — auth is the core's interceptor.
 

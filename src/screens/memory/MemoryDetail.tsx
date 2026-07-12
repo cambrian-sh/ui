@@ -29,9 +29,9 @@ export function MemoryDetail({ doc }: { doc: MemoryDocument }) {
 
   const confirm = () => {
     if (pendingAction === 'tag') {
-      ipc.setToolGrant({ agent_id: 'memory:' + doc.doc_id, tool_name: 'tag:user', granted: true, reason: actionReason || 'tag from memory explorer' });
+      ipc.setToolGrant({ agent_id: 'memory:' + doc.doc_id, tool_name: 'tag:user', granted: true, reason: actionReason.trim() });
     } else if (pendingAction === 'delete') {
-      ipc.setToolGrant({ agent_id: 'memory:' + doc.doc_id, tool_name: 'delete:user', granted: true, reason: actionReason || 'delete from memory explorer' });
+      ipc.setToolGrant({ agent_id: 'memory:' + doc.doc_id, tool_name: 'delete:user', granted: true, reason: actionReason.trim() });
     }
     cancel();
   };
@@ -145,7 +145,8 @@ export function MemoryDetail({ doc }: { doc: MemoryDocument }) {
                 <button
                   type="button"
                   onClick={confirm}
-                  className="flex-1 rounded-sm bg-[var(--button-primary-bg)] px-2 py-1 text-[11px] font-medium text-[var(--button-primary-fg)] hover:bg-[var(--button-primary-bg-hover)]"
+                  disabled={!actionReason.trim()}
+                  className="flex-1 rounded-sm bg-[var(--button-primary-bg)] px-2 py-1 text-[11px] font-medium text-[var(--button-primary-fg)] hover:bg-[var(--button-primary-bg-hover)] disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   Confirm {pendingAction}
                 </button>

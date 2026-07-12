@@ -4,6 +4,14 @@
 // Re-vendor from the kernel repo when the contract bumps; verify via the
 // Snapshot handshake (contract_version) at runtime. ADR-0047 0047-13.
 
+// TODO(UI-IMPL-21b): re-vendor from kernel after contract bump to 0048.
+// The webview-side UI-IMPL-21a ticket extends this vendored proto with
+// 10 messages + 9 RPCs (Agents / Tools / Skills / MCP / Scope) so the
+// 4 read-only console screens (PRD-06 §6, §7, §8, §10) can develop
+// against typed data via the mock IPC. When the kernel-side ticket
+// (UI-IMPL-21b) lands, the real proto bumps to 0048; re-vendor from
+// kernel api/proto/operator.proto and remove this local extension.
+
 syntax = "proto3";
 
 package cambrian;
@@ -59,6 +67,17 @@ service OperatorConsole {
   rpc CreateSession(CreateSessionRequest) returns (CreateSessionResponse);
   rpc SendMessage(SendMessageRequest) returns (CommandAck);
   rpc InjectCorrection(InjectCorrectionRequest) returns (CommandAck);
+
+  // Subsystems read (UI-IMPL-21a local extension; bumped in 0048 by 21b).
+  rpc ListAgents(ListAgentsRequest) returns (ListAgentsResponse);
+  rpc GetAgent(GetAgentRequest) returns (AgentDetailOp);
+  rpc ListTools(ListToolsRequest) returns (ListToolsResponse);
+  rpc GetTool(GetToolRequest) returns (ToolDetailOp);
+  rpc ListSkills(ListSkillsRequest) returns (ListSkillsResponse);
+  rpc GetSkill(GetSkillRequest) returns (SkillDetailOp);
+  rpc ListMCPServers(ListMCPServersRequest) returns (ListMCPServersResponse);
+  rpc GetMCPServer(GetMCPServerRequest) returns (MCPServerDetailOp);
+  rpc GetScope(GetScopeRequest) returns (ScopeDetailOp);
 }
 
 message CreateSessionRequest {
@@ -355,4 +374,161 @@ message AuditOp {
   string after = 9;
   string reason = 10;
   string result = 11;
+}
+
+// ===== UI-IMPL-21a local extension: subsystem read types =====
+// These 10 messages + 9 RPCs are a local addition to the vendored contract.
+// They will be re-vendored from the kernel in UI-IMPL-21b when the contract
+// bumps to 0048.
+
+message ScopeConfigOp {
+  repeated string required_tags = 1;
+  repeated string any_of_tags = 2;
+  repeated string forbidden_tags = 3;
+}
+
+// ── Agents ──────────────────────────────────────────────────────
+
+message AgentSummaryOp {
+  string id = 1;
+  string trait = 2;        // "Cognitive" | "Model" | "Daemon"
+  string scope_summary = 3;
+  double trust_score = 4;
+  google.protobuf.Timestamp last_activity_at = 5;
+  string last_state = 6;
+}
+
+message AgentDetailOp {
+  string id = 1;
+  string trait = 2;
+  string scope_summary = 3;
+  double trust_score = 4;
+  google.protobuf.Timestamp last_activity_at = 5;
+  string last_state = 6;
+  string manifest_version = 7;
+  string manifest_json = 8;
+  string cognitive_fingerprint = 9;   // TraitCognitive only
+  ScopeConfigOp scope = 10;
+  double trust_score_ewma = 11;
+  repeated string recent_verification_outcomes = 12;
+  string last_error = 13;
+  string last_successful_plan_id = 14;
+}
+
+message ListAgentsRequest {}
+message ListAgentsResponse {
+  repeated AgentSummaryOp agents = 1;
+}
+message GetAgentRequest {
+  string agent_id = 1;
+}
+
+// ── Tools ───────────────────────────────────────────────────────
+
+message ToolSummaryOp {
+  string id = 1;
+  string description = 2;
+  bool danger = 3;
+  int32 granted_agent_count = 4;
+  int32 recent_invocation_count = 5;
+  double last_cost = 6;
+}
+
+message ToolDetailOp {
+  string id = 1;
+  string description = 2;
+  bool danger = 3;
+  int32 granted_agent_count = 4;
+  int32 recent_invocation_count = 5;
+  double last_cost = 6;
+  string manifest_version = 7;
+  string schema_json = 8;          // Tier-1 schema
+  repeated string granted_agents = 9;
+}
+
+message ListToolsRequest {}
+message ListToolsResponse {
+  repeated ToolSummaryOp tools = 1;
+}
+message GetToolRequest {
+  string tool_id = 1;
+}
+
+// ── Skills ──────────────────────────────────────────────────────
+
+message SkillSummaryOp {
+  string id = 1;
+  string description = 2;
+  repeated string scope_tags = 3;
+  int32 loaded_in_count = 4;
+  google.protobuf.Timestamp last_loaded_at = 5;
+}
+
+message SkillDetailOp {
+  string id = 1;
+  string description = 2;
+  repeated string scope_tags = 3;
+  int32 loaded_in_count = 4;
+  google.protobuf.Timestamp last_loaded_at = 5;
+  string skill_md = 6;
+  repeated string bundled_tool_grants = 7;
+  repeated string where_loaded = 8; // agent or plan ids
+}
+
+message ListSkillsRequest {}
+message ListSkillsResponse {
+  repeated SkillSummaryOp skills = 1;
+}
+message GetSkillRequest {
+  string skill_id = 1;
+}
+
+// ── MCP Servers ─────────────────────────────────────────────────
+
+message MCPServerSummaryOp {
+  string id = 1;
+  string connection_state = 2; // "Up" | "Reconnecting" | "Down"
+  int32 tool_count = 3;
+  google.protobuf.Timestamp last_health_check_at = 4;
+  double default_price = 5;
+}
+
+message MCPServerDetailOp {
+  string id = 1;
+  string connection_state = 2;
+  int32 tool_count = 3;
+  google.protobuf.Timestamp last_health_check_at = 4;
+  double default_price = 5;
+  repeated string health_check_history = 6;
+  repeated string discovered_tools = 7; // "mcp:<server>/<tool>"
+}
+
+message ListMCPServersRequest {}
+message ListMCPServersResponse {
+  repeated MCPServerSummaryOp servers = 1;
+}
+message GetMCPServerRequest {
+  string server_id = 1;
+}
+
+// ── Scope ───────────────────────────────────────────────────────
+
+message ScopeSummaryOp {
+  string agent_id = 1;
+  string effective_scope_summary = 2; // tag-count summary
+  repeated string default_write_tags = 3;
+  google.protobuf.Timestamp last_scope_change_at = 4;
+}
+
+message ScopeDetailOp {
+  string agent_id = 1;
+  ScopeConfigOp effective_scope = 2;
+  repeated string default_write_tags = 3;
+  ScopeConfigOp caller_scope = 4;
+  int32 k_anonymity_floor = 5;
+  repeated string scope_change_history = 6; // ISO timestamps + actor + before/after
+}
+
+message GetScopeRequest {
+  string agent_id = 1;
 }

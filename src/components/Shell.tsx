@@ -1,24 +1,7 @@
-/* Cambrian Web UI — the Shell.
- *
- * The 3-column layout per PRD-02 §3.1:
- *   - Left: NavRail (13 nav entries + theme + density + role pill + collapse)
- *   - Centre: the active route's content (chat, plan, memory, console, etc.)
- *   - Right: the contextual inspector (collapsed at < 1280 px viewport;
- *     the per-resource detail for the focused item)
- *   - Bottom: StatusStrip (always visible, 32 px)
- *
- * The Shell subscribes to the projection store (for connection + role + plans)
- * and the shell store (for panel widths, collapse, density, theme). On mount,
- * it hydrates the projection from the kernel via ipc.getState() and subscribes
- * to kernel://state events via onKernelState (the realtime fold per UI-005).
- *
- * The right inspector is a placeholder for the slice; UI-IMPL-09+ populate it
- * with the plan stack, memory detail, mutation context, etc. (per PRD-02 §4.4).
- */
-
 import { useEffect, useState } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
 import { Outlet } from "@tanstack/react-router";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { NavRail, StatusStrip } from "@/design-system/components";
 import { PlanWorkSurface } from "@/screens/plan/PlanWorkSurface";
 import { CommandPalette, ShortcutPalette } from "@/screens/palette/CommandPalette";
@@ -99,7 +82,9 @@ export function Shell() {
               </span>
             </div>
           ) : (
-            <Outlet />
+            <ErrorBoundary>
+              <Outlet />
+            </ErrorBoundary>
           )}
         </main>
         {!shell.rightInspectorCollapsed && (

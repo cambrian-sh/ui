@@ -59,8 +59,8 @@ export function PlanWorkSurface() {
     );
   }
 
-  const sendPause = () => ipc.pauseSession({ session_id: plan.session_id, reason: actionReason || 'pause from work surface' });
-  const sendResume = () => ipc.resumeSession({ session_id: plan.session_id, reason: actionReason || 'resume from work surface' });
+  const sendPause = () => ipc.pauseSession({ session_id: plan.session_id, reason: actionReason.trim() });
+  const sendResume = () => ipc.resumeSession({ session_id: plan.session_id, reason: actionReason.trim() });
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -132,7 +132,7 @@ export function PlanWorkSurface() {
           <button
             type="button"
             onClick={sendPause}
-            disabled={plan.status !== 'running' && plan.status !== 'forming'}
+            disabled={(plan.status !== 'running' && plan.status !== 'forming') || !actionReason.trim()}
             className="flex-1 rounded-sm border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-2 py-1 text-[11px] font-medium text-[var(--fg-primary)] hover:bg-[var(--bg-surface)] disabled:cursor-not-allowed disabled:opacity-50"
           >
             Pause
@@ -140,7 +140,7 @@ export function PlanWorkSurface() {
           <button
             type="button"
             onClick={sendResume}
-            disabled={plan.status !== 'paused'}
+            disabled={plan.status !== 'paused' || !actionReason.trim()}
             className="flex-1 rounded-sm border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-2 py-1 text-[11px] font-medium text-[var(--fg-primary)] hover:bg-[var(--bg-surface)] disabled:cursor-not-allowed disabled:opacity-50"
           >
             Resume

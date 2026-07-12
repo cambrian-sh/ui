@@ -1,5 +1,6 @@
 export function relativeTime(iso: string, now: Date = new Date()): string {
   const then = new Date(iso).getTime();
+  if (isNaN(then)) return 'Unknown';
   const diffMs = now.getTime() - then;
   const diffSec = Math.round(diffMs / 1000);
   if (diffSec < 60) return `${diffSec}s ago`;
