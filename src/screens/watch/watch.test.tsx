@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, within, fireEvent } from '@testing-library/react';
+import { axe } from 'vitest-axe';
 import { WatchConsole } from '@/screens/watch/WatchConsole';
 import { projectionStore } from '@/store/projection';
 import type { WatchConfigSummary, StateOfRecord } from '@/ipc/types';
@@ -117,5 +118,17 @@ describe('WatchConsole', () => {
 
     expect(screen.getByText('nullish-watch')).toBeInTheDocument();
     expect(screen.getByText('No streams')).toBeInTheDocument();
+  });
+
+  it('has no a11y violations', async () => {
+    projectionStore.getState().hydrate(
+      makeState([
+        makeWatchConfig({ id: 'alpha', last_fire_status: 'ok' }),
+        makeWatchConfig({ id: 'beta', last_fire_status: 'error' }),
+      ]),
+    );
+    const { container } = render(<WatchConsole />);
+    const results = await axe(container);
+    expect(results).toHaveNoViolations();
   });
 });

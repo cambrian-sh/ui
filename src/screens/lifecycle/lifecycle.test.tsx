@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { axe } from 'vitest-axe';
 import { LifecycleConsole } from '@/screens/lifecycle/LifecycleConsole';
 import { projectionStore } from '@/store/projection';
 import { ipc } from '@/ipc';
@@ -223,5 +224,27 @@ describe('LifecycleConsole', () => {
 
     expect(screen.getByRole('button', { name: 'Trigger Consolidation' })).toBeInTheDocument();
     expect(screen.getByTestId('scheduler-state')).toHaveTextContent('idle');
+  });
+
+  it('has no a11y violations', async () => {
+    projectionStore.getState().hydrate(makeState({
+      role: 'operator',
+      lifecycle: {
+        scheduler_state: 'consolidating',
+        pending_jobs: 42,
+        last_consolidation: {
+          timestamp: new Date().toISOString(),
+          duration_ms: 1500,
+          status: 'completed',
+        },
+        dormancy_events: [
+          { agent_id: 'agent-1', event_type: 'dormant', timestamp: new Date().toISOString() },
+          { agent_id: 'agent-2', event_type: 'reactivated', timestamp: new Date().toISOString() },
+        ],
+      },
+    }));
+    const { container } = render(<LifecycleConsole />);
+    const results = await axe(container);
+    expect(results).toHaveNoViolations();
   });
 });

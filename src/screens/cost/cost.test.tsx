@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
+import { axe } from 'vitest-axe';
 import { CostConsole } from '@/screens/cost/CostConsole';
 import { projectionStore } from '@/store/projection';
 import type { StateOfRecord } from '@/ipc/types';
@@ -136,5 +137,25 @@ describe('CostConsole', () => {
 
     expect(screen.getByText('Cost & Energy')).toBeInTheDocument();
     expect(screen.getByText('$0.00/hr')).toBeInTheDocument();
+  });
+
+  it('has no a11y violations', async () => {
+    projectionStore.getState().hydrate(makeState({
+      spend_rate_usd: 12.34,
+      max_energy_per_step: 1.5,
+      circuit_breakers: [
+        { model_id: 'gpt-4', state: 'ok', reason: '' },
+        { model_id: 'claude-3', state: 'warn', reason: 'High latency' },
+      ],
+      price_ledger: [
+        { model_id: 'gpt-4', cost_per_token: 0.03, currency: 'USD' },
+      ],
+      recent_acquires: [
+        { model_id: 'gpt-4', acquired: true, latency_ms: 150, timestamp: new Date().toISOString() },
+      ],
+    }));
+    const { container } = render(<CostConsole />);
+    const results = await axe(container);
+    expect(results).toHaveNoViolations();
   });
 });

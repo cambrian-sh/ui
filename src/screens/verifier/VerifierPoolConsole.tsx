@@ -20,6 +20,7 @@ export function VerifierPoolConsole() {
         </p>
       </header>
 
+      <h2 className="cambrian-sr-only">Verifier pool overview</h2>
       <div className="grid grid-cols-3 gap-4 shrink-0">
         <Card>
           <CardHeader className="pb-2">

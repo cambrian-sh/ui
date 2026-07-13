@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
+import { axe } from 'vitest-axe';
 import { VerifierPoolConsole } from '@/screens/verifier/VerifierPoolConsole';
 import { projectionStore } from '@/store/projection';
 import type { StateOfRecord, VerifierPoolState } from '@/ipc/types';
@@ -164,5 +165,24 @@ describe('VerifierPoolConsole', () => {
 
     expect(screen.getByText('nullish-verifier')).toBeInTheDocument();
     expect(screen.getByText('nullish-round')).toBeInTheDocument();
+  });
+
+  it('has no a11y violations', async () => {
+    projectionStore.getState().hydrate(makeState({
+      pool_agents: [
+        { agent_id: 'agent-alpha', merit_score: 0.95 },
+        { agent_id: 'agent-beta', merit_score: 0.82 },
+      ],
+      recent_rounds: [
+        { task_id: 'task-123', verifier_id: 'agent-alpha', target_agent: 'agent-gamma', quality_score: 0.88, cross_verification_status: 'passed' },
+        { task_id: 'task-456', verifier_id: 'agent-beta', target_agent: 'agent-delta', quality_score: 0.45, cross_verification_status: 'failed' },
+      ],
+      surveillance_triggers: [
+        { agent_id: 'agent-epsilon', reason: 'Trust score below threshold', fired_at: new Date().toISOString() },
+      ],
+    }));
+    const { container } = render(<VerifierPoolConsole />);
+    const results = await axe(container);
+    expect(results).toHaveNoViolations();
   });
 });

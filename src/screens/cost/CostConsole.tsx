@@ -52,6 +52,7 @@ export function CostConsole() {
         </p>
       </header>
 
+      <h2 className="cambrian-sr-only">Cost overview</h2>
       <div className="grid grid-cols-1 gap-4 md:grid-cols-3 shrink-0">
         <Card>
           <CardHeader className="pb-2">
