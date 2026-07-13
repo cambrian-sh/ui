@@ -1,11 +1,11 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, screen, within, fireEvent } from '@testing-library/react';
+import { render, screen, within, fireEvent, waitFor } from '@testing-library/react';
 import { PlansInFlight } from '@/screens/plans/PlansInFlight';
 import { projectionStore } from '@/store/projection';
 import type { PlanInFlight, SessionSummary, StateOfRecord } from '@/ipc/types';
 
 const searchState: { focus: string | undefined } = { focus: undefined };
-const navigateMock = vi.fn((opts: { search?: { focus?: string } }) => {
+const navigateMock = vi.fn((opts: { to?: string; search?: { focus?: string }; replace?: boolean }) => {
   if (opts.search?.focus !== undefined) {
     searchState.focus = opts.search.focus;
   }
@@ -171,6 +171,7 @@ describe('PlansInFlight', () => {
     expect(navigateMock).toHaveBeenCalledWith({
       to: '/plans',
       search: { focus: 'plan-x' },
+      replace: true,
     });
     expect(searchState.focus).toBe('plan-x');
   });
@@ -208,6 +209,24 @@ describe('PlansInFlight', () => {
     expect(navigateMock).toHaveBeenCalledWith({
       to: '/plans',
       search: { focus: 'plan-2' },
+      replace: true,
     });
+  });
+
+  it('scrubs stale focus param when the plan is no longer in the list', async () => {
+    searchState.focus = 'ghost-plan';
+    projectionStore.getState().hydrate(makeState([]));
+
+    render(<PlansInFlight />);
+
+    await waitFor(() =>
+      expect(navigateMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          to: '/plans',
+          replace: true,
+          search: { focus: undefined },
+        }),
+      ),
+    );
   });
 });

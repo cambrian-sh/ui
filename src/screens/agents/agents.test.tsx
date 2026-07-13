@@ -1,11 +1,11 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, screen, within, fireEvent } from '@testing-library/react';
+import { render, screen, within, fireEvent, waitFor } from '@testing-library/react';
 import { AgentsConsole } from '@/screens/agents/AgentsConsole';
 import { projectionStore } from '@/store/projection';
 import type { AgentSummary, StateOfRecord } from '@/ipc/types';
 
 const searchState: { focus: string | undefined } = { focus: undefined };
-const navigateMock = vi.fn((opts: { search?: { focus?: string } }) => {
+const navigateMock = vi.fn((opts: { to?: string; search?: { focus?: string }; replace?: boolean }) => {
   if (opts.search?.focus !== undefined) {
     searchState.focus = opts.search.focus;
   }
@@ -103,6 +103,7 @@ describe('AgentsConsole', () => {
     expect(navigateMock).toHaveBeenCalledWith({
       to: '/agents',
       search: { focus: agent.id },
+      replace: true,
     });
     expect(searchState.focus).toBe(agent.id);
   });
@@ -117,5 +118,22 @@ describe('AgentsConsole', () => {
     render(<AgentsConsole />);
 
     expect(screen.getByText('nullish-agent')).toBeInTheDocument();
+  });
+
+  it('scrubs stale focus param when the agent is no longer in the list', async () => {
+    searchState.focus = 'ghost-agent';
+    projectionStore.getState().hydrate(makeState([]));
+
+    render(<AgentsConsole />);
+
+    await waitFor(() =>
+      expect(navigateMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          to: '/agents',
+          replace: true,
+          search: { focus: undefined },
+        }),
+      ),
+    );
   });
 });

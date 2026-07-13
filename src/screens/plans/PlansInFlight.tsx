@@ -1,5 +1,5 @@
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearch } from '@tanstack/react-router';
 import { useHotkeys } from 'react-hotkeys-hook';
 import { Button, Card, CardContent, EmptyState, ScrollArea } from '@/design-system/components';
@@ -63,8 +63,14 @@ export function PlansInFlight() {
   const selectedId =
     search.focus && filtered.some((p) => p.plan_id === search.focus) ? search.focus : null;
 
+  useEffect(() => {
+    if (search.focus && !filtered.some((p) => p.plan_id === search.focus)) {
+      navigate({ to: '/plans', search: { focus: undefined }, replace: true });
+    }
+  }, [search.focus, filtered]);
+
   const handleSelect = (planId: string) => {
-    navigate({ to: '/plans', search: { focus: planId } });
+    navigate({ to: '/plans', search: { focus: planId }, replace: true });
   };
 
   // 1..9 hotkeys — only when the list has focus
@@ -105,7 +111,7 @@ export function PlansInFlight() {
                     <Button
                       size="sm"
                       variant="default"
-                      onClick={() => navigate({ to: '/sessions', search: { focus: undefined } })}
+                      onClick={() => navigate({ to: '/sessions', search: { focus: undefined }, replace: true })}
                     >
                       Go to Sessions
                     </Button>

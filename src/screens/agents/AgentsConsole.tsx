@@ -1,5 +1,5 @@
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearch } from '@tanstack/react-router';
 import { Card, CardContent, EmptyState, ScrollArea } from '@/design-system/components';
 import { useStore } from '@/store/useStore';
@@ -60,8 +60,14 @@ export function AgentsConsole() {
     ? search.focus
     : null;
 
+  useEffect(() => {
+    if (search.focus && !agents.some((a) => a.id === search.focus)) {
+      navigate({ to: '/agents', search: { focus: undefined }, replace: true });
+    }
+  }, [search.focus, agents]);
+
   const handleSelect = (agentId: string) => {
-    navigate({ to: '/agents', search: { focus: agentId } });
+    navigate({ to: '/agents', search: { focus: agentId }, replace: true });
   };
 
   return (

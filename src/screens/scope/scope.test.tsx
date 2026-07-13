@@ -1,11 +1,11 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { ScopeConsole } from './ScopeConsole';
 import { projectionStore } from '@/store/projection';
 import type { StateOfRecord, ScopeSummary } from '@/ipc/types';
 
 const searchState: { focus: string | undefined } = { focus: undefined };
-const navigateMock = vi.fn((opts: { search?: { focus?: string } }) => {
+const navigateMock = vi.fn((opts: { to?: string; search?: { focus?: string }; replace?: boolean }) => {
   if (opts.search?.focus !== undefined) {
     searchState.focus = opts.search.focus;
   }
@@ -110,7 +110,25 @@ describe('ScopeConsole', () => {
     expect(navigateMock).toHaveBeenCalledWith({
       to: '/scope',
       search: { focus: 'agent-alpha' },
+      replace: true,
     });
     expect(searchState.focus).toBe('agent-alpha');
+  });
+
+  it('scrubs stale focus param when the agent is no longer in scope', async () => {
+    searchState.focus = 'ghost-agent';
+    projectionStore.getState().hydrate(makeState({}));
+
+    render(<ScopeConsole />);
+
+    await waitFor(() =>
+      expect(navigateMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          to: '/scope',
+          replace: true,
+          search: { focus: undefined },
+        }),
+      ),
+    );
   });
 });

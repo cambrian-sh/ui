@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearch } from '@tanstack/react-router';
 import { Card, CardContent, EmptyState, ScrollArea } from '@/design-system/components';
 import { useStore } from '@/store/useStore';
@@ -43,8 +43,14 @@ export function MCPServersConsole() {
     ? search.focus
     : null;
 
+  useEffect(() => {
+    if (search.focus && !servers.some((s) => s.id === search.focus)) {
+      navigate({ to: '/mcp', search: { focus: undefined }, replace: true });
+    }
+  }, [search.focus, servers]);
+
   const handleSelect = (serverId: string) => {
-    navigate({ to: '/mcp', search: { focus: serverId } });
+    navigate({ to: '/mcp', search: { focus: serverId }, replace: true });
   };
 
   return (

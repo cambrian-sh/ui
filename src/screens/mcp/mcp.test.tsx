@@ -1,11 +1,11 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, screen, within, fireEvent } from '@testing-library/react';
+import { render, screen, within, fireEvent, waitFor } from '@testing-library/react';
 import { MCPServersConsole } from '@/screens/mcp/MCPServersConsole';
 import { projectionStore } from '@/store/projection';
 import type { MCPServerSummary, StateOfRecord } from '@/ipc/types';
 
 const searchState: { focus: string | undefined } = { focus: undefined };
-const navigateMock = vi.fn((opts: { search?: { focus?: string } }) => {
+const navigateMock = vi.fn((opts: { to?: string; search?: { focus?: string }; replace?: boolean }) => {
   if (opts.search?.focus !== undefined) {
     searchState.focus = opts.search.focus;
   }
@@ -102,7 +102,25 @@ describe('MCPServersConsole', () => {
     expect(navigateMock).toHaveBeenCalledWith({
       to: '/mcp',
       search: { focus: server.id },
+      replace: true,
     });
     expect(searchState.focus).toBe(server.id);
+  });
+
+  it('scrubs stale focus param when the MCP server is no longer in the list', async () => {
+    searchState.focus = 'ghost-server';
+    projectionStore.getState().hydrate(makeState([]));
+
+    render(<MCPServersConsole />);
+
+    await waitFor(() =>
+      expect(navigateMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          to: '/mcp',
+          replace: true,
+          search: { focus: undefined },
+        }),
+      ),
+    );
   });
 });

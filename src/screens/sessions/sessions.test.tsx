@@ -1,11 +1,11 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, screen, within, fireEvent } from '@testing-library/react';
+import { render, screen, within, fireEvent, waitFor } from '@testing-library/react';
 import { SessionsConsole } from '@/screens/sessions/SessionsConsole';
 import { projectionStore } from '@/store/projection';
 import type { SessionSummary, StateOfRecord } from '@/ipc/types';
 
 const searchState: { focus: string | undefined } = { focus: undefined };
-const navigateMock = vi.fn((opts: { search?: { focus?: string } }) => {
+const navigateMock = vi.fn((opts: { to?: string; search?: { focus?: string }; replace?: boolean }) => {
   if (opts.search?.focus !== undefined) {
     searchState.focus = opts.search.focus;
   }
@@ -105,6 +105,7 @@ describe('SessionsConsole', () => {
     expect(navigateMock).toHaveBeenCalledWith({
       to: '/sessions',
       search: { focus: session.session_id },
+      replace: true,
     });
     expect(searchState.focus).toBe(session.session_id);
   });
@@ -119,5 +120,22 @@ describe('SessionsConsole', () => {
     render(<SessionsConsole />);
 
     expect(screen.getByText('Nullish session')).toBeInTheDocument();
+  });
+
+  it('scrubs stale focus param when the session is no longer in the list', async () => {
+    searchState.focus = 'ghost-session';
+    projectionStore.getState().hydrate(makeState([]));
+
+    render(<SessionsConsole />);
+
+    await waitFor(() =>
+      expect(navigateMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          to: '/sessions',
+          replace: true,
+          search: { focus: undefined },
+        }),
+      ),
+    );
   });
 });

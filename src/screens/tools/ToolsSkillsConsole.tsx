@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearch } from '@tanstack/react-router';
 import {
   Tabs,
@@ -79,16 +79,25 @@ export function ToolsSkillsConsole() {
       ? search.focus
       : null;
 
+  useEffect(() => {
+    const inList = activeTab === 'tools'
+      ? tools.some((t) => t.id === search.focus)
+      : skills.some((s) => s.id === search.focus);
+    if (search.focus && !inList) {
+      navigate({ to: '/tools', search: { tab: activeTab, focus: undefined }, replace: true });
+    }
+  }, [search.focus, activeTab, tools, skills]);
+
   const handleTabChange = (v: string) => {
-    navigate({ to: '/tools', search: { tab: v as 'tools' | 'skills', focus: undefined } });
+    navigate({ to: '/tools', search: { tab: v as 'tools' | 'skills', focus: undefined }, replace: true });
   };
 
   const handleSelectTool = (toolId: string) => {
-    navigate({ to: '/tools', search: { focus: toolId, tab: 'tools' } });
+    navigate({ to: '/tools', search: { focus: toolId, tab: 'tools' }, replace: true });
   };
 
   const handleSelectSkill = (skillId: string) => {
-    navigate({ to: '/tools', search: { focus: skillId, tab: 'skills' } });
+    navigate({ to: '/tools', search: { focus: skillId, tab: 'skills' }, replace: true });
   };
 
   return (

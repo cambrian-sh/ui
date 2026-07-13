@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearch } from '@tanstack/react-router';
 import { Card, CardContent, EmptyState, ScrollArea } from '@/design-system/components';
 import { useStore } from '@/store/useStore';
@@ -42,8 +42,14 @@ export function ScopeConsole() {
     ? search.focus
     : null;
 
+  useEffect(() => {
+    if (search.focus && !scopes.some((s) => s.agent_id === search.focus)) {
+      navigate({ to: '/scope', search: { focus: undefined }, replace: true });
+    }
+  }, [search.focus, scopes]);
+
   const handleSelect = (agentId: string) => {
-    navigate({ to: '/scope', search: { focus: agentId } });
+    navigate({ to: '/scope', search: { focus: agentId }, replace: true });
   };
 
   return (

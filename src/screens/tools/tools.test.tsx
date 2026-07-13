@@ -1,11 +1,11 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, screen, within, fireEvent } from '@testing-library/react';
+import { render, screen, within, fireEvent, waitFor } from '@testing-library/react';
 import { ToolsSkillsConsole } from '@/screens/tools/ToolsSkillsConsole';
 import { projectionStore } from '@/store/projection';
 import type { ToolSummary, SkillSummary, StateOfRecord } from '@/ipc/types';
 
 const searchState: { focus?: string; tab?: string } = {};
-const navigateMock = vi.fn((opts: { search?: { focus?: string; tab?: string } }) => {
+const navigateMock = vi.fn((opts: { to?: string; search?: { focus?: string; tab?: string }; replace?: boolean }) => {
   if (opts.search?.focus !== undefined) searchState.focus = opts.search.focus;
   if (opts.search?.tab !== undefined) searchState.tab = opts.search.tab;
 });
@@ -107,6 +107,7 @@ describe('ToolsSkillsConsole', () => {
     expect(navigateMock).toHaveBeenCalledWith({
       to: '/tools',
       search: { focus: 'tool-1', tab: 'tools' },
+      replace: true,
     });
   });
 
@@ -122,6 +123,7 @@ describe('ToolsSkillsConsole', () => {
     expect(navigateMock).toHaveBeenCalledWith({
       to: '/tools',
       search: { tab: 'skills', focus: undefined },
+      replace: true,
     });
 
     // Simulate the router updating the search state
@@ -131,5 +133,22 @@ describe('ToolsSkillsConsole', () => {
     const list = screen.getByRole('list', { name: 'Skills' });
     expect(within(list).getAllByRole('button')).toHaveLength(1);
     expect(within(list).getByText('skill-1')).toBeInTheDocument();
+  });
+
+  it('scrubs stale focus param when the tool is no longer in the list', async () => {
+    searchState.focus = 'ghost-tool';
+    projectionStore.setState({ state: makeState([]) });
+
+    render(<ToolsSkillsConsole />);
+
+    await waitFor(() =>
+      expect(navigateMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          to: '/tools',
+          replace: true,
+          search: { tab: 'tools', focus: undefined },
+        }),
+      ),
+    );
   });
 });

@@ -1,5 +1,5 @@
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearch } from '@tanstack/react-router';
 import { Card, CardContent, EmptyState, ScrollArea } from '@/design-system/components';
 import { useStore } from '@/store/useStore';
@@ -66,8 +66,14 @@ export function SessionsConsole() {
     : null;
   const selected = selectedId ? sessions.find((s) => s.session_id === selectedId) ?? null : null;
 
+  useEffect(() => {
+    if (search.focus && !sessions.some((s) => s.session_id === search.focus)) {
+      navigate({ to: '/sessions', search: { focus: undefined }, replace: true });
+    }
+  }, [search.focus, sessions]);
+
   const handleSelect = (sessionId: string) => {
-    navigate({ to: '/sessions', search: { focus: sessionId } });
+    navigate({ to: '/sessions', search: { focus: sessionId }, replace: true });
   };
 
   return (
