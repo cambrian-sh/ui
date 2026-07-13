@@ -108,4 +108,16 @@ describe('SessionsConsole', () => {
     });
     expect(searchState.focus).toBe(session.session_id);
   });
+
+  it('renders without crashing when agent_mix is empty and cost is NaN', () => {
+    projectionStore.getState().hydrate(
+      makeState([
+        makeSession({ title: 'Nullish session', agent_mix: [], cost: NaN }),
+      ]),
+    );
+
+    render(<SessionsConsole />);
+
+    expect(screen.getByText('Nullish session')).toBeInTheDocument();
+  });
 });

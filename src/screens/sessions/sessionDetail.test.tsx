@@ -85,4 +85,58 @@ describe('SessionDetail mutation errors', () => {
     });
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
+
+  it('disables all mutation buttons and shows the operator-required message for Viewer role', () => {
+    render(<SessionDetail session={makeSession({ state: 'active' })} role="viewer" />);
+
+    expect(screen.getByRole('button', { name: 'Pause session' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Resume session' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Complete session' })).toBeDisabled();
+    expect(screen.getByText('These actions require the Operator role.')).toBeInTheDocument();
+  });
+
+  it('surfaces a resume error via ErrorState', async () => {
+    vi.mocked(ipc.resumeSession).mockRejectedValueOnce(new Error('PermissionDenied'));
+
+    render(<SessionDetail session={makeSession({ state: 'paused' })} role="operator" />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Resume session' }));
+
+    const reasonInput = screen.getByLabelText(/Reason/i);
+    fireEvent.change(reasonInput, { target: { value: 'resuming work' } });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Resume' }));
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('PermissionDenied');
+  });
+
+  it('closes the confirm dialog on successful pause', async () => {
+    render(<SessionDetail session={makeSession({ state: 'active' })} role="operator" />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Pause session' }));
+    fireEvent.change(screen.getByLabelText(/Reason/i), { target: { value: 'pausing for review' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Pause' }));
+
+    await waitFor(() => {
+      expect(vi.mocked(ipc.pauseSession)).toHaveBeenCalledWith({
+        session_id: 'mock-session',
+        reason: 'pausing for review',
+      });
+    });
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    });
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('renders without throwing when agent_mix is empty and cost is zero', () => {
+    render(
+      <SessionDetail session={makeSession({ agent_mix: [], cost: 0, plan_count: 0 })} role="operator" />,
+    );
+
+    expect(screen.getByText('Sample session')).toBeInTheDocument();
+    expect(screen.getByText('$0.00')).toBeInTheDocument();
+    expect(screen.queryByText('Agent mix')).not.toBeInTheDocument();
+  });
 });

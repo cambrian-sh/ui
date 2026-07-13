@@ -96,4 +96,35 @@ describe('PlanWorkSurface', () => {
       reason: 'need to pause',
     });
   });
+
+  it('calls resumeSession when resuming a paused plan with a reason', () => {
+    const plan = makePlan({ status: 'paused' });
+    projectionStore.getState().hydrate(makeState([plan]));
+    searchState.focus = 'ses-456';
+
+    render(<PlanWorkSurface />);
+
+    const resumeBtn = screen.getByRole('button', { name: 'Resume' });
+    const input = screen.getByPlaceholderText('Reason (mandatory for pause / resume)');
+
+    fireEvent.change(input, { target: { value: 'continue' } });
+    expect(resumeBtn).not.toBeDisabled();
+
+    fireEvent.click(resumeBtn);
+
+    expect(ipc.resumeSession).toHaveBeenCalledWith({
+      session_id: 'ses-456',
+      reason: 'continue',
+    });
+  });
+
+  it('renders without crashing when the plan has sparse fields', () => {
+    const plan = makePlan({ subject: '', cost: 0, step_count: 0, status: 'running' });
+    projectionStore.getState().hydrate(makeState([plan]));
+    searchState.focus = 'ses-456';
+
+    render(<PlanWorkSurface />);
+
+    expect(screen.getByPlaceholderText('Reason (mandatory for pause / resume)')).toBeInTheDocument();
+  });
 });

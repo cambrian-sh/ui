@@ -105,4 +105,17 @@ describe('WatchConsole', () => {
     });
     expect(searchState.focus).toBe(config.id);
   });
+
+  it('renders without crashing when last_fire_at is null and target_streams is empty', () => {
+    projectionStore.getState().hydrate(
+      makeState([
+        makeWatchConfig({ id: 'nullish-watch', last_fire_at: null, target_streams: [] }),
+      ]),
+    );
+
+    render(<WatchConsole />);
+
+    expect(screen.getByText('nullish-watch')).toBeInTheDocument();
+    expect(screen.getByText('No streams')).toBeInTheDocument();
+  });
 });

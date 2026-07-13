@@ -29,7 +29,7 @@ function makeHitl(overrides: Partial<HITLIntervention> = {}): HITLIntervention {
   };
 }
 
-function makeState(role: 'operator' | 'viewer', hitl: HITLIntervention[] = []): StateOfRecord {
+function makeState(role: 'operator' | 'viewer' = 'operator', hitl: HITLIntervention[] = []): StateOfRecord {
   return {
     connection: {
       status: 'live',
@@ -166,5 +166,68 @@ describe('ChatSurface HITL', () => {
 
     const alert = await screen.findByRole('alert');
     expect(alert).toHaveTextContent('PermissionDenied');
+  });
+
+  it('disables chat and inject inputs for Viewer role and shows the operator-required message', () => {
+    projectionStore.getState().hydrate(makeState('viewer'));
+    render(<ChatSurface sessionId="session-1" />);
+
+    const chatTextarea = screen.getByLabelText('Chat message');
+    expect(chatTextarea).toBeDisabled();
+    expect(chatTextarea).toHaveAttribute('title', 'Operator role required to send messages.');
+
+    const sendButton = screen.getByRole('button', { name: 'Send' });
+    expect(sendButton).toBeDisabled();
+
+    const injectTextarea = screen.getByLabelText('Inject correction into running plan');
+    expect(injectTextarea).toBeDisabled();
+    expect(injectTextarea).toHaveAttribute('title', 'Operator role required to send messages.');
+  });
+
+  it('surfaces a reject error via ErrorState', async () => {
+    vi.mocked(ipc.resolveHITL).mockRejectedValueOnce(new Error('PermissionDenied'));
+    projectionStore.getState().hydrate(makeState('operator', [makeHitl()]));
+    render(<ChatSurface sessionId="session-1" />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Reject' }));
+
+    const reasonInput = screen.getByLabelText(/Reason/i);
+    fireEvent.change(reasonInput, { target: { value: 'this action is too dangerous' } });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm reject' }));
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('PermissionDenied');
+  });
+
+  it('resets HITLInline to idle and renders no error on successful resolve', async () => {
+    projectionStore.getState().hydrate(makeState('operator', [makeHitl()]));
+    render(<ChatSurface sessionId="session-1" />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
+    fireEvent.change(screen.getByLabelText(/Reason/i), { target: { value: 'this action is safe to proceed' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm approve' }));
+
+    await waitFor(() => {
+      expect(ipc.resolveHITL).toHaveBeenCalledWith({
+        intervention_id: 'hitl-1',
+        approve: true,
+        reason: 'this action is safe to proceed',
+      });
+    });
+
+    expect(screen.queryByLabelText(/Reason/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Approve' })).toBeInTheDocument();
+  });
+
+  it('renders without throwing when state is null', () => {
+    projectionStore.getState().reset();
+    render(<ChatSurface sessionId="session-1" />);
+
+    expect(
+      screen.getByText('No blocks yet. The plan view appears here when a plan starts.'),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText('Chat message')).toBeDisabled();
   });
 });

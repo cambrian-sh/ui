@@ -199,4 +199,51 @@ describe('MCPDetail Actions tab', () => {
     const alert = await screen.findByRole('alert');
     expect(alert).toHaveTextContent('PermissionDenied');
   });
+
+  it('closes dialog after successful registerMCP mutation', async () => {
+    await renderAndOpenActions('mcp-1', 'operator');
+
+    fireEvent.change(screen.getByLabelText('Name (required)'), {
+      target: { value: 'filesystem' },
+    });
+    fireEvent.change(screen.getByLabelText('Command (required)'), {
+      target: { value: 'npx -y server' },
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Register MCP server' }));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/Reason/i)).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByLabelText(/Reason/i), {
+      target: { value: 'need filesystem tool' },
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Register' }));
+
+    await waitFor(() => {
+      expect(screen.queryByLabelText(/Reason/i)).not.toBeInTheDocument();
+    });
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('renders without crashing when fields are empty', async () => {
+    vi.mocked(ipc.getMCPServer).mockResolvedValue(
+      makeServer({
+        connection_state: '',
+        tool_count: 0,
+        last_health_check_at: '',
+        default_price: 0,
+        health_check_history: [],
+        discovered_tools: [],
+      }),
+    );
+
+    render(<MCPDetail serverId="mcp-1" role="operator" />);
+
+    await waitFor(() => {
+      expect(screen.getByText('mcp-1')).toBeInTheDocument();
+    });
+  });
 });

@@ -226,4 +226,44 @@ describe('ScopeDetail Actions tab', () => {
     });
     expect(screen.getByText(/Affected agents:/i)).toBeInTheDocument();
   });
+
+  it('closes dialog after successful setScope mutation', async () => {
+    await renderAndOpenActions('agent-1', 'operator');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Adjust scope' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Review scope change' }));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/Reason/i)).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByLabelText(/Reason/i), {
+      target: { value: 'needed for task' },
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Apply scope change' }));
+
+    await waitFor(() => {
+      expect(screen.queryByLabelText(/Reason/i)).not.toBeInTheDocument();
+    });
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('renders without crashing when scope collections are empty', async () => {
+    vi.mocked(ipc.getScope).mockResolvedValue(
+      makeScope({
+        effective_scope: { required_tags: [], any_of_tags: [], forbidden_tags: [] },
+        default_write_tags: [],
+        caller_scope: { required_tags: [], any_of_tags: [], forbidden_tags: [] },
+        k_anonymity_floor: 0,
+        scope_change_history: [],
+      }),
+    );
+
+    render(<ScopeDetail agentId="agent-1" role="operator" />);
+
+    await waitFor(() => {
+      expect(screen.getByText('agent-1')).toBeInTheDocument();
+    });
+  });
 });

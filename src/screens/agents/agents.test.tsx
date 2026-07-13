@@ -106,4 +106,16 @@ describe('AgentsConsole', () => {
     });
     expect(searchState.focus).toBe(agent.id);
   });
+
+  it('renders without crashing when trust_score is undefined', () => {
+    projectionStore.getState().hydrate(
+      makeState([
+        makeAgent({ id: 'nullish-agent', trust_score: undefined as unknown as number }),
+      ]),
+    );
+
+    render(<AgentsConsole />);
+
+    expect(screen.getByText('nullish-agent')).toBeInTheDocument();
+  });
 });

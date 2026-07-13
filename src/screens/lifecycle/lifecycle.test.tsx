@@ -179,4 +179,49 @@ describe('LifecycleConsole', () => {
       expect(screen.getByText('PermissionDenied')).toBeInTheDocument();
     });
   });
+
+  it('closes the dialog after a successful consolidation', async () => {
+    projectionStore.getState().hydrate(makeState({
+      role: 'operator',
+      lifecycle: {
+        scheduler_state: 'idle',
+        pending_jobs: 0,
+        last_consolidation: null,
+        dormancy_events: [],
+      },
+    }));
+
+    render(<LifecycleConsole />);
+
+    const button = screen.getByRole('button', { name: 'Trigger Consolidation' });
+    fireEvent.click(button);
+
+    const reasonInput = screen.getByLabelText(/Reason/i);
+    fireEvent.change(reasonInput, { target: { value: 'Manual trigger from UI' } });
+
+    const confirmButton = screen.getByRole('button', { name: 'Consolidate' });
+    fireEvent.click(confirmButton);
+
+    await waitFor(() => {
+      expect(screen.queryByLabelText(/Reason/i)).not.toBeInTheDocument();
+    });
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('renders the dashboard with minimal lifecycle state without crashing', () => {
+    projectionStore.getState().hydrate(makeState({
+      role: 'operator',
+      lifecycle: {
+        scheduler_state: 'idle',
+        pending_jobs: 0,
+        last_consolidation: null,
+        dormancy_events: [],
+      },
+    }));
+
+    render(<LifecycleConsole />);
+
+    expect(screen.getByRole('button', { name: 'Trigger Consolidation' })).toBeInTheDocument();
+    expect(screen.getByTestId('scheduler-state')).toHaveTextContent('idle');
+  });
 });

@@ -141,4 +141,28 @@ describe('VerifierPoolConsole', () => {
     const triggersCard = screen.getAllByText('Surveillance Triggers')[0].closest('.rounded-md');
     expect(within(triggersCard as HTMLElement).getByText('2')).toBeInTheDocument();
   });
+
+  it('renders without crashing when merit_score and quality_score are undefined', () => {
+    projectionStore.getState().hydrate(
+      makeState({
+        pool_agents: [
+          { agent_id: 'nullish-verifier', merit_score: undefined as unknown as number },
+        ],
+        recent_rounds: [
+          {
+            task_id: 'nullish-round',
+            verifier_id: 'v-1',
+            target_agent: 't-1',
+            quality_score: undefined as unknown as number,
+            cross_verification_status: 'passed',
+          },
+        ],
+      }),
+    );
+
+    render(<VerifierPoolConsole />);
+
+    expect(screen.getByText('nullish-verifier')).toBeInTheDocument();
+    expect(screen.getByText('nullish-round')).toBeInTheDocument();
+  });
 });

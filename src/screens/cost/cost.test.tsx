@@ -123,4 +123,18 @@ describe('CostConsole', () => {
     expect(otelLink).toHaveAttribute('href', 'https://opentelemetry.io');
     expect(otelLink).toHaveAttribute('target', '_blank');
   });
+
+  it('renders without crashing when dashboard numeric fields are undefined', () => {
+    projectionStore.getState().hydrate(
+      makeState({
+        spend_rate_usd: undefined as unknown as number,
+        max_energy_per_step: undefined as unknown as number,
+      }),
+    );
+
+    render(<CostConsole />);
+
+    expect(screen.getByText('Cost & Energy')).toBeInTheDocument();
+    expect(screen.getByText('$0.00/hr')).toBeInTheDocument();
+  });
 });

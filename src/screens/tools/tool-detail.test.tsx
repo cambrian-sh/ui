@@ -49,10 +49,10 @@ function makeAgent(id: string): AgentSummary {
   };
 }
 
-function makeState(agents: AgentSummary[] = []): StateOfRecord {
+function makeState(agents: AgentSummary[] = [], role: 'operator' | 'viewer' = 'operator'): StateOfRecord {
   return {
     connection: { status: 'live', endpoint: null, last_known_state_at: null, reason: null },
-    role: 'operator',
+    role,
     kernel_version: '0.6.9-alpha',
     contract_version: '0047',
     capabilities: [],
@@ -207,6 +207,47 @@ describe('ToolDetail Actions tab', () => {
 
     await waitFor(() => {
       expect(screen.getByText('Blast radius preview')).toBeInTheDocument();
+    });
+  });
+
+  it('closes dialog after successful grant mutation', async () => {
+    seedAgents([makeAgent('agent-1')]);
+    await renderAndOpenActions('tool-1', 'operator');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Grant agent-1' }));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/Reason/i)).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByLabelText(/Reason/i), {
+      target: { value: 'needed for task' },
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Grant' }));
+
+    await waitFor(() => {
+      expect(screen.queryByLabelText(/Reason/i)).not.toBeInTheDocument();
+    });
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('renders without crashing when fields are empty', async () => {
+    vi.mocked(ipc.getTool).mockResolvedValue(
+      makeTool({
+        description: '',
+        schema_json: '',
+        manifest_version: '',
+        granted_agents: [],
+        last_cost: 0,
+      }),
+    );
+    seedAgents([]);
+
+    render(<ToolDetail toolId="tool-1" role="operator" />);
+
+    await waitFor(() => {
+      expect(screen.getByText('tool-1')).toBeInTheDocument();
     });
   });
 });

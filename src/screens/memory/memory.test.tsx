@@ -60,4 +60,35 @@ describe('MemoryDetail', () => {
       reason: 'user requested tag',
     });
   });
+
+  it('renders without crashing when the document has sparse fields', () => {
+    const doc = makeDoc();
+    doc.content_preview = '';
+    doc.scope_tags = [];
+    doc.session_id = '';
+
+    render(<MemoryDetail doc={doc} />);
+
+    expect(screen.getByText('mem-123')).toBeInTheDocument();
+    expect(screen.getByText(/no scope/i)).toBeInTheDocument();
+    expect(screen.getByText('FACT')).toBeInTheDocument();
+  });
+
+  it('calls setToolGrant with a delete mutation when confirming delete', () => {
+    render(<MemoryDetail doc={makeDoc()} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+
+    const input = screen.getByPlaceholderText('Reason (mandatory for delete)');
+    fireEvent.change(input, { target: { value: 'obsolete' } });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm delete' }));
+
+    expect(ipc.setToolGrant).toHaveBeenCalledWith({
+      agent_id: 'memory:mem-123',
+      tool_name: 'delete:user',
+      granted: true,
+      reason: 'obsolete',
+    });
+  });
 });
