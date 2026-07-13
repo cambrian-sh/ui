@@ -1,13 +1,4 @@
-/* Memory detail (PRD-05 §5) + mutating actions + blast-radius preview.
- *
- * The detail renders the header (id, DocType, scope, activation, age,
- * session), the FACT + SCENE (kernel ADR-0016), and the mutating actions
- * (Tag, Promote, Supersede, Delete). Tag and Delete gate the confirm-with-
- * consequence bar with the blast-radius preview (UI-013 + §7).
- *
- * The graph view (PRD-05 §8) is a placeholder for V1; UI-012's React Flow
- * graph lands in a follow-on.
- */
+
 import { useState } from 'react';
 import { ipc } from '@/ipc';
 import type { MemoryDocument } from '@/design-system/components/cambrian/memory-list';

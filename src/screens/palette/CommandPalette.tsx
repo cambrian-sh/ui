@@ -1,9 +1,4 @@
-/* Command palette (Cmd/Ctrl-K) — PRD-01 §9.1 + UI-IMPL-14.
- *
- * Global overlay. `Mod+k` toggles it (handled in Shell). Fzf-style
- * filter; the actions are navigable routes + toggles. The palette
- * renders the navigable commands with their shortcut hints.
- */
+
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { NAV_SHORTCUTS, SHORTCUTS } from '@/lib/keyboard';

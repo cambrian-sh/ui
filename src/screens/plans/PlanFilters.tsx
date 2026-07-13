@@ -1,10 +1,4 @@
-/* Filter bar for the Plans in Flight console.
- *
- * PRD-06 §5: "Every running plan across all sessions, sorted by start time.
- * Filterable by status, session, free text."
- * Renders a compact horizontal bar with status toggles, session picker
- * (single-select, shows session title), search, and a reset button.
- */
+
 import {
   Input,
   Select,

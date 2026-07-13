@@ -1,9 +1,4 @@
-/* Confirm dialog for operator-only session mutations.
- *
- * Per AGENTS.md: "Mutations are loud — a destructive action needs a
- * confirmation naming the consequence, and a mandatory reason field
- * passed to the core."
- */
+
 import { useState } from 'react';
 import {
   Button,

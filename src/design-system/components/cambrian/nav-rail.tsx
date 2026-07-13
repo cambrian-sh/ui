@@ -1,12 +1,4 @@
-/* Cambrian Web UI — the navigation rail (the shell's left column).
- *
- * Per PRD-02 §4.1: 13 nav entries (the 11 console entries + Audit + Settings),
- * keyboard hints (the `g x` shortcuts from PRD-01 §9), role pill, theme +
- * density toggles in the footer. Collapse via `[` / `]` (PRD-01 §9); the
- * keyboard wiring is UI-IMPL-14, the click is here.
- *
- * Customised to consume the 4-layer component tokens.
- */
+
 
 import { Link, useRouterState } from "@tanstack/react-router";
 import { cn } from "@/design-system/lib/utils";

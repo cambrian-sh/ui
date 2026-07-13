@@ -1,11 +1,4 @@
-/* Cambrian Web UI — the typed token mirror.
- *
- * Per PRD-01 §3.1 + UI-001 v0.2 (Tailwind v4 + shadcn/ui component library).
- *
- * TypeScript references to the CSS variables in tokens.css.
- * Source of truth is the CSS; this file is a developer convenience for
- * autocomplete and compile-time safety on token names. No CSS-in-JS runtime.
- */
+
 
 export const tokens = {
   bg: {
@@ -99,10 +92,6 @@ export const tokens = {
 
 export type Tokens = typeof tokens;
 
-/**
- * Theme + density attribute names. Components read these via document.documentElement.dataset.
- * Per PRD-02 §3.1 (theme + density switching).
- */
 export const themeAttr = "data-theme" as const;
 export const densityAttr = "data-density" as const;
 export type Theme = "dark" | "light";

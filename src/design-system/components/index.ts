@@ -1,9 +1,4 @@
-/* The design-system component inventory.
- *
- * Re-exports every shadcn/ui primitive (customised to consume our 4-layer
- * component tokens) + every Cambrian-specific component. Screens import from
- * `@/design-system/components`, never from internal paths.
- */
+
 
 export * from "./ui/button";
 export * from "./ui/card";

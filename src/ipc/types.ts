@@ -1,13 +1,4 @@
-/* Cambrian Web UI — IPC types.
- *
- * The Tauri IPC surface (the webview ↔ Tauri shell boundary). Per EC-4 (gRPC
- * in Rust core only) + the technical document §3.3.
- *
- * The webview NEVER speaks gRPC. It talks only to the Rust core via Tauri IPC.
- * Every component imports from `@/ipc`, never from `@tauri-apps/api/core`
- * directly. The client (`./client.ts`) and the mock (`./mock.ts`) implement
- * the same interface; tests use the mock.
- */
+
 
 // ============================================================================
 // Connection + role (the projection's outer shape).

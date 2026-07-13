@@ -1,15 +1,4 @@
-/* Memory explorer (PRD-05 + UI-012 + UI-013).
- *
- * The filter bar + virtualised list + detail (FACT + SCENE + mutating
- * actions). The inline graph view is a placeholder for V1 (UI-012's
- * React Flow graph lands in a follow-on). The blast-radius panel uses
- * `op_blast_radius_preview` (per §3.1 / UI-013) before any tag action.
- *
- * The list data is read via `memory_query` (kernel ADR-0022's pull
- * mechanism) — the projection store does not carry the document list.
- * For V1 the list is empty; the wire lands when the memory list IPC
- * ships (UI-IMPL-19, the Memory console entry's P1 ticket).
- */
+
 import { useState, useMemo } from 'react';
 import { MemoryList, type MemoryDocument, type MemoryDocType } from '@/design-system/components/cambrian/memory-list';
 import { MemoryDetail } from './MemoryDetail';

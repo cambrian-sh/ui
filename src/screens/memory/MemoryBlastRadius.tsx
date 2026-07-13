@@ -1,9 +1,4 @@
-/* Blast-radius preview panel (PRD-05 §7 + UI-013).
- *
- * Calls `op_blast_radius_preview` (per §3.1) and renders the affected
- * agents + plans. The operator must read this before the confirm-with-
- * consequence bar enables on a Tag or Delete action.
- */
+
 import { useEffect, useState } from 'react';
 import { ipc } from '@/ipc';
 import type { BlastRadiusMutation, BlastRadiusPreviewResponse } from '@/ipc/types';

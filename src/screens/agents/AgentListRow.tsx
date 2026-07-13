@@ -1,9 +1,4 @@
-/* Agent list row — the compact representation of one agent in the list.
- *
- * PRD-06 §6: "id, trait pill (Cognitive / Model / Daemon), scope summary,
- * TrustScore, last activity, last state."
- * Clicking selects the row; the detail panel renders the full header.
- */
+
 import { cn } from '@/design-system/lib/utils';
 import { relativeTime } from '@/lib/relativeTime';
 import type { AgentSummary } from '@/ipc/types';

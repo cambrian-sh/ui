@@ -1,10 +1,4 @@
-/* Plan list row — the compact representation of one plan in the list.
- *
- * PRD-06 §5: "plan id, session, subject, step count, active agent,
- * status pill, elapsed time, cost."
- * Clicking selects the row; the Shell's right inspector renders the
- * work surface for the focused plan (via useFocusedPlan).
- */
+
 import { cn } from '@/design-system/lib/utils';
 import { relativeTime } from '@/lib/relativeTime';
 import type { PlanInFlight } from '@/ipc/types';

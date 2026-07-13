@@ -1,10 +1,4 @@
-/* Audit read-only list (PRD-07 + UI-016 + UI-IMPL-13).
- *
- * Reads the audit_tail from the projection store (the fold from the
- * kernel's operator_audit log). Filter by actor / status; detail pane
- * shows the entry's before/after diff and the reason. The CSV/JSON
- * export (UI-016) and the deep-link back to target land in UI-IMPL-21.
- */
+
 import { useState, useMemo } from 'react';
 import { createFileRoute } from '@tanstack/react-router';
 import { projectionStore } from '@/store/projection';

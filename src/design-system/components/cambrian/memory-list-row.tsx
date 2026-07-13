@@ -1,12 +1,6 @@
 import { cn } from "@/design-system/lib/utils";
 
-/* Cambrian Web UI — the memory document (UI-level shape).
- *
- * The kernel's `documents` table (kernel ADR-0015). This is the V1 surface
- * shape — the minimal row the memory list needs to render. Detail-pane
- * fields (FACT, SCENE, provenance) live in the memory detail (PRD-05 §5),
- * not in the list row.
- */
+
 export type MemoryDocType =
   | "mnemonic_fact"
   | "mnemonic_scene"

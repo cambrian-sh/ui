@@ -1,15 +1,4 @@
-/* Cambrian Web UI — the shell chrome slice.
- *
- * Per PRD-02 §3.3 (panel widths persisted per operator per device) +
- * PRD-02 §4.7 (density + theme on the shell).
- *
- * State: panel collapse, panel widths, density, theme. Actions: toggle,
- * set, persist. The shell consumes this store; the nav-rail footer's
- * theme + density toggles write to it.
- *
- * Persistence (localStorage) is a follow-on; V1 holds the values in memory
- * and re-applies the data-theme / data-density attributes on <html> on change.
- */
+
 
 import { createStore, type StoreApi } from 'zustand/vanilla';
 import {
@@ -82,7 +71,6 @@ export const shellStore: StoreApi<ShellState & ShellActions> = createStore<
   },
 }));
 
-/** React hook for subscribing to the shell store with a selector. */
 export function useShellSelector<T>(selector: (s: ShellState & ShellActions) => T): T {
   // This is a vanilla store; the React hook is wired in UI-IMPL-08 (the shell)
   // with a thin subscription. For now, callers can use shellStore.getState().

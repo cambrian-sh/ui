@@ -1,9 +1,4 @@
-/* Filter bar for the Agents console.
- *
- * PRD-06 §6: "Filter by trait, scope, state."
- * Renders a compact horizontal bar with trait toggle buttons, a time-range
- * select, a search input, and a reset button.
- */
+
 import { Input, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Button } from '@/design-system/components';
 import type { AgentTrait } from './AgentTraitPill';
 

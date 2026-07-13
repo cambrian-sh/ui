@@ -1,11 +1,4 @@
-/* localStorage-backed draft persistence hook (UI-009 + PRD-03 §11).
- *
- * Debounced 200ms writes; flushes on blur + beforeunload.
- * Keys: draft:$instanceId:chat:$sessionId and draft:$instanceId:inject:$planId.
- * Per-instance scoping (PRD-07 §3.1): the current instance id is read from
- * the `kernel_version` field in the StateOfRecord (a stand-in until the
- * instance-id seam lands in UI-IMPL-12).
- */
+
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 const DEBOUNCE_MS = 200;
@@ -49,7 +42,6 @@ export function useDraftPersistence(scope: 'chat' | 'inject', id: string): [stri
     try {
       localStorage.setItem(key(scope, id), JSON.stringify({ value: latest.current, updatedAt: new Date().toISOString() }));
     } catch {
-      /* quota or disabled — swallow */
     }
   }, [scope, id]);
 

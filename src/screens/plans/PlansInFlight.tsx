@@ -1,11 +1,4 @@
-/* Plans in Flight console — the global plans list (PRD-06 §5).
- *
- * Canonical pattern: filter bar (top) + list (full width of centre main).
- * The plan work surface (PRD-04) renders in the Shell's right inspector
- * and reads the focused plan via useFocusedPlan (?focus in the URL).
- * The 1..9 hotkeys jump to the nth plan in the filtered list (only
- * when the list has focus).
- */
+
 import { useMemo, useState } from 'react';
 import { useNavigate, useSearch } from '@tanstack/react-router';
 import { useHotkeys } from 'react-hotkeys-hook';

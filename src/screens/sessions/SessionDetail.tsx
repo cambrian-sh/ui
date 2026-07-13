@@ -1,9 +1,4 @@
-/* Session detail panel — the right inspector content for the Sessions console.
- *
- * PRD-06 §4: session header + Checkpoints tab + mutating actions.
- * Mutations are operator-only (Viewer sees disabled buttons with a
- * "this action requires Operator" hint, per UI-017).
- */
+
 import { useState } from 'react';
 import { ipc } from '@/ipc';
 import type { Role, SessionSummary } from '@/ipc/types';

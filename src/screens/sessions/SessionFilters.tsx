@@ -1,8 +1,4 @@
-/* Filter bar for the Sessions console.
- *
- * PRD-06 §4: "All sessions, filterable by state, time, agent, free text."
- * Renders a compact horizontal bar with four controls + a reset button.
- */
+
 import {
   Input,
   Select,
@@ -108,7 +104,6 @@ export function SessionFilters({ filters, onChange, availableAgents }: SessionFi
       <Select
         value={ALL_STATES}
         onValueChange={() => {
-          /* placeholder — multi-agent select is a follow-on */
         }}
         disabled={availableAgents.length === 0}
       >

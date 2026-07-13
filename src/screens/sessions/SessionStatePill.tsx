@@ -1,8 +1,4 @@
-/* State pill — a small status indicator for SessionState.
- *
- * Maps each session state to a Cambrian design token. Used in the list row
- * and the detail header.
- */
+
 import type { SessionState } from '@/ipc/types';
 import { cn } from '@/design-system/lib/utils';
 

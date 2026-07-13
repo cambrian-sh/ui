@@ -1,11 +1,4 @@
-/* DAG-as-graph mode (PRD-04 §4 + UI-011).
- *
- * React Flow (xyflow v12) + dagre for the layout. The plan's steps are
- * sequential (depends_on indices), so the graph is a linear chain in
- * V1. The dagre layout is deterministic and stable: the same plan always
- * lays out the same. Pan + zoom are built in; the keyboard layer
- * (`+`/`-`/`0` per PRD-04 §4.4) wires to the React Flow viewport.
- */
+
 import { useMemo } from 'react';
 import {
   ReactFlow,

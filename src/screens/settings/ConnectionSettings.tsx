@@ -1,11 +1,4 @@
-/* Settings → Connection sub-screen (PRD-07 §3.1 + UI-IMPL-12).
- *
- * The first-run flow (no instance yet), the instance list (saved
- * connection profiles), the current-instance indicator, and the
- * connect form (endpoint + username + password → `op_login`). The
- * runtime settings form (per the locked config schema) lands in a
- * follow-on when `op_get_config_schema` (UI-015) ships its form layer.
- */
+
 import { useState } from 'react';
 import { ipc } from '@/ipc';
 import { projectionStore } from '@/store/projection';
@@ -34,7 +27,6 @@ function saveInstances(instances: Instance[]) {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(instances));
   } catch {
-    /* swallow */
   }
 }
 

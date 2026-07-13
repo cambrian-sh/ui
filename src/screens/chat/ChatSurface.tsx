@@ -1,12 +1,4 @@
-/* Chat surface (PRD-03) — the centre column of the shell.
- *
- * Linear-convention reverse-chronological flow. The 12-block taxonomy
- * (BlockRenderer) renders each block. The chat input lives at the bottom
- * of the centre column; the inject input is a separate bar above the right
- * inspector (LD-6). Both inputs use localStorage-backed draft recovery
- * (UI-009). The session state strip below the chat input is a placeholder
- * for UI-IMPL-09+.
- */
+
 import { useState, useMemo } from 'react';
 import { ipc } from '@/ipc';
 import { projectionStore } from '@/store/projection';

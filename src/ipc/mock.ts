@@ -1,14 +1,4 @@
-/* Cambrian Web UI — the mock Tauri IPC layer.
- *
- * Per the technical document §8. Used by unit + component + a11y tests
- * (no Tauri shell, no kernel). The mock is a drop-in replacement for the
- * real client (same shape, same return types). Tests import from
- * `@/ipc/mock` (the test alias), not `@/ipc`.
- *
- * The mock holds an in-memory StateOfRecord. Mutations update the state and
- * emit a new kernel://state event. Blast-radius and config-schema return
- * deterministic fixtures.
- */
+
 
 import * as t from './types';
 
@@ -280,60 +270,50 @@ class MockIPC {
   // Test-only helpers
   // --------------------------------------------------------------------------
 
-  /** Replace the in-memory state and emit a synthetic event. */
   __seed(state: t.StateOfRecord) {
     this.state = state;
     this.emitState();
   }
 
-  /** Emit a synthetic token chunk (for streaming tests). */
   __emitToken(chunk: t.TokenChunk) {
     this.tokenListeners.forEach((fn) => fn(chunk));
   }
 
-  /** Add a session to the in-memory state. */
   __addSession(session: t.SessionSummary) {
     this.state = { ...this.state, sessions: [...this.state.sessions, session] };
     this.emitState();
   }
 
-  /** Add a plan to the in-memory state. */
   __addPlan(plan: t.PlanInFlight) {
     this.state = { ...this.state, plans: [...this.state.plans, plan] };
     this.emitState();
   }
 
-  /** Add an audit entry to the in-memory state. */
   __addAuditEntry(entry: t.AuditEntry) {
     this.state = { ...this.state, audit_tail: [...this.state.audit_tail, entry] };
     this.emitState();
   }
 
-  /** Set the agents list and emit state. */
   __seedAgents(agents: t.AgentSummary[]) {
     this.state = { ...this.state, agents };
     this.emitState();
   }
 
-  /** Set the tools list and emit state. */
   __seedTools(tools: t.ToolSummary[]) {
     this.state = { ...this.state, tools };
     this.emitState();
   }
 
-  /** Set the skills list and emit state. */
   __seedSkills(skills: t.SkillSummary[]) {
     this.state = { ...this.state, skills };
     this.emitState();
   }
 
-  /** Set the MCP servers list and emit state. */
   __seedMCPServers(servers: t.MCPServerSummary[]) {
     this.state = { ...this.state, mcp_servers: servers };
     this.emitState();
   }
 
-  /** Set the scope map and emit state. */
   __seedScope(scope: Record<string, t.ScopeSummary>) {
     this.state = { ...this.state, scope };
     this.emitState();
@@ -365,8 +345,6 @@ class MockIPC {
 }
 
 export const ipc = new MockIPC();
-
-/* === IPC barrel surface (mirrors `index.ts` exports) === */
 
 export const onKernelState = (fn: (state: t.StateOfRecord) => void): Promise<() => void> =>
   Promise.resolve(ipc.onState(fn));

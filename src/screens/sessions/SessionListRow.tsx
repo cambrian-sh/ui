@@ -1,8 +1,4 @@
-/* Session list row — the compact representation of one session in the list.
- *
- * PRD-06 §4: "title, state pill, last activity, plan count, agent mix, cost."
- * Clicking selects the row; the detail panel renders the full header.
- */
+
 import { cn } from '@/design-system/lib/utils';
 import { relativeTime } from '@/lib/relativeTime';
 import type { SessionSummary } from '@/ipc/types';

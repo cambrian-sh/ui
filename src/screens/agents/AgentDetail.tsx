@@ -1,9 +1,4 @@
-/* Agent detail panel — the right inspector content for the Agents console.
- *
- * PRD-06 §6: agent header + Genotype tab + History tab.
- * Mutating actions are operator-only and gated behind the Blast-Radius
- * panel (PRD-07); they are surfaced as disabled affordances with a note.
- */
+
 import { useEffect, useState } from 'react';
 import { ipc } from '@/ipc';
 import type { AgentDetail as AgentDetailType, Role } from '@/ipc/types';

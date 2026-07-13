@@ -1,14 +1,4 @@
-/* Cambrian Web UI — the status strip (the shell's bottom row).
- *
- * Per PRD-02 §6: the always-visible 32 px bottom strip. Fields: current
- * instance, kernel up, LTM up, in-flight plans (count), queue depth,
- * circuit-breaker state, current spend rate, event backlog. The operator's
- * first read when something is wrong.
- *
- * Status colours are the status-pill tokens (ok / warn / err). The event
- * backlog turns warn above the operator's threshold (default 100; the
- * threshold is a UI control-plane setting in PRD-07 §3.1).
- */
+
 
 import { cn } from "@/design-system/lib/utils";
 

@@ -17,12 +17,7 @@ export function shallow<T>(a: T, b: T): boolean {
   );
 }
 
-/**
- * Subscribe a React component to a Zustand vanilla store.
- * The canonical pattern for external stores in React 18+ (per UI-004).
- * Returns the current store state; the component re-renders on every update.
- * Optionally accepts a selector to subscribe to a derived slice of state.
- */
+
 export function useStore<T>(store: StoreApi<T>): T;
 export function useStore<T, U>(store: StoreApi<T>, selector: (state: T) => U): U;
 export function useStore<T, U>(store: StoreApi<T>, selector?: (state: T) => U): T | U {

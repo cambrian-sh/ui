@@ -1,14 +1,4 @@
-/* 12-block taxonomy dispatcher (PRD-03 §4 + UI-010).
- *
- * The chat surface renders a reverse-chronological list of blocks. Each
- * block is one of 12 types (the discriminated union in this file). The
- * dispatcher is an exhaustive switch; TypeScript catches missing variants.
- *
- * V1 status: 4 of 12 renderers are implemented (OperatorMessage, RuntimeText,
- * PlanCard, HITLInline via the design-system components). The remaining 8
- * land as their owning PRDs ship (PRD-04 plan work, PRD-05 memory, PRD-06
- * console) — they're placeholder here so the chat surface compiles.
- */
+
 import type { PlanInFlight, HITLIntervention } from '@/ipc/types';
 import { ChatMessage } from '@/design-system/components/cambrian/chat-message';
 import { PlanCard, type PlanStep } from '@/design-system/components/cambrian/plan-card';

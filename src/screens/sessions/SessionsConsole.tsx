@@ -1,10 +1,4 @@
-/* Sessions console — the global sessions list + detail (PRD-06 §4).
- *
- * Canonical three-section pattern: filter bar (top) + list (centre) + detail
- * (right inspector within the centre column). Clicking a row selects it;
- * the detail panel shows the full header, checkpoints tab, and mutating
- * actions (operator-only).
- */
+
 import { useMemo, useState } from 'react';
 import { useNavigate, useSearch } from '@tanstack/react-router';
 import { Card, CardContent, EmptyState, ScrollArea } from '@/design-system/components';

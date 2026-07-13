@@ -1,15 +1,4 @@
-/* Cambrian Web UI — the typed Tauri IPC client.
- *
- * Per EC-4 (gRPC in Rust core only) + the technical document §3.3 + §5.2.
- * Every component imports from `@/ipc`, never from `@tauri-apps/api/core` directly.
- * Tests use `./mock.ts` (same interface).
- *
- * The Tauri `invoke` signature expects `InvokeArgs = Record<string, unknown>`.
- * Our typed param interfaces don't carry an index signature (so they remain
- * precise). We spread each param into a fresh object literal at the call site
- * to satisfy the constraint without losing type safety on the parameter
- * itself.
- */
+
 
 import { invoke } from '@tauri-apps/api/core';
 import * as t from './types';

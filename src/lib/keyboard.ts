@@ -1,9 +1,4 @@
-/* Keyboard map (PRD-01 §9 + UI-007 + UI-IMPL-14).
- *
- * The 17 V1 shortcuts grouped by category. The command palette consumes
- * the navigable subset (route nav + toggles); the shortcut palette
- * consumes the full list.
- */
+
 import type { Role } from '@/ipc/types';
 
 export type ShortcutScope = 'global' | 'chat' | 'plan' | 'memory' | 'audit' | 'shell';

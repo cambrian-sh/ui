@@ -1,11 +1,4 @@
-/* Plan work surface (PRD-04) — the right inspector's plan context shape.
- *
- * The operator lands here from the chat PlanCard, the plan stack, or the
- * global "Plans in Flight" view. Two plan-view modes (DAG-as-graph and
- * step-list, per LD-4); the per-step detail; the mutating actions
- * (pause / resume / inject / abort). The BidOverlay and AgentOutputStream
- * are first-class; their data is folded from the projection store.
- */
+
 import { useState, useMemo, lazy, Suspense } from 'react';
 import { ipc } from '@/ipc';
 import { projectionStore } from '@/store/projection';

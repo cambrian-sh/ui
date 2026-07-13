@@ -1,11 +1,4 @@
-/* Step-list mode (PRD-04 §5) — the canonical accessible representation.
- *
- * The list is the source of truth for keyboard nav (`j`/`k` move the
- * selection, `Enter` opens the detail). A virtualised variant ships in
- * a follow-on; V1 uses a simple list (a 200-step plan is the worst case
- * the operator observes in V1, and the per-row height is small enough
- * that a flat list renders in < 16 ms on commodity hardware).
- */
+
 import { cn } from '@/design-system/lib/utils';
 
 export type PlanStepStatus = 'pending' | 'running' | 'done' | 'failed' | 'skipped';

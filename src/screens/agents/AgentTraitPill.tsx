@@ -1,8 +1,4 @@
-/* Trait pill — a small status indicator for AgentTrait.
- *
- * Maps each agent trait to a Cambrian design token. Used in the list row
- * and the detail header. Traits correspond to kernel ADR-0001 classification.
- */
+
 import { cn } from '@/design-system/lib/utils';
 
 const TRAITS = ['Cognitive', 'Model', 'Daemon'] as const;
