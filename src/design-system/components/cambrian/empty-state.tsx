@@ -1,10 +1,10 @@
-import * as React from "react";
 import { cn } from "@/design-system/lib/utils";
+import { Button } from "@/design-system/components/ui/button";
 
 export interface EmptyStateProps {
   title: string;
   body?: string;
-  action?: React.ReactNode;
+  action?: { label: string; onClick: () => void };
   className?: string;
 }
 
@@ -36,7 +36,13 @@ export function EmptyState({ title, body, action, className }: EmptyStateProps) 
       {body && (
         <p className="text-xs text-[var(--fg-muted)] max-w-xs">{body}</p>
       )}
-      {action && <div className="mt-2">{action}</div>}
+      {action && (
+        <div className="mt-2">
+          <Button size="sm" variant="default" onClick={action.onClick}>
+            {action.label}
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

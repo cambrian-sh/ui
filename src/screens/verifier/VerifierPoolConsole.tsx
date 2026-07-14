@@ -1,15 +1,23 @@
 import { useStore } from '@/store/useStore';
 import { projectionStore } from '@/store/projection';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription, ScrollArea } from '@/design-system/components';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription, EmptyState, ScrollArea } from '@/design-system/components';
 import { formatRelativeTime } from '@/lib/format';
 
 export function VerifierPoolConsole() {
   const projection = useStore(projectionStore);
   const verifierPool = projection.state?.verifier_pool;
-  
-  const poolAgents = verifierPool?.pool_agents ?? [];
-  const recentRounds = verifierPool?.recent_rounds ?? [];
-  const surveillanceTriggers = verifierPool?.surveillance_triggers ?? [];
+
+  if (projection.isHydrating || !verifierPool) {
+    return (
+      <div className="flex h-full items-center justify-center">
+        <EmptyState title="Loading verifier state..." body="Waiting for projection sync." />
+      </div>
+    );
+  }
+
+  const poolAgents = verifierPool.pool_agents;
+  const recentRounds = verifierPool.recent_rounds;
+  const surveillanceTriggers = verifierPool.surveillance_triggers;
 
   return (
     <div className="flex h-full flex-col gap-6 p-6 overflow-y-auto bg-[var(--bg-surface)]">

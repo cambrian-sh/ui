@@ -67,6 +67,9 @@ export function ToolsSkillsConsole() {
   const filteredTools = useMemo(() => filterTools(tools, toolFilters), [tools, toolFilters]);
   const filteredSkills = useMemo(() => filterSkills(skills, skillFilters), [skills, skillFilters]);
 
+  const isToolFiltered = toolFilters.dangerOnly || toolFilters.search.trim() !== '';
+  const isSkillFiltered = skillFilters.search.trim() !== '';
+
   const activeTab = search.tab === 'skills' ? 'skills' : 'tools';
 
   const selectedToolId =
@@ -121,6 +124,7 @@ export function ToolsSkillsConsole() {
                       ? 'Tools will appear here when registered by the kernel.'
                       : 'Adjust or reset the filters to see more tools.'
                   }
+                  action={tools.length > 0 && isToolFiltered ? { label: 'Clear filters', onClick: () => setToolFilters(INITIAL_TOOL_FILTERS) } : undefined}
                 />
               ) : (
                 <ul role="list" aria-label="Tools" className="divide-y divide-[var(--border-subtle)]">
@@ -170,6 +174,7 @@ export function ToolsSkillsConsole() {
                       ? 'Skills will appear here when registered by the kernel.'
                       : 'Adjust or reset the filters to see more skills.'
                   }
+                  action={skills.length > 0 && isSkillFiltered ? { label: 'Clear filters', onClick: () => setSkillFilters(INITIAL_SKILL_FILTERS) } : undefined}
                 />
               ) : (
                 <ul role="list" aria-label="Skills" className="divide-y divide-[var(--border-subtle)]">

@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearch } from '@tanstack/react-router';
 import { useHotkeys } from 'react-hotkeys-hook';
-import { Button, Card, CardContent, EmptyState, ScrollArea } from '@/design-system/components';
+import { Card, CardContent, EmptyState, ScrollArea } from '@/design-system/components';
 import { useStore } from '@/store/useStore';
 import { projectionStore } from '@/store/projection';
 import type { PlanInFlight } from '@/ipc/types';
@@ -60,6 +60,9 @@ export function PlansInFlight() {
     [plans, filters],
   );
 
+  const isFiltered =
+    filters.statuses.length > 0 || filters.session !== null || filters.search.trim() !== '';
+
   const selectedId =
     search.focus && filtered.some((p) => p.plan_id === search.focus) ? search.focus : null;
 
@@ -106,17 +109,7 @@ export function PlansInFlight() {
                     ? 'Start a session from the chat surface to begin a plan.'
                     : 'Adjust or reset the filters to see more plans.'
                 }
-                action={
-                  plans.length === 0 ? (
-                    <Button
-                      size="sm"
-                      variant="default"
-                      onClick={() => navigate({ to: '/sessions', search: { focus: undefined }, replace: true })}
-                    >
-                      Go to Sessions
-                    </Button>
-                  ) : undefined
-                }
+                action={plans.length > 0 && isFiltered ? { label: 'Clear filters', onClick: () => setFilters(INITIAL_FILTERS) } : undefined}
               />
             </CardContent>
           </Card>

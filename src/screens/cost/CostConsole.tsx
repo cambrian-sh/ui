@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription, EmptyState, 
 import { formatRelativeTime } from '@/lib/format';
 
 function formatUSD(amount: number): string {
+  if (!Number.isFinite(amount)) return '—';
   return new Intl.NumberFormat('en-US', {
     style: 'currency',
     currency: 'USD',
@@ -13,6 +14,15 @@ function formatUSD(amount: number): string {
 }
 
 function CircuitBreakerPill({ state }: { state: string }) {
+  if (state !== 'ok' && state !== 'warn' && state !== 'err') {
+    return (
+      <div className="flex items-center gap-1.5">
+        <span className="h-2 w-2 rounded-full bg-[var(--fg-muted)]" />
+        <span className="text-xs font-medium">unknown</span>
+      </div>
+    );
+  }
+
   let colorClass = 'bg-[var(--status-ok)]';
   if (state === 'warn') colorClass = 'bg-[var(--status-warn)]';
   if (state === 'err') colorClass = 'bg-[var(--status-err)]';
@@ -28,6 +38,14 @@ function CircuitBreakerPill({ state }: { state: string }) {
 export function CostConsole() {
   const projection = useStore(projectionStore);
   const dashboard = projection.state?.cost_dashboard;
+
+  if (projection.isHydrating || !dashboard) {
+    return (
+      <div className="flex h-full items-center justify-center">
+        <EmptyState title="Loading cost state..." body="Waiting for projection sync." />
+      </div>
+    );
+  }
 
   const spendRate = dashboard?.spend_rate_usd ?? 0;
   const maxEnergy = dashboard?.max_energy_per_step ?? 0;
@@ -97,8 +115,8 @@ export function CostConsole() {
               </div>
             ) : (
               <ul className="divide-y divide-[var(--border-subtle)]">
-                {circuitBreakers.map((cb, i) => (
-                  <li key={i} className="flex flex-col gap-1 p-3">
+                {circuitBreakers.map((cb) => (
+                  <li key={cb.model_id} className="flex flex-col gap-1 p-3">
                     <div className="flex items-center justify-between">
                       <span className="text-sm font-medium">{cb.model_id}</span>
                       <CircuitBreakerPill state={cb.state} />
@@ -124,8 +142,8 @@ export function CostConsole() {
               </div>
             ) : (
               <ul className="divide-y divide-[var(--border-subtle)]">
-                {priceLedger.map((entry, i) => (
-                  <li key={i} className="flex items-center justify-between p-3">
+                {priceLedger.map((entry) => (
+                  <li key={entry.model_id} className="flex items-center justify-between p-3">
                     <span className="text-sm font-medium">{entry.model_id}</span>
                     <span className="text-sm tabular-nums text-[var(--fg-secondary)]">
                       {entry.cost_per_token} {entry.currency}/tok
@@ -148,8 +166,8 @@ export function CostConsole() {
               </div>
             ) : (
               <ul className="divide-y divide-[var(--border-subtle)]">
-                {recentAcquires.map((outcome, i) => (
-                  <li key={i} className="flex flex-col gap-1 p-3">
+                {recentAcquires.map((outcome) => (
+                  <li key={outcome.model_id} className="flex flex-col gap-1 p-3">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <span className="text-sm font-medium">{outcome.model_id}</span>

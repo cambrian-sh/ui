@@ -38,6 +38,8 @@ export function ScopeConsole() {
 
   const filtered = useMemo(() => filterScopes(scopes, filters), [scopes, filters]);
 
+  const isFiltered = filters.search.trim() !== '';
+
   const selectedId = search.focus && scopes.some((s) => s.agent_id === search.focus)
     ? search.focus
     : null;
@@ -66,6 +68,7 @@ export function ScopeConsole() {
                   ? 'Scope data will appear here when agents are registered.'
                   : 'Adjust or reset the filters to see more agents.'
               }
+              action={scopes.length > 0 && isFiltered ? { label: 'Clear filters', onClick: () => setFilters(INITIAL_FILTERS) } : undefined}
             />
           ) : (
             <ul role="list" aria-label="Agent scopes" className="divide-y divide-[var(--border-subtle)]">

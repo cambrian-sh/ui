@@ -6,6 +6,7 @@ import { TriggerConsolidation } from './triggerConsolidation';
 import { formatRelativeTime } from '@/lib/format';
 
 function formatDuration(ms: number): string {
+  if (!Number.isFinite(ms)) return '—';
   if (ms < 1000) return `${ms}ms`;
   return `${(ms / 1000).toFixed(1)}s`;
 }

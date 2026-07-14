@@ -66,6 +66,7 @@ export function ConfirmMutationDialog({
             value={reason}
             onChange={(e) => setReason(e.target.value)}
             placeholder="Why are you making this change?"
+            maxLength={1024}
             autoFocus
             disabled={submitting}
           />

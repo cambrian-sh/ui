@@ -14,6 +14,7 @@ export function SkillListRow({ skill, selected, onClick }: SkillListRowProps) {
       type="button"
       onClick={onClick}
       aria-pressed={selected}
+      aria-current={selected ? 'true' : undefined}
       className={cn(
         'flex w-full items-center gap-3 border-b border-[var(--border-subtle)] px-4 py-2 text-left transition-colors',
         'hover:bg-[var(--list-row-bg-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--focus-ring)]',

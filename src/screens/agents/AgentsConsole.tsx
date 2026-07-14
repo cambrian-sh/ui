@@ -56,6 +56,9 @@ export function AgentsConsole() {
 
   const filtered = useMemo(() => filterAgents(agents, filters), [agents, filters]);
 
+  const isFiltered =
+    filters.traits.length > 0 || filters.timeRange !== 'all' || filters.search.trim() !== '';
+
   const selectedId = search.focus && agents.some((a) => a.id === search.focus)
     ? search.focus
     : null;
@@ -87,6 +90,7 @@ export function AgentsConsole() {
                   ? 'Register an agent from the Settings panel to get started.'
                   : 'Adjust or reset the filters to see more agents.'
               }
+              action={agents.length > 0 && isFiltered ? { label: 'Clear filters', onClick: () => setFilters(INITIAL_FILTERS) } : undefined}
             />
           ) : (
             <ul role="list" aria-label="Agents" className="divide-y divide-[var(--border-subtle)]">

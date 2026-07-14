@@ -61,6 +61,12 @@ export function SessionsConsole() {
 
   const filtered = useMemo(() => filterSessions(sessions, filters), [sessions, filters]);
 
+  const isFiltered =
+    filters.states.length > 0 ||
+    filters.timeRange !== 'all' ||
+    filters.agents.length > 0 ||
+    filters.search.trim() !== '';
+
   const selectedId = search.focus && sessions.some((s) => s.session_id === search.focus)
     ? search.focus
     : null;
@@ -94,6 +100,7 @@ export function SessionsConsole() {
                   ? 'Create a session from the chat surface to get started.'
                   : 'Adjust or reset the filters to see more sessions.'
               }
+              action={sessions.length > 0 && isFiltered ? { label: 'Clear filters', onClick: () => setFilters(INITIAL_FILTERS) } : undefined}
             />
           ) : (
             <ul role="list" aria-label="Sessions" className="divide-y divide-[var(--border-subtle)]">

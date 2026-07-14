@@ -39,6 +39,8 @@ export function MCPServersConsole() {
 
   const filtered = useMemo(() => filterServers(servers, filters), [servers, filters]);
 
+  const isFiltered = filters.connectionState !== 'all' || filters.search.trim() !== '';
+
   const selectedId = search.focus && servers.some((s) => s.id === search.focus)
     ? search.focus
     : null;
@@ -67,6 +69,7 @@ export function MCPServersConsole() {
                   ? 'Register an MCP server from the Settings panel to get started.'
                   : 'Adjust or reset the filters to see more servers.'
               }
+              action={servers.length > 0 && isFiltered ? { label: 'Clear filters', onClick: () => setFilters(INITIAL_FILTERS) } : undefined}
             />
           ) : (
             <ul role="list" aria-label="MCP servers" className="divide-y divide-[var(--border-subtle)]">

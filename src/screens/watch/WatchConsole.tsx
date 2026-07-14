@@ -39,6 +39,8 @@ export function WatchConsole() {
 
   const filtered = useMemo(() => filterWatchConfigs(configs, filters), [configs, filters]);
 
+  const isFiltered = filters.statuses.length > 0 || filters.search.trim() !== '';
+
   const selectedId = search.focus && configs.some((c) => c.id === search.focus)
     ? search.focus
     : null;
@@ -64,6 +66,7 @@ export function WatchConsole() {
                   ? 'Watch configs will appear here when the kernel advertises the watch capability.'
                   : 'Adjust or reset the filters to see more watch configs.'
               }
+              action={configs.length > 0 && isFiltered ? { label: 'Clear filters', onClick: () => setFilters(INITIAL_FILTERS) } : undefined}
             />
           ) : (
             <ul role="list" aria-label="Watch configs" className="divide-y divide-[var(--border-subtle)]">

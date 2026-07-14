@@ -114,10 +114,13 @@ describe('PlansInFlight', () => {
     expect(screen.getByText('No plans in flight')).toBeInTheDocument();
   });
 
-  it('shows a primary action in the empty state', () => {
-    projectionStore.getState().hydrate(makeState([]));
+  it('shows a clear-filters action in the empty state when filters exclude all plans', () => {
+    projectionStore.getState().hydrate(
+      makeState([makePlan({ plan_id: 'plan-1', subject: 'Real plan' })]),
+    );
     render(<PlansInFlight />);
-    expect(screen.getByRole('button', { name: 'Go to Sessions' })).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Search plans'), { target: { value: 'zzz-no-match' } });
+    expect(screen.getByRole('button', { name: 'Clear filters' })).toBeInTheDocument();
   });
 
   it('renders all plans sorted by started_at descending', () => {
