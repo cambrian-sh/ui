@@ -6,6 +6,9 @@ import { useStore } from '@/store/useStore';
 import type { PlanInFlight, PlanStatus } from '@/ipc/types';
 import { useFocusedPlan } from '@/lib/useFocusedPlan';
 import { PlanStepList, type PlanStep } from './PlanStepList';
+import { useMutation } from '@/lib/useMutation';
+import { ConfirmMutationDialog } from '@/screens/sessions/ConfirmMutationDialog';
+import { ErrorState } from '@/design-system/components/cambrian/error-state';
 
 const PlanGraph = lazy(() => import('./PlanGraph').then((m) => ({ default: m.PlanGraph })));
 
@@ -39,10 +42,22 @@ export function PlanWorkSurface() {
   const plans = state?.plans ?? [];
   const [mode, setMode] = useState<Mode>('list');
   const [selectedStepIndex, setSelectedStepIndex] = useState<number | null>(null);
-  const [actionReason, setActionReason] = useState('');
+  const [pending, setPending] = useState<'pause' | 'resume' | null>(null);
 
   const plan = useFocusedPlan(plans);
   const steps = useMemo(() => (plan ? placeholderSteps(plan) : []), [plan]);
+
+  const role = state?.role;
+  const isOperator = role === 'operator';
+
+  const { mutate, isLoading, error: mutationError } = useMutation(
+    async (args: { kind: 'pause' | 'resume'; reason: string }) => {
+      if (args.kind === 'pause') {
+        return ipc.pauseSession({ session_id: plan!.session_id, reason: args.reason });
+      }
+      return ipc.resumeSession({ session_id: plan!.session_id, reason: args.reason });
+    },
+  );
 
   if (!plan) {
     return (
@@ -51,9 +66,6 @@ export function PlanWorkSurface() {
       </div>
     );
   }
-
-  const sendPause = () => ipc.pauseSession({ session_id: plan.session_id, reason: actionReason.trim() });
-  const sendResume = () => ipc.resumeSession({ session_id: plan.session_id, reason: actionReason.trim() });
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -113,33 +125,44 @@ export function PlanWorkSurface() {
       </div>
 
       <div className="flex flex-col gap-1.5 border-t border-[var(--border-subtle)] p-3">
-        <input
-          type="text"
-          value={actionReason}
-          onChange={(e) => setActionReason(e.target.value)}
-          placeholder="Reason (mandatory for pause / resume)"
-          aria-label="Action reason"
-          className="w-full rounded-sm border border-[var(--input-border)] bg-[var(--input-bg)] px-2 py-1 text-xs text-[var(--input-fg)] placeholder:text-[var(--input-placeholder)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)]"
-        />
         <div className="flex items-center gap-1.5">
           <button
             type="button"
-            onClick={sendPause}
-            disabled={(plan.status !== 'running' && plan.status !== 'forming') || !actionReason.trim()}
+            onClick={() => setPending('pause')}
+            disabled={(!isOperator || (plan.status !== 'running' && plan.status !== 'forming') || isLoading)}
             className="flex-1 rounded-sm border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-2 py-1 text-[11px] font-medium text-[var(--fg-primary)] hover:bg-[var(--bg-surface)] disabled:cursor-not-allowed disabled:opacity-50"
           >
             Pause
           </button>
           <button
             type="button"
-            onClick={sendResume}
-            disabled={plan.status !== 'paused' || !actionReason.trim()}
+            onClick={() => setPending('resume')}
+            disabled={(!isOperator || plan.status !== 'paused' || isLoading)}
             className="flex-1 rounded-sm border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-2 py-1 text-[11px] font-medium text-[var(--fg-primary)] hover:bg-[var(--bg-surface)] disabled:cursor-not-allowed disabled:opacity-50"
           >
             Resume
           </button>
         </div>
+        {mutationError && <ErrorState reason={mutationError} />}
+        {!isOperator && (
+          <p className="mt-2 text-xs text-[var(--fg-muted)]">
+            These actions require the Operator role.
+          </p>
+        )}
       </div>
+
+      {pending && (
+        <ConfirmMutationDialog
+          open
+          onOpenChange={(o) => !o && setPending(null)}
+          title={pending === 'resume' ? 'Resume plan' : 'Pause plan'}
+          description={pending === 'resume' ? 'The plan will resume accepting work.' : 'The plan will stop accepting new work; running steps will pause.'}
+          confirmLabel={pending === 'resume' ? 'Resume' : 'Pause'}
+          onConfirm={async (reason) => {
+            if (pending) await mutate({ kind: pending, reason });
+          }}
+        />
+      )}
     </div>
   );
 }

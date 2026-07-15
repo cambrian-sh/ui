@@ -1,31 +1,66 @@
-
 import { useState } from 'react';
 import { ipc } from '@/ipc';
 import type { MemoryDocument } from '@/design-system/components/cambrian/memory-list';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/design-system/components';
 import { MemoryBlastRadius } from './MemoryBlastRadius';
+import { useMutation } from '@/lib/useMutation';
+import { ConfirmMutationDialog } from '@/screens/sessions/ConfirmMutationDialog';
+import { ErrorState } from '@/design-system/components/cambrian/error-state';
+import { projectionStore } from '@/store/projection';
+import { useStore } from '@/store/useStore';
 
-type PendingAction = 'tag' | 'delete' | null;
+type PendingAction = 'tag' | 'delete' | 'promote' | 'supersede' | null;
+
+const MUTATION_META: Record<
+  NonNullable<PendingAction>,
+  { title: string; description: string; confirmLabel: string; destructive: boolean }
+> = {
+  tag: {
+    title: 'Tag memory',
+    description:
+      'Tagging this memory with the chosen tag will update the EffectiveScope of the affected agents.',
+    confirmLabel: 'Tag',
+    destructive: false,
+  },
+  delete: {
+    title: 'Delete memory',
+    description:
+      'Deleting this memory is destructive. The action is audited and cannot be undone.',
+    confirmLabel: 'Delete',
+    destructive: true,
+  },
+  promote: {
+    title: 'Promote memory',
+    description:
+      'Promoting this memory will increase its rank in the memory hierarchy.',
+    confirmLabel: 'Promote',
+    destructive: false,
+  },
+  supersede: {
+    title: 'Supersede memory',
+    description:
+      'This memory will be superseded by a newer or more accurate version.',
+    confirmLabel: 'Supersede',
+    destructive: false,
+  },
+};
 
 export function MemoryDetail({ doc }: { doc: MemoryDocument }) {
-  const [pendingAction, setPendingAction] = useState<PendingAction>(null);
-  const [actionReason, setActionReason] = useState('');
+  const role = useStore(projectionStore)?.state?.role ?? null;
+  const isOperator = role === 'operator';
 
-  const askTag = () => setPendingAction('tag');
-  const askDelete = () => setPendingAction('delete');
-  const cancel = () => {
-    setPendingAction(null);
-    setActionReason('');
-  };
+  const [pending, setPending] = useState<PendingAction>(null);
 
-  const confirm = () => {
-    if (pendingAction === 'tag') {
-      ipc.setToolGrant({ agent_id: 'memory:' + doc.doc_id, tool_name: 'tag:user', granted: true, reason: actionReason.trim() });
-    } else if (pendingAction === 'delete') {
-      ipc.setToolGrant({ agent_id: 'memory:' + doc.doc_id, tool_name: 'delete:user', granted: true, reason: actionReason.trim() });
-    }
-    cancel();
-  };
+  const { mutate, isLoading, error: mutationError } = useMutation(
+    async (args: { tool_name: string; reason: string }) => {
+      return ipc.setToolGrant({
+        agent_id: 'memory:' + doc.doc_id,
+        tool_name: args.tool_name,
+        granted: true,
+        reason: args.reason,
+      });
+    },
+  );
 
   return (
     <div className="flex flex-col gap-3">
@@ -64,88 +99,78 @@ export function MemoryDetail({ doc }: { doc: MemoryDocument }) {
           <CardDescription>All actions are operator-only and audited. The blast-radius panel must be read before Tag or Delete.</CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-2">
-          {pendingAction === null ? (
-            <div className="flex flex-wrap items-center gap-1.5">
-              <button
-                type="button"
-                onClick={askTag}
-                className="rounded-sm border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-2 py-1 text-[11px] font-medium text-[var(--fg-primary)] hover:bg-[var(--bg-surface)]"
-              >
-                Tag
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  ipc.setToolGrant({ agent_id: 'memory:' + doc.doc_id, tool_name: 'promote:user', granted: true, reason: 'promote' });
-                }}
-                className="rounded-sm border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-2 py-1 text-[11px] font-medium text-[var(--fg-primary)] hover:bg-[var(--bg-surface)]"
-              >
-                Promote
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  ipc.setToolGrant({ agent_id: 'memory:' + doc.doc_id, tool_name: 'supersede:user', granted: true, reason: 'supersede' });
-                }}
-                className="rounded-sm border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-2 py-1 text-[11px] font-medium text-[var(--fg-primary)] hover:bg-[var(--bg-surface)]"
-              >
-                Supersede
-              </button>
-              <button
-                type="button"
-                onClick={askDelete}
-                className="rounded-sm border border-[var(--status-err)] bg-[var(--bg-elevated)] px-2 py-1 text-[11px] font-medium text-[var(--status-err)] hover:bg-[var(--bg-surface)]"
-              >
-                Delete
-              </button>
-            </div>
-          ) : (
-            <div className="flex flex-col gap-2">
-              <MemoryBlastRadius
-                mutation={{
-                  kind: 'tag_memory',
-                  doc_id: doc.doc_id,
-                  tag: pendingAction === 'tag' ? 'user:tag' : 'user:delete',
-                  add: pendingAction === 'tag',
-                }}
-              />
-              <input
-                type="text"
-                value={actionReason}
-                onChange={(e) => setActionReason(e.target.value)}
-                placeholder={`Reason (mandatory for ${pendingAction})`}
-                aria-label="Action reason"
-                className="w-full rounded-sm border border-[var(--input-border)] bg-[var(--input-bg)] px-2 py-1 text-xs text-[var(--input-fg)] placeholder:text-[var(--input-placeholder)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)]"
-              />
-              <div
-                role="alert"
-                className="rounded-sm border border-[var(--status-warn)] bg-[var(--bg-elevated)] px-2 py-1.5 text-[11px] text-[var(--fg-primary)]"
-              >
-                {pendingAction === 'tag'
-                  ? 'Tagging this memory with the chosen tag will update the EffectiveScope of the affected agents (see above).'
-                  : 'Deleting this memory is destructive. The action is audited and cannot be undone.'}
-              </div>
-              <div className="flex items-center gap-1.5">
-                <button
-                  type="button"
-                  onClick={cancel}
-                  className="flex-1 rounded-sm border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-2 py-1 text-[11px] font-medium text-[var(--fg-primary)] hover:bg-[var(--bg-surface)]"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={confirm}
-                  disabled={!actionReason.trim()}
-                  className="flex-1 rounded-sm bg-[var(--button-primary-bg)] px-2 py-1 text-[11px] font-medium text-[var(--button-primary-fg)] hover:bg-[var(--button-primary-bg-hover)] disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  Confirm {pendingAction}
-                </button>
-              </div>
-            </div>
+          {pending && (
+            <MemoryBlastRadius
+              mutation={{
+                kind: 'tag_memory',
+                doc_id: doc.doc_id,
+                tag: pending === 'delete' ? 'user:delete' : 'user:tag',
+                add: pending === 'tag',
+              }}
+            />
           )}
+          <div className="flex flex-wrap items-center gap-1.5">
+            <button
+              type="button"
+              disabled={!isOperator || isLoading}
+              onClick={() => setPending('tag')}
+              aria-label="Tag memory"
+              className="rounded-sm border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-2 py-1 text-[11px] font-medium text-[var(--fg-primary)] hover:bg-[var(--bg-surface)] disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Tag
+            </button>
+            <button
+              type="button"
+              disabled={!isOperator || isLoading}
+              onClick={() => setPending('delete')}
+              aria-label="Delete memory"
+              className="rounded-sm border border-[var(--status-err)] bg-[var(--bg-elevated)] px-2 py-1 text-[11px] font-medium text-[var(--status-err)] hover:bg-[var(--bg-surface)] disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Delete
+            </button>
+            <button
+              type="button"
+              disabled={!isOperator || isLoading}
+              onClick={() => setPending('promote')}
+              aria-label="Promote memory"
+              className="rounded-sm border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-2 py-1 text-[11px] font-medium text-[var(--fg-primary)] hover:bg-[var(--bg-surface)] disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Promote
+            </button>
+            <button
+              type="button"
+              disabled={!isOperator || isLoading}
+              onClick={() => setPending('supersede')}
+              aria-label="Supersede memory"
+              className="rounded-sm border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-2 py-1 text-[11px] font-medium text-[var(--fg-primary)] hover:bg-[var(--bg-surface)] disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Supersede
+            </button>
+          </div>
+          {!isOperator && (
+            <p className="mt-2 text-xs text-[var(--fg-muted)]">
+              These actions require the Operator role.
+            </p>
+          )}
+          {mutationError && <ErrorState reason={mutationError} />}
         </CardContent>
       </Card>
+
+      {pending && (
+        <ConfirmMutationDialog
+          open
+          onOpenChange={(o) => !o && setPending(null)}
+          title={MUTATION_META[pending].title}
+          description={MUTATION_META[pending].description}
+          confirmLabel={MUTATION_META[pending].confirmLabel}
+          destructive={MUTATION_META[pending].destructive}
+          onConfirm={async (reason) => {
+            if (pending) {
+              await mutate({ tool_name: pending + ':user', reason });
+            }
+          }}
+        />
+      )}
     </div>
   );
 }

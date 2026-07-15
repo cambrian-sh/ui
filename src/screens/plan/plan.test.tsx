@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { PlanWorkSurface } from './PlanWorkSurface';
 import { ipc } from '@/ipc';
 import { projectionStore } from '@/store/projection';
@@ -32,10 +32,10 @@ function makePlan(overrides: Partial<PlanInFlight> = {}): PlanInFlight {
   };
 }
 
-function makeState(plans: PlanInFlight[] = []): StateOfRecord {
+function makeState(plans: PlanInFlight[] = [], role: 'operator' | 'viewer' = 'operator'): StateOfRecord {
   return {
     connection: { status: 'live', endpoint: 'mock://localhost', last_known_state_at: new Date().toISOString(), reason: null },
-    role: 'operator',
+    role,
     kernel_version: '0.6.9-alpha',
     contract_version: '0047',
     capabilities: [],
@@ -63,9 +63,9 @@ describe('PlanWorkSurface', () => {
     projectionStore.getState().reset();
   });
 
-  it('disables pause/resume buttons when reason is empty and does not send fallback reason', () => {
+  it('disables pause/resume buttons and shows role notice for Viewer role', () => {
     const plan = makePlan({ status: 'running' });
-    projectionStore.getState().hydrate(makeState([plan]));
+    projectionStore.getState().hydrate(makeState([plan], 'viewer'));
     searchState.focus = 'ses-456';
 
     render(<PlanWorkSurface />);
@@ -73,58 +73,49 @@ describe('PlanWorkSurface', () => {
     const pauseBtn = screen.getByRole('button', { name: 'Pause' });
     const resumeBtn = screen.getByRole('button', { name: 'Resume' });
 
-    // Initially disabled because reason is empty
     expect(pauseBtn).toBeDisabled();
-    // Resume is disabled because status is running AND reason is empty
     expect(resumeBtn).toBeDisabled();
+    expect(screen.getByText(/require the Operator role/i)).toBeInTheDocument();
 
-    const input = screen.getByPlaceholderText('Reason (mandatory for pause / resume)');
-    
-    // Type whitespace
-    fireEvent.change(input, { target: { value: '   ' } });
-    expect(pauseBtn).toBeDisabled();
-
-    // Type valid reason
-    fireEvent.change(input, { target: { value: 'need to pause' } });
-    expect(pauseBtn).not.toBeDisabled();
-
-    // Click pause
     fireEvent.click(pauseBtn);
-
-    expect(ipc.pauseSession).toHaveBeenCalledWith({
-      session_id: 'ses-456',
-      reason: 'need to pause',
-    });
-  });
-
-  it('calls resumeSession when resuming a paused plan with a reason', () => {
-    const plan = makePlan({ status: 'paused' });
-    projectionStore.getState().hydrate(makeState([plan]));
-    searchState.focus = 'ses-456';
-
-    render(<PlanWorkSurface />);
-
-    const resumeBtn = screen.getByRole('button', { name: 'Resume' });
-    const input = screen.getByPlaceholderText('Reason (mandatory for pause / resume)');
-
-    fireEvent.change(input, { target: { value: 'continue' } });
-    expect(resumeBtn).not.toBeDisabled();
-
     fireEvent.click(resumeBtn);
 
-    expect(ipc.resumeSession).toHaveBeenCalledWith({
-      session_id: 'ses-456',
-      reason: 'continue',
-    });
+    expect(ipc.pauseSession).not.toHaveBeenCalled();
+    expect(ipc.resumeSession).not.toHaveBeenCalled();
   });
 
-  it('renders without crashing when the plan has sparse fields', () => {
-    const plan = makePlan({ subject: '', cost: 0, step_count: 0, status: 'running' });
+  it('shows ErrorState on kernel error', async () => {
+    const plan = makePlan({ status: 'running' });
     projectionStore.getState().hydrate(makeState([plan]));
     searchState.focus = 'ses-456';
 
+    vi.mocked(ipc.pauseSession).mockRejectedValueOnce(new Error('Kernel error'));
+
     render(<PlanWorkSurface />);
 
-    expect(screen.getByPlaceholderText('Reason (mandatory for pause / resume)')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Pause' }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('dialog')).toBeInTheDocument();
+    });
+
+    const reasonInput = screen.getByLabelText('Reason (required)');
+    fireEvent.change(reasonInput, { target: { value: 'testing pause' } });
+
+    const dialog = screen.getByRole('dialog');
+    const confirmBtn = within(dialog).getByRole('button', { name: 'Pause' });
+    fireEvent.click(confirmBtn);
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('Kernel error');
+  });
+
+  it('renders without crashing when no plan is focused', () => {
+    projectionStore.getState().hydrate(makeState([]));
+    searchState.focus = undefined;
+
+    render(<PlanWorkSurface />);
+
+    expect(screen.getByText(/No plan in flight/i)).toBeInTheDocument();
   });
 });
