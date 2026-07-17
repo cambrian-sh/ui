@@ -11,7 +11,7 @@ pub mod transport;
 use tauri::{AppHandle, State};
 
 use state::StateOfRecord;
-use transport::Transport;
+use transport::{MemoryHit, Transport};
 
 // ---- Tauri command bridge (webview → core → kernel) ---------------------
 //
@@ -113,6 +113,57 @@ async fn op_set_tool_grant(
     transport.inner().clone().set_tool_grant(agent_id, tool_name, granted, reason).await
 }
 
+/// Ingest one document (ADR-0047 A2.4).
+///
+/// `content` arrives from the webview as a byte array (a JS `Uint8Array` over the
+/// Tauri IPC bridge) — the webview reads the file, the core sends the bytes. It is
+/// deliberately NOT a path: the webview cannot hand the kernel a filesystem path it
+/// may not be able to read, and the kernel is not necessarily on this machine.
+///
+/// Pass `content: []` + a non-empty `text` for the text lane, or `content` + a
+/// `filename` for the binary/docling lane. The kernel rejects both-or-neither.
+#[tauri::command]
+#[allow(clippy::too_many_arguments)]
+async fn op_ingest_memory(
+    transport: State<'_, Transport>,
+    text: String,
+    content: Vec<u8>,
+    filename: String,
+    content_type: String,
+    context: String,
+    tags: Vec<String>,
+    importance: f64,
+    source: String,
+    session_id: String,
+    reason: String,
+) -> Result<(String, bool), String> {
+    transport
+        .inner()
+        .clone()
+        .ingest_memory(
+            text, content, filename, content_type, context, tags, importance, source, session_id,
+            reason,
+        )
+        .await
+}
+
+/// Ranked recall — evidence, not an answer. See `Transport::query_memory`.
+#[tauri::command]
+async fn op_query_memory(
+    transport: State<'_, Transport>,
+    query: String,
+    top_k: i32,
+    source: String,
+    session: String,
+    min_importance: f64,
+) -> Result<Vec<MemoryHit>, String> {
+    transport
+        .inner()
+        .clone()
+        .query_memory(query, top_k, source, session, min_importance)
+        .await
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -128,6 +179,8 @@ pub fn run() {
             op_resume_session,
             op_resolve_hitl,
             op_set_tool_grant,
+            op_ingest_memory,
+            op_query_memory,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -1,6 +1,6 @@
 # Cambrian UI — CONTEXT.md (Source of Truth)
 
-**Version:** 0.1 — aligned to kernel ADR-0047, contract version **`0047`** (kernel `0.6.9-alpha`).
+**Version:** 0.1 — aligned to kernel ADR-0047, contract version **`0057`** (kernel `0.6.9-alpha`).
 **Authority for this project.** This file is the authoritative reference for the UI app's **architecture, layer responsibilities/boundaries, current status, and the integration contract with the runtime-core**. For layer-level detail read the nested files: [`src-tauri/CONTEXT.md`](src-tauri/CONTEXT.md) (Rust core / transport) and [`src/CONTEXT.md`](src/CONTEXT.md) (webview). For the product spec read [`docs/web-ui-prd.md`](docs/web-ui-prd.md); for the wire contract read [`proto/operator.proto`](proto/operator.proto); for the runtime-side rationale read the kernel repo `docs/adr/0047-operator-transport-plane.md`.
 
 Do not assume anything about the runtime, the transport, or the domain terminology without consulting these.
@@ -18,7 +18,7 @@ Do not assume anything about the runtime, the transport, or the domain terminolo
 | Memory explorer (PRD-05) — list, detail, compare, blast-radius | **Vertical-slice minimal** — list + filter + open + tag with blast-radius. Compare/graph/bulk (P3 UI-IMPL-31…35) deferred. |
 | Audit & export (PRD-07) — list, deep-link, CSV/JSON export | **Vertical-slice minimal** — read-only audit tail. Mutations + export (P4 UI-IMPL-36…37) deferred. |
 | Configuration (PRD-07) — settings, first-run, profiles | **Vertical-slice minimal** — connection settings (Settings → Connection). Runtime/UI/Profiles (P5 UI-IMPL-37) deferred. |
-| Vendored contract `proto/operator.proto` | **Present, pinned to `0047`** |
+| Vendored contract `proto/operator.proto` | **Present, pinned to `0057`** (re-vendored 2026-07-17: adds the memory read/ingest surface incl. the binary/docling upload lane) |
 | Runtime-core Operator Transport Plane (the thing we integrate against) | **Implemented & serving** (kernel ADR-0047; see §6) |
 
 The **Rust core (`src-tauri`) and the webview (`src`) are both built**. The console subsystem and memory explorer are partially shipped (vertical slice + first two P1 screens). The build order is the parent UX PRD §13 (vertical slice → P1 subsystems read → P2 subsystems read+mutate → P3 memory explorer → P4 audit & export → P5 configuration → P6 polish & a11y).
@@ -58,7 +58,7 @@ The presentation layer. Responsibilities: a **projection store** hydrated from t
 
 ### `proto/` — the vendored contract
 
-`operator.proto`, **vendored and pinned** to contract `0047`, header-stamped DO-NOT-EDIT. The single source of the wire types. Re-vendor from the kernel repo `api/proto/operator.proto` when the contract bumps.
+`operator.proto`, **vendored and pinned** to contract `0057`, header-stamped DO-NOT-EDIT. The single source of the wire types. Re-vendor from the kernel repo `api/proto/operator.proto` when the contract bumps.
 
 ### `docs/` — the product spec
 

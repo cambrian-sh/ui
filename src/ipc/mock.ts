@@ -16,6 +16,7 @@ class MockIPC {
   private state: t.StateOfRecord = this.initialState();
   private stateListeners = new Set<(state: t.StateOfRecord) => void>();
   private tokenListeners = new Set<(chunk: t.TokenChunk) => void>();
+  private ingestCount = 0;
 
   private initialState(): t.StateOfRecord {
     return {
@@ -136,6 +137,32 @@ class MockIPC {
       computed_at: new Date().toISOString(),
       cache_ttl_ms: 5_000,
     };
+  }
+
+  /** Mirrors the kernel's body-lane validation so tests exercise the real rules. */
+  async ingestMemory(params: t.IngestMemoryParams): Promise<t.IngestMemoryResponse> {
+    const hasText = params.text !== '';
+    const hasContent = params.content.length > 0;
+    if (!hasText && !hasContent) throw new Error('one of text or content is required');
+    if (hasText && hasContent) throw new Error('text and content are mutually exclusive');
+    if (hasContent && params.filename === '') throw new Error('filename is required when content is set');
+    return [`mock-doc-${this.ingestCount++}`, false];
+  }
+
+  async queryMemory(params: t.QueryMemoryParams): Promise<t.MemoryHit[]> {
+    if (params.query === '') return [];
+    return [
+      {
+        doc_id: 'mock-doc-0',
+        summary: 'Ops review: two SEV-2s, both closed.',
+        text: 'Two SEV-2 incidents were raised this week; both were closed within SLA.',
+        section_path: 'Ops Review > 3.2 Incidents',
+        score: 0.82,
+        source: 'operator_ingest',
+        importance: 0.6,
+        tags: [],
+      },
+    ];
   }
 
   async getConfigSchema(): Promise<t.ConfigSchema> {

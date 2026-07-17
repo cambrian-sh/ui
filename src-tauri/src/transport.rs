@@ -28,6 +28,38 @@ const UNREACHABLE_AFTER: Duration = Duration::from_secs(180); // ~3 min of faile
 type SharedToken = Arc<StdMutex<Option<String>>>;
 type ConsoleClient = OperatorConsoleClient<InterceptedService<Channel, AuthInterceptor>>;
 
+/// One retrieval hit, flattened for the webview (prost types are not Serialize).
+///
+/// `text` is the verbatim chunk and `section_path` its ADR-0060 structural
+/// breadcrumb — together they are what makes a citation checkable. `summary` is
+/// only a <=200-char preview; never quote it as a source.
+#[derive(Clone, serde::Serialize, Default)]
+pub struct MemoryHit {
+    pub doc_id: String,
+    pub summary: String,
+    pub text: String,
+    pub section_path: String,
+    pub score: f64,
+    pub source: String,
+    pub importance: f64,
+    pub tags: Vec<String>,
+}
+
+impl From<pb::MemoryOp> for MemoryHit {
+    fn from(m: pb::MemoryOp) -> Self {
+        Self {
+            doc_id: m.doc_id,
+            summary: m.summary,
+            text: m.text,
+            section_path: m.section_path,
+            score: m.score,
+            source: m.source,
+            importance: m.importance,
+            tags: m.tags,
+        }
+    }
+}
+
 /// Injects `authorization: Bearer <token>` on every call once logged in.
 #[derive(Clone)]
 pub struct AuthInterceptor {
@@ -293,6 +325,80 @@ impl Transport {
             .map_err(map_status)?
             .into_inner();
         Ok(ack.deduped)
+    }
+
+    // ---- Memory (ADR-0047 A2.4, contract 0057) ---------------------------
+
+    /// Ingest one document. Exactly one of `text` / `content` must be set — the
+    /// kernel rejects both-or-neither. `content` is the raw file bytes: they go to
+    /// the docling_agent for structure-aware parsing, so a PDF keeps its real
+    /// hierarchy instead of being flattened. `filename` is REQUIRED alongside
+    /// `content` (its extension routes the chunker).
+    ///
+    /// `context` is the operator's note; the kernel folds it into the body so it is
+    /// chunked and embedded with the document rather than stranded in metadata.
+    ///
+    /// Returns (doc_id, deduped). `deduped` = a replayed command_id, not a content
+    /// duplicate.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn ingest_memory(
+        &self,
+        text: String,
+        content: Vec<u8>,
+        filename: String,
+        content_type: String,
+        context: String,
+        tags: Vec<String>,
+        importance: f64,
+        source: String,
+        session_id: String,
+        reason: String,
+    ) -> Result<(String, bool), String> {
+        let mut client = self.client().await?;
+        let resp = client
+            .ingest_memory(Request::new(pb::IngestMemoryOpRequest {
+                command_id: new_command_id(),
+                reason,
+                text,
+                tags,
+                importance,
+                source,
+                session_id,
+                content,
+                filename,
+                content_type,
+                context,
+            }))
+            .await
+            .map_err(map_status)?
+            .into_inner();
+        Ok((resp.doc_id, resp.deduped))
+    }
+
+    /// Ranked recall over operator-visible memory. This is the deterministic
+    /// single-pass lane (kernel `SearchSystem`) — it returns evidence, NOT a
+    /// composed answer. Compose answers on the chat lane (`send_message`).
+    pub async fn query_memory(
+        &self,
+        query: String,
+        top_k: i32,
+        source: String,
+        session: String,
+        min_importance: f64,
+    ) -> Result<Vec<MemoryHit>, String> {
+        let mut client = self.client().await?;
+        let resp = client
+            .query_memory(Request::new(pb::QueryMemoryRequest {
+                query,
+                top_k,
+                source,
+                session,
+                min_importance,
+            }))
+            .await
+            .map_err(map_status)?
+            .into_inner();
+        Ok(resp.results.into_iter().map(MemoryHit::from).collect())
     }
 
     // ---- The feed loop ---------------------------------------------------

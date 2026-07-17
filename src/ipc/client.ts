@@ -54,6 +54,20 @@ export const ipc = {
 
   getConfigSchema: (): Promise<t.ConfigSchema> =>
     invoke<t.ConfigSchema>('op_get_config_schema'),
+
+  // ----- Memory (kernel contract 0057) -----
+
+  /** Ingest one document. See `IngestMemoryParams` for the two body lanes. */
+  ingestMemory: (params: t.IngestMemoryParams): Promise<t.IngestMemoryResponse> =>
+    invoke<t.IngestMemoryResponse>('op_ingest_memory', { ...params }),
+
+  /**
+   * Ranked recall. Returns EVIDENCE, not an answer — this is the kernel's
+   * deterministic single-pass lane. To get a composed answer, drive the chat lane
+   * (`createSession` + `sendMessage`) and cite these hits alongside it.
+   */
+  queryMemory: (params: t.QueryMemoryParams): Promise<t.MemoryHit[]> =>
+    invoke<t.MemoryHit[]>('op_query_memory', { ...params }),
 } as const;
 
 export type IPC = typeof ipc;

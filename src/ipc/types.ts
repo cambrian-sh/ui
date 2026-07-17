@@ -227,3 +227,57 @@ export interface TokenChunk {
   step_index: number;
   text: string;
 }
+
+// ============================================================================
+// Memory (ADR-0047 A2.4; kernel contract 0057).
+// ============================================================================
+
+/** One retrieval hit. */
+export interface MemoryHit {
+  doc_id: string;
+  /** <=200-char preview. NOT quotable — use `text` for a citation. */
+  summary: string;
+  /** The verbatim chunk body: what a source card quotes. */
+  text: string;
+  /** ADR-0060 structural breadcrumb ("Ops Review > 3.2 Incidents"). Empty for flat docs. */
+  section_path: string;
+  score: number;
+  source: string;
+  importance: number;
+  tags: string[];
+}
+
+/**
+ * Ingest params. Exactly one body lane:
+ *   - text lane:   `text` set, `content` empty.
+ *   - binary lane: `content` set (raw bytes -> docling structure parse) + `filename`.
+ * The kernel rejects both-or-neither, and rejects `content` without `filename`
+ * (the extension is what routes the chunker).
+ */
+export interface IngestMemoryParams {
+  text: string;
+  /** Raw file bytes. Marshalled to a JS number[] over the Tauri IPC bridge. */
+  content: number[];
+  /** Original filename, e.g. "2026-W29-ops-review.pdf". Required with `content`. */
+  filename: string;
+  content_type: string;
+  /** Operator note; folded into the body by the kernel so it is chunked + embedded. */
+  context: string;
+  /** Narrow-only classification hint. Empty = readable by any principal. */
+  tags: string[];
+  importance: number;
+  source: string;
+  session_id: string;
+  reason: string;
+}
+
+/** `[doc_id, deduped]`. `deduped` = replayed command_id, NOT a content duplicate. */
+export type IngestMemoryResponse = [string, boolean];
+
+export interface QueryMemoryParams {
+  query: string;
+  top_k: number;
+  source: string;
+  session: string;
+  min_importance: number;
+}

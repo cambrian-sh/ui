@@ -1,6 +1,6 @@
 // VENDORED — DO NOT EDIT BY HAND.
-// Source of truth: cambrian-runtime api/proto/operator.proto
-// Pinned to kernel/contract version: 0047 (kernel 0.6.9-alpha).
+// Source of truth: cambrian-core api/proto/operator.proto
+// Pinned to kernel/contract version: 0057 (kernel 0.6.9-alpha).
 // Re-vendor from the kernel repo when the contract bumps; verify via the
 // Snapshot handshake (contract_version) at runtime. ADR-0047 0047-13.
 
@@ -8,7 +8,7 @@ syntax = "proto3";
 
 package cambrian;
 
-option go_package = "./../../api/proto";
+option go_package = "core/api/proto";
 
 import "google/protobuf/timestamp.proto";
 
@@ -55,10 +55,71 @@ service OperatorConsole {
   rpc RegisterMCP(RegisterMCPRequest) returns (CommandAck);
   rpc TriggerConsolidation(TriggerConsolidationRequest) returns (CommandAck);
 
+  // SetRuntimeConfig hot-applies numeric runtime tunables (e.g. the Stage-A blend
+  // weights) to the live kernel WITHOUT a restart — the automated-tuning seam
+  // (ADR-0054). Idempotent (command_id), mandatory reason, audited, Operator-only.
+  // Ephemeral: edits live in memory; config.json stays the boot default.
+  rpc SetRuntimeConfig(SetRuntimeConfigRequest) returns (CommandAck);
+
   // Chat & steer (Operator-only, audited). ADR-0047 0047-10.
   rpc CreateSession(CreateSessionRequest) returns (CreateSessionResponse);
   rpc SendMessage(SendMessageRequest) returns (CommandAck);
   rpc InjectCorrection(InjectCorrectionRequest) returns (CommandAck);
+
+  // ── ADR-0047 Amendment A2 (CORE-OPS-1): operator-plane read/exec/approval
+  // surface. Distinct messages from the agent-plane equivalents (D1): the CLI
+  // must never carry an x-agent-id principal.
+
+  // Paged reads (any authenticated role; never folded into Snapshot). A2.1/D8.
+  rpc ListTools(ListToolsOpRequest)     returns (ListToolsOpResponse);
+  rpc ListSkills(ListSkillsOpRequest)   returns (ListSkillsOpResponse);
+  rpc QueryMemory(QueryMemoryRequest) returns (QueryMemoryResponse);
+
+  // Tool permission management: bound an existing grant with a resource policy
+  // (Operator-only, idempotent, audited). A2.3.
+  rpc SetToolPolicy(SetToolPolicyRequest) returns (CommandAck);
+
+  // Operator-triggered tool execution at ScopeSystem — a deliberate grant
+  // bypass, audited, dangerous tools also emit a feed event (Operator-only). A2.2.
+  rpc ExecuteTool(ExecuteToolOpRequest) returns (ExecuteToolOpResponse);
+
+  // Memory ingest through the kernel ingest path (operator as Author; never a
+  // raw store write). Idempotent on command_id (Operator-only, audited). A2.4.
+  rpc IngestMemory(IngestMemoryOpRequest) returns (IngestMemoryOpResponse);
+
+  // Tool-approval stream mirroring the ADR-0039 dangerous-tool approval request
+  // (Operator-only). Resolve reuses ResolveHITL over the shared ApprovalHub
+  // id-space. A2.5.
+  rpc WatchToolApprovals(SubscribeRequest) returns (stream ApprovalOp);
+
+  // ── Watch surfaces — PREMIUM capability-gated (D14/A2.6). The proto lives in
+  // OSS in full (defining ≠ implementing); OSS handlers return Unimplemented and
+  // the WatchTriggered class never publishes. Advertised only on premium builds.
+  rpc ListWatches(ListWatchesOpRequest)       returns (ListWatchesOpResponse);
+  rpc RegisterWatch(RegisterWatchOpRequest)   returns (CommandAck);
+  rpc DeleteWatch(DeleteWatchOpRequest)       returns (CommandAck);
+  rpc SetWatchActive(SetWatchActiveOpRequest) returns (CommandAck);
+
+  // ListWatchDeadLetters reads reactive actions that could not be delivered — a
+  // failed action or a journal signal that expired before it ran (REACT-01 /
+  // ADR-0061). Read RPC (no command_id). Capability "watch-deadletter", advertised
+  // on premium builds; OSS returns an empty list (no reactive engine writes them).
+  rpc ListWatchDeadLetters(ListWatchDeadLettersOpRequest) returns (ListWatchDeadLettersOpResponse);
+
+  // REACT-05 / ADR-0071: watch observability. GetWatchMetrics returns per-watch fire/
+  // suppression/dry-run/dead-letter counters + mean condition latency. BacktestWatch
+  // replays the signal journal through a candidate watch config and reports would-fires
+  // WITHOUT acting. Capability "watch-observability"; premium (OSS ⇒ Unimplemented).
+  rpc GetWatchMetrics(GetWatchMetricsOpRequest) returns (GetWatchMetricsOpResponse);
+  rpc BacktestWatch(BacktestWatchOpRequest) returns (BacktestWatchOpResponse);
+
+  // PreviewRoute (ROUTE-07 / ADR-0077) runs the Gatekeeper's L3 merit scoring over a
+  // caller-supplied candidate set (inline synthetic profiles) for a step's required
+  // capabilities, and returns the ranked funnel — WITHOUT the planner, an auction, or
+  // agent execution. It is the gatekeeper-benchmark entry point: deterministic routing
+  // data-generation + evaluation, under the active scorer arm (hand weights or the
+  // ROUTE-07 learned scorer). Capability "route-preview"; nil-in-OSS ⇒ Unimplemented.
+  rpc PreviewRoute(PreviewRouteOpRequest) returns (PreviewRouteOpResponse);
 }
 
 message CreateSessionRequest {
@@ -129,6 +190,15 @@ message TriggerConsolidationRequest {
   string scope = 3; // optional scope hint; empty = full
 }
 
+message SetRuntimeConfigRequest {
+  string command_id = 1;
+  string reason = 2;
+  // params maps a numeric tunable name → value, e.g. "blend_weight_cosine": 0.4.
+  // Unknown keys are reported back in CommandAck-side logs and ignored; partial
+  // sets merge over the current live values.
+  map<string, double> params = 3;
+}
+
 message ResolveHITLRequest {
   string command_id = 1;
   string reason = 2;
@@ -189,7 +259,15 @@ message SnapshotResponse {
   // surfaces and surface version skew as a first-class state.
   string kernel_version = 4;
   string contract_version = 5;
-  repeated string capabilities = 6; // e.g. "commands", "steering", "watch", "daemon"
+  // capabilities enumerates the surfaces this build supports so the UI hides the
+  // rest (ADR-0047 D14). OSS: feed, snapshot, commands, steering, audit,
+  // tools-read, tools-manage, skills-read, memory-read, memory-ingest, tool-exec,
+  // tool-approvals, routing-trace (ROUTE-02 auction funnel), scout-usefulness
+  // (ROUTE-08 A). Premium adds: watches-read, watches-crud (A2), watch-deadletter,
+  // reactive-backpressure, watch-condition-guard, watch-observability, watch-schedule
+  // (REACT-06 cron-driven watches). route-preview (ROUTE-07 gatekeeper scoring) is core.
+  // contract 0056.
+  repeated string capabilities = 6;
 }
 
 message PlanInFlightOp {
@@ -236,7 +314,24 @@ message OperatorEvent {
     PlanStateOp plan_state = 21;
     AuditOp audit = 22;
     TokenChunkOp token = 23; // live-only lane; seq is 0 and is never replayed
+    ScoutUsefulnessOp scout_usefulness = 24; // ROUTE-08 phase A
+    ReactiveBudgetOp reactive_budget = 25;   // REACT-02 / ADR-0062: backpressure shed event
   }
+}
+
+// ScoutUsefulnessOp is the ROUTE-08 phase-A per-session signal: did the always-on
+// Scout's pre-plan discovery earn its cost (referenced by the plan? ran without
+// replan? what did it cost)? Logging only — training material for a later
+// invoke/skip policy.
+message ScoutUsefulnessOp {
+  string session_id = 1;
+  bool scout_ran = 2;
+  int64 scout_latency_ms = 3;
+  int32 discovery_entities = 4;
+  bool discovery_referenced = 5;
+  int32 plan_steps = 6;
+  int32 replan_count = 7;
+  bool replanned = 8;
 }
 
 // ResyncRequired tells the client its cursor has fallen out of the retained
@@ -253,6 +348,13 @@ message AuctionEventOp {
   string winner_id = 4;
   repeated BidEntryOp bids = 5;
   string error_msg = 6;
+  // winner_margin is the winning bid's confidence minus the best losing bid
+  // (0 when no runner-up). ROUTE-02: a near-zero margin flags a coin-flip.
+  float winner_margin = 7;
+  // funnel is the Gatekeeper's Declaration->Interview->Merit candidate trace for
+  // this auction (ROUTE-02). Absent when routing tracing is disabled or on the
+  // 'started' event.
+  GatekeeperFunnelOp funnel = 8;
 }
 
 message BidEntryOp {
@@ -260,6 +362,44 @@ message BidEntryOp {
   float confidence = 2;
   string rationale = 3;
   int32 latency_ms = 4;
+  // requirements are dependencies the agent declared it needs satisfied before
+  // executing (ROUTE-02 auction-proposal record).
+  repeated string requirements = 5;
+}
+
+// GatekeeperFunnelOp is the per-auction candidate funnel: every agent the
+// Gatekeeper considered and the layer that admitted or eliminated it (ROUTE-02).
+// It lets a benchmark row reconstruct why a step routed the way it did, from the
+// persisted event alone.
+message GatekeeperFunnelOp {
+  repeated DeclarationResultOp l1 = 1; // Layer 1: Declaration pass-set
+  repeated InterviewResultOp l2 = 2;   // Layer 2: Interview (semantic) survivors/eliminated
+  double l2_threshold = 3;             // similarity floor applied in Layer 2 (0 if L2 skipped)
+  repeated MeritResultOp l3 = 4;       // Layer 3: Merit ranking, highest-first (as presented to the auction)
+  int32 max_candidates = 5;            // GatekeeperMaxCandidates cap applied after ranking (0 = uncapped)
+}
+
+message DeclarationResultOp {
+  string agent_id = 1;
+  bool passed = 2;
+  string reason = 3; // why it failed (empty when passed)
+}
+
+message InterviewResultOp {
+  string agent_id = 1;
+  double similarity = 2;          // best profile->task similarity; 0 when below threshold (not returned by the searcher)
+  bool survived = 3;
+  bool provisional_bypass = 4;    // cold-start agent that skipped the semantic gate
+}
+
+message MeritResultOp {
+  string agent_id = 1;
+  double score = 2;
+  double success_rate = 3;
+  double trust_score = 4;
+  double latency_term = 5; // w3 * (1/normLatency) contribution
+  double cost_term = 6;    // w4 * normalizedCost contribution (subtracted)
+  bool provisional = 7;    // cold-start penalty applied
 }
 
 message AgentReadyOp {
@@ -355,4 +495,312 @@ message AuditOp {
   string after = 9;
   string reason = 10;
   string result = 11;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ADR-0047 Amendment A2 (CORE-OPS-1) messages.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// ToolPolicyOp mirrors domain.ToolResourcePolicy (A1.5): the allowed resource
+// surface a grant bounds a tool to. Empty lists ⇒ the tool declares no resource
+// args of that kind.
+message ToolPolicyOp {
+  repeated string allowed_paths    = 1;
+  repeated string allowed_urls     = 2;
+  repeated string allowed_commands = 3;
+}
+
+// ToolGrantOp is one agent's grant of a tool, with the policy bounding it — the
+// reverse index ListTools builds by scanning per-agent grant sets. A2.3.
+message ToolGrantOp {
+  string agent_id = 1;
+  ToolPolicyOp policy = 2;
+}
+
+// ToolOp is a system tool as the operator governs it (the whole catalog, not a
+// per-agent menu). source is "builtin" or "mcp:<serverID>", derived from the
+// tool name prefix. A2.3.
+message ToolOp {
+  string name = 1;
+  string description = 2;
+  bool dangerous = 3;
+  string source = 4;                     // "builtin" | "mcp:<serverID>"
+  repeated string data_read_kinds = 5;   // ADR-0039 D8 data regime
+  repeated string data_write_kinds = 6;
+  repeated ToolGrantOp grants = 7;        // which agents hold it, with what policy
+}
+
+message ListToolsOpRequest {
+  int32 page = 1;
+  int32 page_size = 2;
+  string query = 3;         // substring filter over name/description
+  bool dangerous_only = 4;
+  string source = 5;        // "" = all; "builtin"; "mcp:<serverID>" prefix match
+}
+message ListToolsOpResponse {
+  repeated ToolOp tools = 1;
+  int32 total = 2;
+  int32 page = 3;
+}
+
+message ListSkillsOpRequest {
+  int32 page = 1;
+  int32 page_size = 2;
+  string query = 3;
+}
+message SkillOp {
+  string name = 1;
+  string description = 2;
+  repeated string tool_grants = 3;
+  repeated string scope_tags = 4;
+}
+message ListSkillsOpResponse {
+  repeated SkillOp skills = 1;
+  int32 total = 2;
+  int32 page = 3;
+}
+
+// Reconciled with the CLI's existing memory types (A2.4): query/top_k mirror the
+// agent-plane MemoryRequest; source/session/min_importance are operator filters.
+message QueryMemoryRequest {
+  string query = 1;
+  int32 top_k = 2;
+  string source = 3;
+  string session = 4;
+  double min_importance = 5;
+}
+message MemoryOp {
+  string doc_id = 1;
+  string summary = 2;
+  double score = 3;
+  string source = 4;
+  double importance = 5;
+  repeated string tags = 6;
+  // ADR-0060 structural location of the hit ("Ops Review > 3.2 Incidents"), stamped
+  // on the chunk at ingest. Empty for flat documents. Citation UIs render this as the
+  // source breadcrumb — without it a source card can only show an opaque doc_id.
+  string section_path = 7;
+  // The retrieved chunk body verbatim. `summary` is a <=200-char first-line preview
+  // and is NOT quotable; a grounded citation needs the passage the answer came from.
+  string text = 8;
+}
+message QueryMemoryResponse {
+  repeated MemoryOp results = 1;
+}
+
+// SetToolPolicy binds an existing grant with a resource policy (A2.3). Setting a
+// policy on an agent that lacks the grant is an InvalidArgument (grant first).
+message SetToolPolicyRequest {
+  string command_id = 1;
+  string reason = 2;
+  string agent_id = 3;
+  string tool_name = 4;
+  ToolPolicyOp policy = 5;
+}
+
+// ExecuteTool runs a tool at ScopeSystem (A2.2). deduped=true returns the
+// original result_json without re-running (result captured in the audit row).
+message ExecuteToolOpRequest {
+  string command_id = 1;
+  string reason = 2;
+  string tool_name = 3;
+  string args_json = 4;
+  string session_id = 5;
+}
+message ExecuteToolOpResponse {
+  string command_id = 1;
+  bool deduped = 2;
+  string result_json = 3;
+  bool denied = 4;
+  string deny_reason = 5;
+  string error = 6;
+}
+
+// IngestMemory requests a kernel document ingest (A2.4) — never a raw store
+// write. tags are a narrow-only hint (kernel derives classification); the
+// operator principal is stamped as Author. Idempotent on command_id.
+message IngestMemoryOpRequest {
+  string command_id = 1;
+  string reason = 2;
+  // Text body. Exactly one of `text` or `content` must be set.
+  string text = 3;
+  repeated string tags = 4;
+  double importance = 5;
+  string source = 6;
+  string session_id = 7;
+  // ADR-0060 binary upload lane: raw file bytes handed to the docling_agent
+  // (RT-DETR/TableFormer) for structure-aware parsing. Exactly one of `text` or
+  // `content` must be set. Prefer `text` for markdown/plain — it skips the sidecar.
+  bytes content = 8;
+  // Original filename, e.g. "2026-W29-ops-review.pdf". Drives chunker routing: the
+  // extension resolves the chunker via chunker_registry(source_type, ext). Required
+  // when `content` is set — bytes with no extension cannot be routed.
+  string filename = 9;
+  // Optional MIME hint. Advisory only; the extension wins for routing.
+  string content_type = 10;
+  // Operator-supplied context for this document ("Q3 board pack, figures are
+  // provisional"). Prepended to the body as a titled section so it is chunked,
+  // embedded, and retrievable/citable like any other content — a metadata-only
+  // field would never reach the index and so could never affect an answer.
+  string context = 11;
+}
+message IngestMemoryOpResponse {
+  string command_id = 1;
+  bool deduped = 2;
+  string doc_id = 3;
+}
+
+// ApprovalOp mirrors the ADR-0039 dangerous-tool ApprovalRequest (A2.5): the
+// shipping ApprovalsPane renders tool_name/agent_id/args_preview.
+message ApprovalOp {
+  string id = 1;
+  string agent_id = 2;
+  string tool_name = 3;
+  string args_preview = 4;
+  bool is_destructive = 5;
+}
+
+// ── Watch CRUD (premium capability-gated; proto in OSS). A2.6. ────────────────
+// WatchConfigOp/WatchActionOp are the operator-plane watch shapes. Field names
+// mirror the agent-plane WatchConfigProto/WatchActionProto so a CLI reuses its
+// hand-written types, but they are DISTINCT messages (D1/A2.1): the operator
+// plane never shares a contract with the agent plane.
+message WatchActionOp {
+  string type = 1;        // "dispatch_agent" | "emit_event" | "start_plan" | "ingest"
+  string target_type = 2; // "agent_id" | "capability" — required for dispatch_agent
+  string target = 3;
+  string payload = 4;
+}
+message WatchConfigOp {
+  string id = 1;
+  string name = 2;
+  string description = 3;
+  string source_type = 4;
+  string source_stream_id = 5;
+  string condition = 6;
+  string condition_type = 7;
+  WatchActionOp action = 8;
+  bool active = 9;
+  string response_mode = 10;
+  map<string, string> daemon_params = 11;
+  int32 max_concurrent_plans = 12;
+  int32 debounce_seconds = 13; // REACT-02 / ADR-0062: coalesce at most once per T seconds (0 = off)
+  repeated string condition_payload_keys = 14; // REACT-03 / ADR-0063: llm-condition payload-key allowlist
+  bool approved = 15;                           // REACT-03 / ADR-0063: operator ack for a high-risk llm-condition watch
+  bool dry_run = 16;                            // REACT-05 / ADR-0071: evaluate + record, never act
+  string source_cron = 17;                      // REACT-06 / ADR-0072: 5-field cron (or @shortcut) for a "schedule" source
+  string source_timezone = 18;                  // REACT-06 / ADR-0072: IANA tz the cron is evaluated in (empty = UTC)
+  string missed_fire_policy = 19;               // REACT-06 / ADR-0072: "fire_once" | "skip" (default) across restart
+}
+message ListWatchesOpRequest {
+  int32 page = 1;
+  int32 page_size = 2;
+  bool active_only = 3;
+}
+message ListWatchesOpResponse {
+  repeated WatchConfigOp configs = 1;
+  int32 total = 2;
+  int32 page = 3;
+}
+message RegisterWatchOpRequest {
+  string command_id = 1;
+  string reason = 2;
+  WatchConfigOp config = 3;
+}
+message DeleteWatchOpRequest {
+  string command_id = 1;
+  string reason = 2;
+  string watch_id = 3;
+}
+message SetWatchActiveOpRequest {
+  string command_id = 1;
+  string reason = 2;
+  string watch_id = 3;
+  bool active = 4;
+}
+
+// REACT-01 / ADR-0061: reactive dead-letter read surface.
+message ListWatchDeadLettersOpRequest {
+  int32 limit = 1; // 0 ⇒ all
+}
+message ListWatchDeadLettersOpResponse {
+  repeated WatchDeadLetterOp entries = 1;
+}
+message WatchDeadLetterOp {
+  string id = 1;
+  string watch_id = 2;
+  string action_type = 3;
+  string key = 4;           // idempotency key (empty for queue-full/expired drops)
+  string reason = 5;        // failure reason: action error text, "queue_full", "expired_before_replay"
+  string signal_stream_id = 6;
+  string signal_raw_text = 7;
+  int64 failed_at_unix_ms = 8;
+}
+
+// REACT-05 / ADR-0071: watch observability.
+message GetWatchMetricsOpRequest {}
+message GetWatchMetricsOpResponse {
+  repeated WatchMetricsOp metrics = 1;
+}
+message WatchMetricsOp {
+  string watch_id = 1;
+  int64 signals_seen = 2;
+  int64 condition_fired = 3;
+  int64 condition_suppressed = 4;
+  int64 dry_run_would_fire = 5;
+  int64 action_failed = 6;
+  int64 dead_lettered = 7;
+  double mean_condition_latency_ms = 8;
+}
+message BacktestWatchOpRequest {
+  WatchConfigOp config = 1; // candidate watch to replay over the journal
+  uint64 after_seq = 2;     // replay journaled signals with seq > after_seq (0 = all)
+}
+message BacktestWatchOpResponse {
+  repeated WatchBacktestVerdictOp verdicts = 1;
+}
+message WatchBacktestVerdictOp {
+  uint64 seq = 1;
+  string stream_id = 2;
+  string raw_text = 3;
+  bool would_fire = 4;
+  string eval_error = 5;
+}
+
+// ROUTE-07 / ADR-0077: PreviewRoute request — a step's required capabilities plus the
+// inline candidate profiles to score. The caller supplies synthetic profiles so the
+// preview is deterministic and needs no live fleet.
+message PreviewRouteOpRequest {
+  string task_desc = 1;                       // informational (logging); scoring is profile-driven
+  repeated string required_capabilities = 2;  // the step's required caps (ROUTE-06 tag scoping)
+  repeated PreviewCandidateOp candidates = 3;
+}
+message PreviewCandidateOp {
+  string agent_id = 1;
+  string trait = 2; // "cognitive" | "model" | ... (model omits the latency term, ADR-0018)
+  double success_rate = 3;
+  double trust_score = 4;
+  int32 network_latency_ms = 5;
+  int32 computation_latency_ms = 6;
+  int32 context_growth_bytes = 7;
+  bool provisional = 8;
+  double avg_cost_per_task = 9; // TraitModel cost normalization
+  map<string, PreviewCapStatOp> capability_stats = 10; // per-capability success/trust (ROUTE-06)
+}
+message PreviewCapStatOp {
+  double success_rate = 1;
+  double trust_score = 2;
+  int32 sample_count = 3;
+}
+message PreviewRouteOpResponse {
+  repeated MeritResultOp ranked = 1; // merit breakdowns, highest score first
+  string arm = 2;                    // "hand_weights" | "learned_scorer" (the active scorer)
+}
+
+// REACT-02 / ADR-0062: backpressure shed event on the feed.
+message ReactiveBudgetOp {
+  string resource = 1;             // "llm_condition" | "start_plan" | "stream_rate"
+  string reason = 2;               // dead-letter reason applied to shed units
+  string stream_id = 3;            // affected stream ("" for plane-wide budgets)
+  int64 shedding_since_unix_ms = 4;
 }
