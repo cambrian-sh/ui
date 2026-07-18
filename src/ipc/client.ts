@@ -1,4 +1,15 @@
-
+/* Cambrian Web UI — the typed Tauri IPC client.
+ *
+ * Per EC-4 (gRPC in Rust core only) + the technical document §3.3 + §5.2.
+ * Every component imports from `@/ipc`, never from `@tauri-apps/api/core` directly.
+ * Tests use `./mock.ts` (same interface).
+ *
+ * The Tauri `invoke` signature expects `InvokeArgs = Record<string, unknown>`.
+ * Our typed param interfaces don't carry an index signature (so they remain
+ * precise). We spread each param into a fresh object literal at the call site
+ * to satisfy the constraint without losing type safety on the parameter
+ * itself.
+ */
 
 import { invoke } from '@tauri-apps/api/core';
 import * as t from './types';
@@ -36,18 +47,6 @@ export const ipc = {
   setToolGrant: (params: t.SetToolGrantParams): Promise<t.CommandAck> =>
     invoke<t.CommandAck>('op_set_tool_grant', { ...params }),
 
-  setScope: (params: t.SetScopeParams): Promise<t.CommandAck> =>
-    invoke<t.CommandAck>('op_set_scope', { ...params }),
-
-  registerSkill: (params: t.RegisterSkillParams): Promise<t.CommandAck> =>
-    invoke<t.CommandAck>('op_register_skill', { ...params }),
-
-  registerMCP: (params: t.RegisterMCPParams): Promise<t.CommandAck> =>
-    invoke<t.CommandAck>('op_register_mcp', { ...params }),
-
-  triggerConsolidation: (params: t.TriggerConsolidationParams): Promise<t.CommandAck> =>
-    invoke<t.CommandAck>('op_trigger_consolidation', { ...params }),
-
   // ----- 2 new Tauri commands (per technical document §3.1, §3.2) -----
 
   getBlastRadiusPreview: (mutation: t.BlastRadiusMutation): Promise<t.BlastRadiusPreviewResponse> =>
@@ -56,37 +55,19 @@ export const ipc = {
   getConfigSchema: (): Promise<t.ConfigSchema> =>
     invoke<t.ConfigSchema>('op_get_config_schema'),
 
-  // ----- 9 new Tauri commands (UI-IMPL-21a: subsystems read) -----
+  // ----- Memory (kernel contract 0057) -----
 
-  listAgents: (): Promise<t.AgentSummary[]> =>
-    invoke<t.AgentSummary[]>('op_list_agents'),
+  /** Ingest one document. See `IngestMemoryParams` for the two body lanes. */
+  ingestMemory: (params: t.IngestMemoryParams): Promise<t.IngestMemoryResponse> =>
+    invoke<t.IngestMemoryResponse>('op_ingest_memory', { ...params }),
 
-  getAgent: (agentId: string): Promise<t.AgentDetail> =>
-    invoke<t.AgentDetail>('op_get_agent', { agentId }),
-
-  listTools: (): Promise<t.ToolSummary[]> =>
-    invoke<t.ToolSummary[]>('op_list_tools'),
-
-  getTool: (toolId: string): Promise<t.ToolDetail> =>
-    invoke<t.ToolDetail>('op_get_tool', { toolId }),
-
-  listSkills: (): Promise<t.SkillSummary[]> =>
-    invoke<t.SkillSummary[]>('op_list_skills'),
-
-  getSkill: (skillId: string): Promise<t.SkillDetail> =>
-    invoke<t.SkillDetail>('op_get_skill', { skillId }),
-
-  listMCPServers: (): Promise<t.MCPServerSummary[]> =>
-    invoke<t.MCPServerSummary[]>('op_list_mcp_servers'),
-
-  getMCPServer: (serverId: string): Promise<t.MCPServerDetail> =>
-    invoke<t.MCPServerDetail>('op_get_mcp_server', { serverId }),
-
-  getScope: (agentId: string): Promise<t.ScopeDetail> =>
-    invoke<t.ScopeDetail>('op_get_scope', { agentId }),
-
-  getWatchConfig: (id: string): Promise<t.WatchConfigDetail> =>
-    invoke<t.WatchConfigDetail>('op_get_watch_config', { id }),
+  /**
+   * Ranked recall. Returns EVIDENCE, not an answer — this is the kernel's
+   * deterministic single-pass lane. To get a composed answer, drive the chat lane
+   * (`createSession` + `sendMessage`) and cite these hits alongside it.
+   */
+  queryMemory: (params: t.QueryMemoryParams): Promise<t.MemoryHit[]> =>
+    invoke<t.MemoryHit[]>('op_query_memory', { ...params }),
 } as const;
 
 export type IPC = typeof ipc;

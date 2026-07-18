@@ -65,7 +65,7 @@ The Rust core's bridge is **live** (see `../src-tauri/CONTEXT.md` for the full t
 
 The Rust core tells the webview the `role` (`operator`/`viewer`) and the `capabilities`/version from the handshake. The webview:
 - **Hides/disables mutating controls for a Viewer** (the kernel enforces it server-side; the UI only reflects it).
-- **Hides surfaces the kernel doesn't advertise** (e.g. Watch/daemon screens when absent) and **shows a version-skew banner** when the kernel's `contract_version` differs from the pinned `0047`.
+- **Hides surfaces the kernel doesn't advertise** (e.g. Watch/daemon screens when absent) and **shows a version-skew banner** when the kernel's `contract_version` differs from the pinned `0057`.
 
 ## Out of scope (PRD)
 

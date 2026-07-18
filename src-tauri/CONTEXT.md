@@ -17,7 +17,7 @@ The Rust core is the **only** thing that talks gRPC to the runtime-core. The web
 | File | Responsibility |
 |---|---|
 | `build.rs` | `tonic-build` codegen — generates the `OperatorConsole` **client** (no server stubs) from `../proto/operator.proto`; `rerun-if-changed` on the proto. |
-| `src/pb.rs` | `tonic::include_proto!("cambrian")` + `PINNED_CONTRACT_VERSION = "0047"`. The generated `tonic`/`prost` types live here; **nothing outside the core references them**. |
+| `src/pb.rs` | `tonic::include_proto!("cambrian")` + `PINNED_CONTRACT_VERSION = "0057"`. The generated `tonic`/`prost` types live here; **nothing outside the core references them**. |
 | `src/state.rs` | The **state of record**: `StateOfRecord` (connection, role, handshake, cursor, plans-by-id, sessions, audit tail, pending HITL) + an **idempotent absolute-state `fold`** (last-writer-wins by id; `token` events return `false` and are excluded) + `apply_snapshot` + `reset_live`. Serde-serializable (it IS the projection). |
 | `src/transport.rs` | The gRPC client + **`AuthInterceptor`** (bearer token), `login` (+ OS-keychain persistence), the **command senders**, and the **feed loop** (`run_feed`/`drain`/`backoff`): snapshot-seed → subscribe-from-cursor → fold+emit → `Resync` re-snapshot → reconnect with exponential backoff → `Unreachable`. |
 | `src/lib.rs` | The **Tauri bridge**: managed `Transport` state + the `op_*` commands + `run()`. |
@@ -40,12 +40,12 @@ The Rust core is the **only** thing that talks gRPC to the runtime-core. The web
 | `op_pause_session` / `op_resume_session` | `session_id, reason` | `deduped: bool` |
 | `op_resolve_hitl` | `intervention_id, approve, reason` | `deduped: bool` |
 | `op_set_tool_grant` | `agent_id, tool_name, granted, reason` | `deduped: bool` |
-| `op_set_scope` | `agent_id, required_tags[], any_of_tags[], forbidden_tags[], reason` | `deduped: bool` |
-| `op_register_skill` | `name, description, instructions, tool_grants[], scope_tags[], reason` | `deduped: bool` |
-| `op_register_mcp` | `name, command, url, reason` | `deduped: bool` |
-| `op_blast_radius_preview` | `mutation: BlastRadiusMutation` | `BlastRadiusPreviewResponse` (computed locally from the current projection; no kernel RPC) |
+| `op_ingest_memory` | `text, content, filename, content_type, context, tags, importance, source, session_id, reason` | `(doc_id, deduped)` |
+| `op_query_memory` | `query, top_k, source, session, min_importance` | `MemoryHit[]` |
 
 > `command_id` (UUID) is generated **inside the core** per call; `reason` is mandatory (the kernel rejects empty). The webview never sends a token or actor — auth is the core's interceptor.
+
+**Memory (contract `0057`, capability `memory-ingest-binary`).** `op_ingest_memory` has two mutually exclusive body lanes: `text` (markdown/plain) or `content` (raw file bytes) + `filename`. The kernel rejects both-or-neither and rejects `content` without a `filename` — the extension is what routes the chunker and what opens the docling_agent's binary-parse gate. Bytes cross the IPC bridge as a JS array, NOT a path: the kernel may not be on this machine, so a path it cannot read would be a lie. `context` is folded into the document body kernel-side (metadata is never chunked, so a note stored beside the document could never affect retrieval). `op_query_memory` returns ranked **evidence, not an answer** — `MemoryHit.text` is the quotable chunk and `section_path` its structural breadcrumb; `summary` is a truncated preview and must never be quoted as a source. Gate the file-upload affordance on the `memory-ingest-binary` capability: an older kernel silently ingests text-only.
 
 **Events** (`listen('kernel://*')`):
 - `kernel://state` → the full `StateOfRecord` projection, emitted on connection change, snapshot, and each structural feed event.
@@ -106,7 +106,7 @@ Backoff + jitter on the one connection: `base=1s, factor=2, cap=30s, jitter=±10
 
 ## Capability + version handshake
 
-`Snapshot` carries `kernel_version`, `contract_version`, `capabilities[]`. Compare `contract_version` to the pinned `0047`. Emit a projection that lets the webview **hide unsupported surfaces** (e.g. watch/daemon when absent) and **warn on skew**. A newer kernel serves your pinned calls; pinned-ahead calls return `Unimplemented` — degrade gracefully.
+`Snapshot` carries `kernel_version`, `contract_version`, `capabilities[]`. Compare `contract_version` to the pinned `0057`. Emit a projection that lets the webview **hide unsupported surfaces** (e.g. watch/daemon when absent) and **warn on skew**. A newer kernel serves your pinned calls; pinned-ahead calls return `Unimplemented` — degrade gracefully.
 
 ## The Tauri bridge
 

@@ -15,7 +15,7 @@ use tonic::{Request, Status};
 
 use crate::pb;
 use crate::pb::operator_console_client::OperatorConsoleClient;
-use crate::state::{ConnectionState, ConnectionStatus, StateOfRecord};
+use crate::state::{ConnectionStatus, StateOfRecord};
 
 /// Tauri event names emitted to the webview.
 const EV_STATE: &str = "kernel://state";
@@ -27,6 +27,38 @@ const UNREACHABLE_AFTER: Duration = Duration::from_secs(180); // ~3 min of faile
 
 type SharedToken = Arc<StdMutex<Option<String>>>;
 type ConsoleClient = OperatorConsoleClient<InterceptedService<Channel, AuthInterceptor>>;
+
+/// One retrieval hit, flattened for the webview (prost types are not Serialize).
+///
+/// `text` is the verbatim chunk and `section_path` its ADR-0060 structural
+/// breadcrumb — together they are what makes a citation checkable. `summary` is
+/// only a <=200-char preview; never quote it as a source.
+#[derive(Clone, serde::Serialize, Default)]
+pub struct MemoryHit {
+    pub doc_id: String,
+    pub summary: String,
+    pub text: String,
+    pub section_path: String,
+    pub score: f64,
+    pub source: String,
+    pub importance: f64,
+    pub tags: Vec<String>,
+}
+
+impl From<pb::MemoryOp> for MemoryHit {
+    fn from(m: pb::MemoryOp) -> Self {
+        Self {
+            doc_id: m.doc_id,
+            summary: m.summary,
+            text: m.text,
+            section_path: m.section_path,
+            score: m.score,
+            source: m.source,
+            importance: m.importance,
+            tags: m.tags,
+        }
+    }
+}
 
 /// Injects `authorization: Bearer <token>` on every call once logged in.
 #[derive(Clone)]
@@ -117,7 +149,7 @@ impl Transport {
     async fn set_connection(&self, app: &AppHandle, status: ConnectionStatus) {
         {
             let mut s = self.state.lock().await;
-            s.connection.status = status;
+            s.connection = status;
         }
         self.emit_state(app).await;
     }
@@ -135,7 +167,7 @@ impl Transport {
         *self.endpoint.lock().await = Some(endpoint);
         *self.channel.lock().await = None; // force reconnect to the (new) endpoint
         self.set_token(None);
-        self.set_connection(app, ConnectionStatus::Reconnecting).await;
+        self.set_connection(app, ConnectionStatus::Connecting).await;
 
         let mut client = self.client().await?;
         let resp = client
@@ -163,18 +195,10 @@ impl Transport {
             .map_err(|e| format!("snapshot: {}", e.message()))?
             .into_inner();
         let mut s = self.state.lock().await;
-        let conn_status = s.connection.status;
-        let conn_endpoint = s.connection.endpoint.clone();
-        let conn_last_state = s.connection.last_known_state_at.clone();
-        let conn_reason = s.connection.reason.clone();
+        let conn = s.connection;
         let role = s.role.clone();
         s.apply_snapshot(&snap);
-        s.connection = ConnectionState {
-            status: conn_status,
-            endpoint: conn_endpoint,
-            last_known_state_at: conn_last_state,
-            reason: conn_reason,
-        };
+        s.connection = conn;
         s.role = role;
         Ok(())
     }
@@ -303,76 +327,78 @@ impl Transport {
         Ok(ack.deduped)
     }
 
-    pub async fn set_scope(
+    // ---- Memory (ADR-0047 A2.4, contract 0057) ---------------------------
+
+    /// Ingest one document. Exactly one of `text` / `content` must be set — the
+    /// kernel rejects both-or-neither. `content` is the raw file bytes: they go to
+    /// the docling_agent for structure-aware parsing, so a PDF keeps its real
+    /// hierarchy instead of being flattened. `filename` is REQUIRED alongside
+    /// `content` (its extension routes the chunker).
+    ///
+    /// `context` is the operator's note; the kernel folds it into the body so it is
+    /// chunked and embedded with the document rather than stranded in metadata.
+    ///
+    /// Returns (doc_id, deduped). `deduped` = a replayed command_id, not a content
+    /// duplicate.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn ingest_memory(
         &self,
-        agent_id: String,
-        required_tags: Vec<String>,
-        any_of_tags: Vec<String>,
-        forbidden_tags: Vec<String>,
+        text: String,
+        content: Vec<u8>,
+        filename: String,
+        content_type: String,
+        context: String,
+        tags: Vec<String>,
+        importance: f64,
+        source: String,
+        session_id: String,
         reason: String,
-    ) -> Result<bool, String> {
+    ) -> Result<(String, bool), String> {
         let mut client = self.client().await?;
-        let ack = client
-            .set_scope(Request::new(pb::SetScopeRequest {
+        let resp = client
+            .ingest_memory(Request::new(pb::IngestMemoryOpRequest {
                 command_id: new_command_id(),
                 reason,
-                agent_id,
-                required_tags,
-                any_of_tags,
-                forbidden_tags,
+                text,
+                tags,
+                importance,
+                source,
+                session_id,
+                content,
+                filename,
+                content_type,
+                context,
             }))
             .await
             .map_err(map_status)?
             .into_inner();
-        Ok(ack.deduped)
+        Ok((resp.doc_id, resp.deduped))
     }
 
-    pub async fn register_skill(
+    /// Ranked recall over operator-visible memory. This is the deterministic
+    /// single-pass lane (kernel `SearchSystem`) — it returns evidence, NOT a
+    /// composed answer. Compose answers on the chat lane (`send_message`).
+    pub async fn query_memory(
         &self,
-        name: String,
-        description: String,
-        instructions: String,
-        tool_grants: Vec<String>,
-        scope_tags: Vec<String>,
-        reason: String,
-    ) -> Result<bool, String> {
+        query: String,
+        top_k: i32,
+        source: String,
+        session: String,
+        min_importance: f64,
+    ) -> Result<Vec<MemoryHit>, String> {
         let mut client = self.client().await?;
-        let ack = client
-            .register_skill(Request::new(pb::RegisterSkillRequest {
-                command_id: new_command_id(),
-                reason,
-                name,
-                description,
-                instructions,
-                tool_grants,
-                scope_tags,
+        let resp = client
+            .query_memory(Request::new(pb::QueryMemoryRequest {
+                query,
+                top_k,
+                source,
+                session,
+                min_importance,
             }))
             .await
             .map_err(map_status)?
             .into_inner();
-        Ok(ack.deduped)
-    }
-
-    pub async fn register_mcp(
-        &self,
-        name: String,
-        command: String,
-        url: String,
-        reason: String,
-    ) -> Result<bool, String> {
-        let mut client = self.client().await?;
-        let ack = client
-            .register_mcp(Request::new(pb::RegisterMcpRequest {
-                command_id: new_command_id(),
-                reason,
-                name,
-                command,
-                url,
-            }))
-            .await
-            .map_err(map_status)?
-            .into_inner();
-        Ok(ack.deduped)
+        Ok(resp.results.into_iter().map(MemoryHit::from).collect())
     }
 
     // ---- The feed loop ---------------------------------------------------
@@ -397,7 +423,7 @@ impl Transport {
         loop {
             self.set_connection(
                 &app,
-                ConnectionStatus::Reconnecting,
+                if attempt == 0 { ConnectionStatus::Connecting } else { ConnectionStatus::Reconnecting },
             )
             .await;
 
@@ -504,7 +530,7 @@ impl Transport {
             .min(RECONNECT_CAP);
         *attempt += 1;
         if delay >= UNREACHABLE_AFTER {
-            self.set_connection(app, ConnectionStatus::Down).await;
+            self.set_connection(app, ConnectionStatus::Unreachable).await;
         }
         *self.channel.lock().await = None;
         tokio::time::sleep(delay).await;
