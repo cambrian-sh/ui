@@ -1,9 +1,7 @@
-
-import { useEffect, useState } from 'react';
-import { ipc } from '@/ipc';
-import type { AgentDetail as AgentDetailType, Role } from '@/ipc/types';
+import { projectionStore } from '@/store/projection';
+import { useStore } from '@/store/useStore';
+import type { Role } from '@/ipc/types';
 import {
-  Button,
   Card,
   CardContent,
   CardHeader,
@@ -13,7 +11,6 @@ import {
   TabsContent,
   TabsList,
   TabsTrigger,
-  Separator,
 } from '@/design-system/components';
 import { relativeTime } from '@/lib/relativeTime';
 import { AgentTraitPill } from './AgentTraitPill';
@@ -24,36 +21,15 @@ interface AgentDetailProps {
 }
 
 export function AgentDetail({ agentId, role }: AgentDetailProps) {
-  const [detail, setDetail] = useState<AgentDetailType | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    setError(null);
-    ipc
-      .getAgent(agentId)
-      .then((d) => {
-        if (!cancelled) {
-          setDetail(d);
-          setLoading(false);
-        }
-      })
-      .catch((e: Error) => {
-        if (!cancelled) {
-          setError(e.message);
-          setLoading(false);
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [agentId]);
+  const agent = useStore(
+    projectionStore,
+    (s) => s.state?.agents?.find((a) => a.id === agentId) ?? null,
+  );
+  const isHydrating = useStore(projectionStore, (s) => s.state === null);
 
   const isOperator = role === 'operator';
 
-  if (loading) {
+  if (isHydrating) {
     return (
       <div className="flex h-full flex-col gap-3 p-4">
         <div className="h-5 w-2/3 rounded bg-[var(--bg-elevated)] animate-pulse" />
@@ -63,17 +39,15 @@ export function AgentDetail({ agentId, role }: AgentDetailProps) {
     );
   }
 
-  if (error || !detail) {
+  if (!agent) {
     return (
       <Card className="m-4">
         <CardContent className="pt-6">
-          <EmptyState title="Failed to load agent" body={error ?? 'Agent not found.'} />
+          <EmptyState title="Failed to load agent" body="Agent not found in the current projection." />
         </CardContent>
       </Card>
     );
   }
-
-  const isCognitive = detail.trait === 'Cognitive';
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
@@ -82,35 +56,32 @@ export function AgentDetail({ agentId, role }: AgentDetailProps) {
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
-              <AgentTraitPill trait={detail.trait} />
-              <h2 className="truncate text-sm font-semibold">{detail.id}</h2>
+              <AgentTraitPill trait={agent.trait} />
+              <h2 className="truncate text-sm font-semibold">{agent.id}</h2>
             </div>
-            <p className="mt-1 text-xs text-[var(--fg-muted)]">
-              v{detail.manifest_version}
-            </p>
           </div>
         </div>
         <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
           <div>
             <dt className="text-[var(--fg-muted)]">Last state</dt>
-            <dd className="text-[var(--fg-secondary)]">{detail.last_state}</dd>
+            <dd className="text-[var(--fg-secondary)]">{agent.last_state}</dd>
           </div>
           <div>
             <dt className="text-[var(--fg-muted)]">Last activity</dt>
             <dd className="text-[var(--fg-secondary)]">
-              {relativeTime(detail.last_activity_at)}
+              {relativeTime(agent.last_activity_at)}
             </dd>
           </div>
           <div>
             <dt className="text-[var(--fg-muted)]">Scope</dt>
             <dd className="truncate text-[var(--fg-secondary)]">
-              {detail.scope_summary}
+              {agent.scope_summary}
             </dd>
           </div>
           <div>
             <dt className="text-[var(--fg-muted)]">TrustScore</dt>
             <dd className="tabular-nums text-[var(--fg-secondary)]">
-              {(detail.trust_score * 100).toFixed(0)}
+              {(agent.trust_score * 100).toFixed(0)}
             </dd>
           </div>
         </dl>
@@ -131,69 +102,30 @@ export function AgentDetail({ agentId, role }: AgentDetailProps) {
         >
           <Card>
             <CardHeader>
-              <CardTitle>Manifest</CardTitle>
+              <CardTitle>Summary</CardTitle>
             </CardHeader>
             <CardContent>
               <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
                 <div>
-                  <dt className="text-[var(--fg-muted)]">Version</dt>
-                  <dd className="font-mono text-[var(--fg-secondary)]">
-                    {detail.manifest_version}
-                  </dd>
+                  <dt className="text-[var(--fg-muted)]">Trait</dt>
+                  <dd className="text-[var(--fg-secondary)]">{agent.trait}</dd>
+                </div>
+                <div>
+                  <dt className="text-[var(--fg-muted)]">Scope</dt>
+                  <dd className="text-[var(--fg-secondary)]">{agent.scope_summary}</dd>
                 </div>
               </dl>
-              {detail.manifest_json !== '{}' && (
-                <pre className="mt-3 max-h-32 overflow-y-auto rounded bg-[var(--bg-elevated)] p-2 font-mono text-[10px] text-[var(--fg-muted)]">
-                  {detail.manifest_json}
-                </pre>
-              )}
             </CardContent>
           </Card>
 
-          {isCognitive && detail.cognitive_fingerprint && (
-            <Card className="mt-3">
-              <CardHeader>
-                <CardTitle>Cognitive fingerprint</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="font-mono text-[10px] text-[var(--fg-muted)] break-all">
-                  {detail.cognitive_fingerprint}
-                </p>
-              </CardContent>
-            </Card>
-          )}
-
           <Card className="mt-3">
             <CardHeader>
-              <CardTitle>Scope</CardTitle>
+              <CardTitle>Manifest & Fingerprint</CardTitle>
             </CardHeader>
             <CardContent>
-              <dl className="flex flex-col gap-2 text-xs">
-                <div>
-                  <dt className="text-[var(--fg-muted)]">Required tags</dt>
-                  <dd className="text-[var(--fg-secondary)]">
-                    {detail.scope.required_tags.length > 0
-                      ? detail.scope.required_tags.join(', ')
-                      : '—'}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-[var(--fg-muted)]">Any-of tags</dt>
-                  <dd className="text-[var(--fg-secondary)]">
-                    {detail.scope.any_of_tags.length > 0
-                      ? detail.scope.any_of_tags.join(', ')
-                      : '—'}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-[var(--fg-muted)]">Forbidden tags</dt>
-                  <dd className="text-[var(--fg-secondary)]">
-                    {detail.scope.forbidden_tags.length > 0
-                      ? detail.scope.forbidden_tags.join(', ')
-                      : '—'}
-                  </dd>
-                </div>
-              </dl>
+              <p className="text-xs text-[var(--fg-muted)]">
+                Rich agent details (manifest, cognitive fingerprint, scope config) are not projected by the current kernel build.
+              </p>
             </CardContent>
           </Card>
         </TabsContent>
@@ -212,56 +144,21 @@ export function AgentDetail({ agentId, role }: AgentDetailProps) {
                 <div className="flex justify-between">
                   <dt className="text-[var(--fg-muted)]">Current</dt>
                   <dd className="tabular-nums text-[var(--fg-secondary)]">
-                    {(detail.trust_score * 100).toFixed(0)}
-                  </dd>
-                </div>
-                <div className="flex justify-between">
-                  <dt className="text-[var(--fg-muted)]">EWMA</dt>
-                  <dd className="tabular-nums text-[var(--fg-secondary)]">
-                    {(detail.trust_score_ewma * 100).toFixed(0)}
+                    {(agent.trust_score * 100).toFixed(0)}
                   </dd>
                 </div>
               </dl>
             </CardContent>
           </Card>
 
-          {detail.recent_verification_outcomes.length > 0 && (
-            <Card className="mt-3">
-              <CardHeader>
-                <CardTitle>Recent verification outcomes</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <ul className="flex flex-col gap-1 text-xs">
-                  {detail.recent_verification_outcomes.map((outcome, i) => (
-                    <li key={i} className="text-[var(--fg-secondary)]">
-                      {outcome}
-                    </li>
-                  ))}
-                </ul>
-              </CardContent>
-            </Card>
-          )}
-
           <Card className="mt-3">
             <CardHeader>
-              <CardTitle>Activity</CardTitle>
+              <CardTitle>Activity & History</CardTitle>
             </CardHeader>
             <CardContent>
-              <dl className="flex flex-col gap-2 text-xs">
-                <div>
-                  <dt className="text-[var(--fg-muted)]">Last error</dt>
-                  <dd className="text-[var(--status-err)]">
-                    {detail.last_error || '—'}
-                  </dd>
-                </div>
-                <Separator className="my-1" />
-                <div>
-                  <dt className="text-[var(--fg-muted)]">Last successful plan</dt>
-                  <dd className="font-mono text-[var(--fg-secondary)]">
-                    {detail.last_successful_plan_id || '—'}
-                  </dd>
-                </div>
-              </dl>
+              <p className="text-xs text-[var(--fg-muted)]">
+                TrustScore EWMA, verification outcomes, last error, and last successful plan are not projected by the current kernel build.
+              </p>
             </CardContent>
           </Card>
         </TabsContent>
@@ -276,22 +173,6 @@ export function AgentDetail({ agentId, role }: AgentDetailProps) {
               <CardTitle>Agent controls</CardTitle>
             </CardHeader>
             <CardContent className="flex flex-col gap-2">
-              <Button
-                variant="default"
-                disabled={!isOperator}
-                aria-label="Adjust scope"
-                className="w-full"
-              >
-                Adjust scope
-              </Button>
-              <Button
-                variant="default"
-                disabled={!isOperator}
-                aria-label="Adjust tool grants"
-                className="w-full"
-              >
-                Adjust tool grants
-              </Button>
               {!isOperator && (
                 <p className="mt-2 text-xs text-[var(--fg-muted)]">
                   These actions require the Operator role.

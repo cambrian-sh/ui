@@ -1,7 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { ipc } from '@/ipc';
 import type {
-  ScopeDetail as ScopeDetailType,
   Role,
   BlastRadiusPreviewResponse,
 } from '@/ipc/types';
@@ -22,6 +21,9 @@ import { ScopeTagList } from './ScopeTagList';
 import { useMutation } from '@/lib/useMutation';
 import { ConfirmMutationDialog } from '@/screens/sessions/ConfirmMutationDialog';
 import { ErrorState } from '@/design-system/components/cambrian/error-state';
+import { useStore } from '@/store/useStore';
+import { projectionStore } from '@/store/projection';
+import { relativeTime } from '@/lib/relativeTime';
 
 interface ScopeDetailProps {
   agentId: string;
@@ -47,9 +49,11 @@ function computeMode(
 }
 
 export function ScopeDetail({ agentId, role }: ScopeDetailProps) {
-  const [detail, setDetail] = useState<ScopeDetailType | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const entity = useStore(
+    projectionStore,
+    (s) => s.state?.scope?.[agentId] ?? null,
+  );
+  const isConnecting = useStore(projectionStore, (s) => s.state === null);
 
   const [formOpen, setFormOpen] = useState(false);
   const [reqInput, setReqInput] = useState('');
@@ -58,29 +62,6 @@ export function ScopeDetail({ agentId, role }: ScopeDetailProps) {
   const [pending, setPending] = useState(false);
   const [preview, setPreview] = useState<BlastRadiusPreviewResponse | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    setError(null);
-    ipc
-      .getScope(agentId)
-      .then((d) => {
-        if (!cancelled) {
-          setDetail(d);
-          setLoading(false);
-        }
-      })
-      .catch((e: Error) => {
-        if (!cancelled) {
-          setError(e.message);
-          setLoading(false);
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [agentId]);
 
   const { mutate, isLoading, error: mutationError } = useMutation(
     async (args: {
@@ -103,7 +84,7 @@ export function ScopeDetail({ agentId, role }: ScopeDetailProps) {
 
   const isOperator = role === 'operator';
 
-  if (loading) {
+  if (isConnecting) {
     return (
       <div className="flex h-full flex-col gap-3 p-4">
         <div className="h-5 w-2/3 rounded bg-[var(--bg-elevated)] animate-pulse" />
@@ -113,20 +94,20 @@ export function ScopeDetail({ agentId, role }: ScopeDetailProps) {
     );
   }
 
-  if (error || !detail) {
+  if (!entity) {
     return (
       <Card className="m-4">
         <CardContent className="pt-6">
-          <EmptyState title="Failed to load scope" body={error ?? 'Agent not found.'} />
+          <EmptyState title="Scope not found" body="Scope for this agent was not found in the current projection." />
         </CardContent>
       </Card>
     );
   }
 
   const handleOpenForm = () => {
-    setReqInput(detail.effective_scope.required_tags.join(', '));
-    setAnyInput(detail.effective_scope.any_of_tags.join(', '));
-    setForbiddenInput(detail.effective_scope.forbidden_tags.join(', '));
+    setReqInput('');
+    setAnyInput('');
+    setForbiddenInput('');
     setFormOpen(true);
   };
 
@@ -138,11 +119,10 @@ export function ScopeDetail({ agentId, role }: ScopeDetailProps) {
     setPreview(null);
     setPreviewLoading(true);
     try {
-      const mode = computeMode(detail.effective_scope, {
-        required_tags,
-        any_of_tags,
-        forbidden_tags,
-      });
+      const mode = computeMode(
+        { required_tags: [], any_of_tags: [], forbidden_tags: [] },
+        { required_tags, any_of_tags, forbidden_tags },
+      );
       const resp = await ipc.getBlastRadiusPreview({
         kind: 'set_scope',
         agent_id: agentId,
@@ -182,47 +162,43 @@ export function ScopeDetail({ agentId, role }: ScopeDetailProps) {
       <div className="border-b border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0 flex-1">
-            <h2 className="truncate text-sm font-semibold">{detail.agent_id}</h2>
+            <h2 className="truncate text-sm font-semibold">{entity.agent_id}</h2>
           </div>
         </div>
         <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
           <div>
-            <dt className="text-[var(--fg-muted)]">k-anonymity floor</dt>
+            <dt className="text-[var(--fg-muted)]">Write tags</dt>
             <dd className="tabular-nums text-[var(--fg-secondary)]">
-              {detail.k_anonymity_floor}
+              {entity.default_write_tags.length}
             </dd>
           </div>
           <div>
-            <dt className="text-[var(--fg-muted)]">Write tags</dt>
-            <dd className="tabular-nums text-[var(--fg-secondary)]">
-              {detail.default_write_tags.length}
+            <dt className="text-[var(--fg-muted)]">Last change</dt>
+            <dd className="text-[var(--fg-secondary)]">
+              {relativeTime(entity.last_scope_change_at)}
             </dd>
           </div>
         </dl>
       </div>
 
-      <Tabs defaultValue="effective" className="flex flex-1 flex-col overflow-hidden">
+      <Tabs defaultValue="overview" className="flex flex-1 flex-col overflow-hidden">
         <TabsList className="mx-4 mt-2 self-start">
-          <TabsTrigger value="effective">Effective Scope</TabsTrigger>
-          <TabsTrigger value="caller">Caller Scope</TabsTrigger>
-          <TabsTrigger value="history">History</TabsTrigger>
+          <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="actions">Actions</TabsTrigger>
         </TabsList>
 
         <TabsContent
-          value="effective"
+          value="overview"
           className="flex-1 overflow-y-auto px-4 pb-4 focus-visible:outline-none"
         >
           <Card>
             <CardHeader>
-              <CardTitle>Effective Scope</CardTitle>
+              <CardTitle>Effective scope summary</CardTitle>
             </CardHeader>
             <CardContent>
-              <dl className="flex flex-col gap-3 text-xs">
-                <ScopeTagList tags={detail.effective_scope.required_tags} label="Required tags" />
-                <ScopeTagList tags={detail.effective_scope.any_of_tags} label="Any-of tags" />
-                <ScopeTagList tags={detail.effective_scope.forbidden_tags} label="Forbidden tags" />
-              </dl>
+              <p className="text-xs text-[var(--fg-secondary)]">
+                {entity.effective_scope_summary || 'No summary available.'}
+              </p>
             </CardContent>
           </Card>
 
@@ -232,50 +208,16 @@ export function ScopeDetail({ agentId, role }: ScopeDetailProps) {
             </CardHeader>
             <CardContent>
               <dl className="flex flex-col gap-2 text-xs">
-                <ScopeTagList tags={detail.default_write_tags} label="Tags" />
+                <ScopeTagList tags={entity.default_write_tags} label="Tags" />
               </dl>
             </CardContent>
           </Card>
-        </TabsContent>
 
-        <TabsContent
-          value="caller"
-          className="flex-1 overflow-y-auto px-4 pb-4 focus-visible:outline-none"
-        >
-          <Card>
-            <CardHeader>
-              <CardTitle>Caller Scope</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <dl className="flex flex-col gap-3 text-xs">
-                <ScopeTagList tags={detail.caller_scope.required_tags} label="Required tags" />
-                <ScopeTagList tags={detail.caller_scope.any_of_tags} label="Any-of tags" />
-                <ScopeTagList tags={detail.caller_scope.forbidden_tags} label="Forbidden tags" />
-              </dl>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent
-          value="history"
-          className="flex-1 overflow-y-auto px-4 pb-4 focus-visible:outline-none"
-        >
-          <Card>
-            <CardHeader>
-              <CardTitle>Scope Change History</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {detail.scope_change_history.length > 0 ? (
-                <ul className="flex flex-col gap-1 text-xs">
-                  {detail.scope_change_history.map((entry, i) => (
-                    <li key={i} className="text-[var(--fg-secondary)]">
-                      {entry}
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="text-xs text-[var(--fg-muted)]">No scope changes recorded.</p>
-              )}
+          <Card className="mt-3">
+            <CardContent className="pt-4">
+              <p className="text-xs italic text-[var(--fg-muted)]">
+                Rich scope detail (effective scope / k-anonymity / change history) is not projected by the current kernel build.
+              </p>
             </CardContent>
           </Card>
         </TabsContent>

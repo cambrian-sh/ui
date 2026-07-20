@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { axe } from 'vitest-axe';
 import { MemoryDetail } from './MemoryDetail';
 import { ipc } from '@/ipc';
 import { projectionStore } from '@/store/projection';
@@ -187,5 +188,15 @@ describe('MemoryDetail', () => {
 
     const alert = await screen.findByRole('alert');
     expect(alert).toHaveTextContent('PermissionDenied');
+  });
+
+  it('has no a11y violations', async () => {
+    projectionStore.getState().hydrate(makeState('operator'));
+    const { container } = render(<MemoryDetail doc={makeDoc()} />);
+    await waitFor(() => {
+      expect(screen.getByText('mem-123')).toBeInTheDocument();
+    });
+    const results = await axe(container);
+    expect(results).toHaveNoViolations();
   });
 });

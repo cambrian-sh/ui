@@ -1,6 +1,4 @@
-import { useEffect, useState } from 'react';
-import { ipc } from '@/ipc';
-import type { WatchConfigDetail, Role } from '@/ipc/types';
+import type { Role } from '@/ipc/types';
 import {
   Button,
   Card,
@@ -11,6 +9,8 @@ import {
   ScrollArea,
 } from '@/design-system/components';
 import { relativeTime } from '@/lib/relativeTime';
+import { useStore } from '@/store/useStore';
+import { projectionStore } from '@/store/projection';
 
 interface WatchDetailProps {
   configId: string;
@@ -18,36 +18,15 @@ interface WatchDetailProps {
 }
 
 export function WatchDetail({ configId, role }: WatchDetailProps) {
-  const [detail, setDetail] = useState<WatchConfigDetail | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    setError(null);
-    ipc
-      .getWatchConfig(configId)
-      .then((d) => {
-        if (!cancelled) {
-          setDetail(d);
-          setLoading(false);
-        }
-      })
-      .catch((e: Error) => {
-        if (!cancelled) {
-          setError(e.message);
-          setLoading(false);
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [configId]);
+  const entity = useStore(
+    projectionStore,
+    (s) => s.state?.watch_configs?.find((w) => w.id === configId) ?? null,
+  );
+  const isConnecting = useStore(projectionStore, (s) => s.state === null);
 
   const isOperator = role === 'operator';
 
-  if (loading) {
+  if (isConnecting) {
     return (
       <div className="flex h-full flex-col gap-3 p-4">
         <div className="h-5 w-2/3 rounded bg-[var(--bg-elevated)] animate-pulse" />
@@ -57,20 +36,20 @@ export function WatchDetail({ configId, role }: WatchDetailProps) {
     );
   }
 
-  if (error || !detail) {
+  if (!entity) {
     return (
       <Card className="m-4">
         <CardContent className="pt-6">
-          <EmptyState title="Failed to load watch config" body={error ?? 'Watch config not found.'} />
+          <EmptyState title="Watch config not found" body="The watch configuration was not found in the current projection." />
         </CardContent>
       </Card>
     );
   }
 
   const statusColor =
-    detail.last_fire_status === 'ok'
+    entity.last_fire_status === 'ok'
       ? 'var(--status-ok)'
-      : detail.last_fire_status === 'error'
+      : entity.last_fire_status === 'error'
         ? 'var(--status-err)'
         : 'var(--status-warn)';
 
@@ -86,7 +65,7 @@ export function WatchDetail({ configId, role }: WatchDetailProps) {
                 style={{ backgroundColor: statusColor }}
                 aria-hidden="true"
               />
-              <h2 className="truncate text-sm font-semibold">{detail.id}</h2>
+              <h2 className="truncate text-sm font-semibold">{entity.id}</h2>
             </div>
           </div>
         </div>
@@ -94,16 +73,16 @@ export function WatchDetail({ configId, role }: WatchDetailProps) {
           <div>
             <dt className="text-[var(--fg-muted)]">Last fire</dt>
             <dd className="text-[var(--fg-secondary)]">
-              {detail.last_fire_at ? relativeTime(detail.last_fire_at) : 'Never'}
+              {entity.last_fire_at ? relativeTime(entity.last_fire_at) : 'Never'}
             </dd>
           </div>
           <div>
             <dt className="text-[var(--fg-muted)]">Status</dt>
-            <dd className="text-[var(--fg-secondary)] capitalize">{detail.last_fire_status}</dd>
+            <dd className="text-[var(--fg-secondary)] capitalize">{entity.last_fire_status}</dd>
           </div>
           <div>
             <dt className="text-[var(--fg-muted)]">Errors</dt>
-            <dd className="tabular-nums text-[var(--fg-secondary)]">{detail.error_count}</dd>
+            <dd className="tabular-nums text-[var(--fg-secondary)]">{entity.error_count}</dd>
           </div>
         </dl>
       </div>
@@ -112,23 +91,12 @@ export function WatchDetail({ configId, role }: WatchDetailProps) {
         <div className="flex flex-col gap-4">
           <Card>
             <CardHeader>
-              <CardTitle>Rule</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <pre className="max-h-48 overflow-y-auto rounded bg-[var(--bg-elevated)] p-2 font-mono text-[10px] text-[var(--fg-muted)]">
-                {detail.rule}
-              </pre>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
               <CardTitle>Target Streams</CardTitle>
             </CardHeader>
             <CardContent>
-              {detail.target_streams.length > 0 ? (
+              {entity.target_streams.length > 0 ? (
                 <ul className="flex flex-col gap-1 text-xs">
-                  {detail.target_streams.map((stream, i) => (
+                  {entity.target_streams.map((stream, i) => (
                     <li key={i} className="font-mono text-[var(--fg-secondary)]">
                       {stream}
                     </li>
@@ -141,49 +109,12 @@ export function WatchDetail({ configId, role }: WatchDetailProps) {
           </Card>
 
           <Card>
-            <CardHeader>
-              <CardTitle>Last Fires</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {detail.last_fires.length > 0 ? (
-                <ul className="flex flex-col gap-3 text-xs">
-                  {detail.last_fires.map((fire, i) => (
-                    <li key={i} className="flex flex-col gap-1 border-b border-[var(--border-subtle)] pb-2 last:border-0 last:pb-0">
-                      <div className="flex justify-between">
-                        <span className="font-medium text-[var(--fg-secondary)] capitalize">{fire.status}</span>
-                        <span className="text-[var(--fg-muted)]">{relativeTime(fire.fired_at)}</span>
-                      </div>
-                      <div className="text-[var(--fg-muted)]">{fire.duration_ms}ms</div>
-                      {fire.output && (
-                        <pre className="mt-1 max-h-24 overflow-y-auto rounded bg-[var(--bg-elevated)] p-1.5 font-mono text-[10px] text-[var(--fg-muted)]">
-                          {fire.output}
-                        </pre>
-                      )}
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="text-xs text-[var(--fg-muted)]">No fires recorded</p>
-              )}
+            <CardContent className="pt-4">
+              <p className="text-xs italic text-[var(--fg-muted)]">
+                Rule definition / fire history / errors are not projected by the current kernel build.
+              </p>
             </CardContent>
           </Card>
-
-          {detail.errors.length > 0 && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Errors</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <ul className="flex flex-col gap-1 text-xs">
-                  {detail.errors.map((err, i) => (
-                    <li key={i} className="text-[var(--status-err)]">
-                      {err}
-                    </li>
-                  ))}
-                </ul>
-              </CardContent>
-            </Card>
-          )}
 
           <Card>
             <CardHeader>

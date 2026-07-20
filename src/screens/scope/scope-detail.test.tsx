@@ -1,15 +1,17 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { axe } from 'vitest-axe';
 import { ScopeDetail } from '@/screens/scope/ScopeDetail';
 import { ipc } from '@/ipc';
+import { projectionStore } from '@/store/projection';
 import type {
-  ScopeDetail as ScopeDetailType,
+  ScopeSummary,
+  StateOfRecord,
   BlastRadiusPreviewResponse,
 } from '@/ipc/types';
 
 vi.mock('@/ipc', () => ({
   ipc: {
-    getScope: vi.fn(),
     setScope: vi.fn().mockResolvedValue({ deduped: false }),
     getBlastRadiusPreview: vi.fn().mockResolvedValue({
       affected_agents: [],
@@ -20,23 +22,43 @@ vi.mock('@/ipc', () => ({
   },
 }));
 
-function makeScope(overrides: Partial<ScopeDetailType> = {}): ScopeDetailType {
+function makeScope(overrides: Partial<ScopeSummary> = {}): ScopeSummary {
   return {
     agent_id: 'agent-1',
-    effective_scope: {
-      required_tags: ['read:docs'],
-      any_of_tags: [],
-      forbidden_tags: ['write:secrets'],
-    },
+    effective_scope_summary: 'required:read:docs,forbidden:write:secrets',
     default_write_tags: ['write:docs'],
-    caller_scope: {
-      required_tags: ['read:docs'],
-      any_of_tags: [],
-      forbidden_tags: ['write:secrets'],
-    },
-    k_anonymity_floor: 3,
-    scope_change_history: [],
+    last_scope_change_at: new Date().toISOString(),
     ...overrides,
+  };
+}
+
+function makeState(scopeMap: Record<string, ScopeSummary>): StateOfRecord {
+  return {
+    connection: {
+      status: 'live',
+      endpoint: 'mock://localhost',
+      last_known_state_at: new Date().toISOString(),
+      reason: null,
+    },
+    role: 'operator',
+    kernel_version: '0.6.9-alpha',
+    contract_version: '0047',
+    capabilities: [],
+    contract_skew: 0,
+    cursor: 0,
+    plans: [],
+    sessions: [],
+    audit_tail: [],
+    pending_hitl: [],
+    agents: [],
+    tools: [],
+    skills: [],
+    mcp_servers: [],
+    scope: scopeMap,
+    watch_configs: [],
+    lifecycle: { scheduler_state: 'idle', pending_jobs: 0, last_consolidation: null, dormancy_events: [] },
+    verifier_pool: { pool_agents: [], recent_rounds: [], surveillance_triggers: [] },
+    cost_dashboard: { spend_rate_usd: 0, circuit_breakers: [], max_energy_per_step: 0.5, price_ledger: [], recent_acquires: [] },
   };
 }
 
@@ -56,7 +78,8 @@ async function renderAndOpenActions(
 describe('ScopeDetail Actions tab', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(ipc.getScope).mockResolvedValue(makeScope());
+    projectionStore.getState().reset();
+    projectionStore.getState().hydrate(makeState({ 'agent-1': makeScope() }));
   });
 
   it('hides adjust controls for Viewer role', async () => {
@@ -72,14 +95,14 @@ describe('ScopeDetail Actions tab', () => {
     expect(screen.getByRole('button', { name: 'Adjust scope' })).toBeInTheDocument();
   });
 
-  it('seeds form inputs with current effective scope values', async () => {
+  it('opens form with empty inputs when effective scope is not projected', async () => {
     await renderAndOpenActions('agent-1', 'operator');
 
     fireEvent.click(screen.getByRole('button', { name: 'Adjust scope' }));
 
-    expect(screen.getByLabelText(/Required tags/i)).toHaveValue('read:docs');
+    expect(screen.getByLabelText(/Required tags/i)).toHaveValue('');
     expect(screen.getByLabelText(/Any-of tags/i)).toHaveValue('');
-    expect(screen.getByLabelText(/Forbidden tags/i)).toHaveValue('write:secrets');
+    expect(screen.getByLabelText(/Forbidden tags/i)).toHaveValue('');
   });
 
   it('calls setScope with correct params including agent_id on confirm', async () => {
@@ -171,12 +194,12 @@ describe('ScopeDetail Actions tab', () => {
         {
           agent_id: 'agent-1',
           before_effective_scope: {
-            required_tags: ['read:docs'],
+            required_tags: [],
             any_of_tags: [],
-            forbidden_tags: ['write:secrets'],
-            resolved_required: ['read:docs'],
+            forbidden_tags: [],
+            resolved_required: [],
             resolved_any_of: [],
-            resolved_forbidden: ['write:secrets'],
+            resolved_forbidden: [],
           },
           after_effective_scope: {
             required_tags: ['read:docs', 'read:logs'],
@@ -186,8 +209,8 @@ describe('ScopeDetail Actions tab', () => {
             resolved_any_of: [],
             resolved_forbidden: ['write:secrets'],
           },
-          before_default_write_tags: ['write:docs'],
-          after_default_write_tags: ['write:docs'],
+          before_default_write_tags: [],
+          after_default_write_tags: [],
           impact: 'narrowed',
         },
       ],
@@ -215,7 +238,7 @@ describe('ScopeDetail Actions tab', () => {
           scope: {
             required_tags: ['read:docs', 'read:logs'],
             any_of_tags: [],
-            forbidden_tags: ['write:secrets'],
+            forbidden_tags: [],
           },
         }),
       );
@@ -250,20 +273,39 @@ describe('ScopeDetail Actions tab', () => {
   });
 
   it('renders without crashing when scope collections are empty', async () => {
-    vi.mocked(ipc.getScope).mockResolvedValue(
-      makeScope({
-        effective_scope: { required_tags: [], any_of_tags: [], forbidden_tags: [] },
+    projectionStore.getState().reset();
+    projectionStore.getState().hydrate(makeState({
+      'agent-1': makeScope({
+        effective_scope_summary: '',
         default_write_tags: [],
-        caller_scope: { required_tags: [], any_of_tags: [], forbidden_tags: [] },
-        k_anonymity_floor: 0,
-        scope_change_history: [],
       }),
-    );
+    }));
 
     render(<ScopeDetail agentId="agent-1" role="operator" />);
 
     await waitFor(() => {
       expect(screen.getByText('agent-1')).toBeInTheDocument();
     });
+  });
+
+  it('shows error state when agent scope is not found in projection', async () => {
+    projectionStore.getState().reset();
+    projectionStore.getState().hydrate(makeState({}));
+
+    render(<ScopeDetail agentId="nonexistent" role="operator" />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Scope not found')).toBeInTheDocument();
+    });
+  });
+
+  it('has no a11y violations', async () => {
+    projectionStore.getState().hydrate(makeState({ 'agent-1': makeScope() }));
+    const { container } = render(<ScopeDetail agentId="agent-1" role="operator" />);
+    await waitFor(() => {
+      expect(screen.getByText('agent-1')).toBeInTheDocument();
+    });
+    const results = await axe(container);
+    expect(results).toHaveNoViolations();
   });
 });

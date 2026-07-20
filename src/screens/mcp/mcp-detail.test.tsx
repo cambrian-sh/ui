@@ -1,26 +1,55 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { axe } from 'vitest-axe';
 import { MCPDetail } from '@/screens/mcp/MCPDetail';
 import { ipc } from '@/ipc';
-import type { MCPServerDetail } from '@/ipc/types';
+import { projectionStore } from '@/store/projection';
+import type { MCPServerSummary, StateOfRecord } from '@/ipc/types';
 
 vi.mock('@/ipc', () => ({
   ipc: {
-    getMCPServer: vi.fn(),
     registerMCP: vi.fn().mockResolvedValue({ deduped: false }),
   },
 }));
 
-function makeServer(overrides: Partial<MCPServerDetail> = {}): MCPServerDetail {
+function makeServer(overrides: Partial<MCPServerSummary> = {}): MCPServerSummary {
   return {
     id: 'mcp-1',
     connection_state: 'Up',
     tool_count: 0,
     last_health_check_at: new Date().toISOString(),
     default_price: 0,
-    health_check_history: [],
-    discovered_tools: [],
     ...overrides,
+  };
+}
+
+function makeState(servers: MCPServerSummary[]): StateOfRecord {
+  return {
+    connection: {
+      status: 'live',
+      endpoint: 'mock://localhost',
+      last_known_state_at: new Date().toISOString(),
+      reason: null,
+    },
+    role: 'operator',
+    kernel_version: '0.6.9-alpha',
+    contract_version: '0047',
+    capabilities: [],
+    contract_skew: 0,
+    cursor: 0,
+    plans: [],
+    sessions: [],
+    audit_tail: [],
+    pending_hitl: [],
+    agents: [],
+    tools: [],
+    skills: [],
+    mcp_servers: servers,
+    scope: {},
+    watch_configs: [],
+    lifecycle: { scheduler_state: 'idle', pending_jobs: 0, last_consolidation: null, dormancy_events: [] },
+    verifier_pool: { pool_agents: [], recent_rounds: [], surveillance_triggers: [] },
+    cost_dashboard: { spend_rate_usd: 0, circuit_breakers: [], max_energy_per_step: 0.5, price_ledger: [], recent_acquires: [] },
   };
 }
 
@@ -37,7 +66,8 @@ async function renderAndOpenActions(serverId = 'mcp-1', role: 'operator' | 'view
 describe('MCPDetail Actions tab', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(ipc.getMCPServer).mockResolvedValue(makeServer());
+    projectionStore.getState().reset();
+    projectionStore.getState().hydrate(makeState([makeServer()]));
   });
 
   it('hides register controls for Viewer role', async () => {
@@ -229,21 +259,39 @@ describe('MCPDetail Actions tab', () => {
   });
 
   it('renders without crashing when fields are empty', async () => {
-    vi.mocked(ipc.getMCPServer).mockResolvedValue(
-      makeServer({
-        connection_state: '',
-        tool_count: 0,
-        last_health_check_at: '',
-        default_price: 0,
-        health_check_history: [],
-        discovered_tools: [],
-      }),
-    );
+    projectionStore.getState().reset();
+    projectionStore.getState().hydrate(makeState([makeServer({
+      connection_state: '',
+      tool_count: 0,
+      last_health_check_at: '',
+      default_price: 0,
+    })]));
 
     render(<MCPDetail serverId="mcp-1" role="operator" />);
 
     await waitFor(() => {
       expect(screen.getByText('mcp-1')).toBeInTheDocument();
     });
+  });
+
+  it('shows error state when server ID is not found in projection', async () => {
+    projectionStore.getState().reset();
+    projectionStore.getState().hydrate(makeState([]));
+
+    render(<MCPDetail serverId="nonexistent" role="operator" />);
+
+    await waitFor(() => {
+      expect(screen.getByText('MCP server not found')).toBeInTheDocument();
+    });
+  });
+
+  it('has no a11y violations', async () => {
+    projectionStore.getState().hydrate(makeState([makeServer({ id: 'mcp-1' })]));
+    const { container } = render(<MCPDetail serverId="mcp-1" role="operator" />);
+    await waitFor(() => {
+      expect(screen.getByText('mcp-1')).toBeInTheDocument();
+    });
+    const results = await axe(container);
+    expect(results).toHaveNoViolations();
   });
 });

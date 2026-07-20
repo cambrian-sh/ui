@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { axe } from 'vitest-axe';
 import { SessionDetail } from '@/screens/sessions/SessionDetail';
 import { ipc } from '@/ipc';
 import type { SessionSummary } from '@/ipc/types';
@@ -138,5 +139,16 @@ describe('SessionDetail mutation errors', () => {
     expect(screen.getByText('Sample session')).toBeInTheDocument();
     expect(screen.getByText('$0.00')).toBeInTheDocument();
     expect(screen.queryByText('Agent mix')).not.toBeInTheDocument();
+  });
+
+  it('has no a11y violations', async () => {
+    const { container } = render(
+      <SessionDetail session={makeSession()} role="operator" />,
+    );
+    await waitFor(() => {
+      expect(screen.getByText('Sample session')).toBeInTheDocument();
+    });
+    const results = await axe(container);
+    expect(results).toHaveNoViolations();
   });
 });

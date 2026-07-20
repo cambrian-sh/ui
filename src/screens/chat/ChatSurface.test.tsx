@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { axe } from 'vitest-axe';
 import { ChatSurface } from '@/screens/chat/ChatSurface';
 import { projectionStore } from '@/store/projection';
 import type { StateOfRecord, HITLIntervention } from '@/ipc/types';
@@ -229,5 +230,15 @@ describe('ChatSurface HITL', () => {
       screen.getByText('No blocks yet. The plan view appears here when a plan starts.'),
     ).toBeInTheDocument();
     expect(screen.getByLabelText('Chat message')).toBeDisabled();
+  });
+
+  it('has no a11y violations', async () => {
+    projectionStore.getState().hydrate(makeState('operator', []));
+    const { container } = render(<ChatSurface sessionId="session-1" />);
+    await waitFor(() => {
+      expect(screen.getByText('plan-1')).toBeInTheDocument();
+    });
+    const results = await axe(container);
+    expect(results).toHaveNoViolations();
   });
 });

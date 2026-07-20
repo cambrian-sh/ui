@@ -55,6 +55,45 @@ export const ipc = {
   getConfigSchema: (): Promise<t.ConfigSchema> =>
     invoke<t.ConfigSchema>('op_get_config_schema'),
 
+  setScope: (params: t.SetScopeParams): Promise<t.CommandAck> =>
+    invoke<t.CommandAck>('op_set_scope', {
+      agent_id: params.agent_id,
+      required_tags: params.required_tags,
+      any_of_tags: params.any_of_tags,
+      forbidden_tags: params.forbidden_tags,
+      reason: params.reason,
+    }),
+
+  registerMCP: (params: t.RegisterMCPParams): Promise<t.CommandAck> =>
+    invoke<t.CommandAck>('op_register_mcp', {
+      name: params.name,
+      command: params.command,
+      url: params.url,
+      reason: params.reason,
+    }),
+
+  registerSkill: (params: t.RegisterSkillParams): Promise<t.CommandAck> =>
+    invoke<t.CommandAck>('op_register_skill', {
+      name: params.name,
+      description: params.description,
+      instructions: params.instructions,
+      tool_grants: params.tool_grants,
+      scope_tags: params.scope_tags,
+      reason: params.reason,
+    }),
+
+  triggerConsolidation: (params: t.TriggerConsolidationParams): Promise<t.CommandAck> =>
+    invoke<t.CommandAck>('op_trigger_consolidation', {
+      scope: '',
+      reason: params.reason,
+    }),
+
+  listTools: (): Promise<t.ToolSummary[]> =>
+    invoke<t.ToolSummary[]>('op_list_tools'),
+
+  listSkills: (): Promise<t.SkillSummary[]> =>
+    invoke<t.SkillSummary[]>('op_list_skills'),
+
   // ----- Memory (kernel contract 0057) -----
 
   /** Ingest one document. See `IngestMemoryParams` for the two body lanes. */

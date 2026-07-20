@@ -1,29 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
+import { axe } from 'vitest-axe';
 import { ToolDetail } from '@/screens/tools/ToolDetail';
-import { ipc } from '@/ipc';
 import { projectionStore } from '@/store/projection';
 import type {
-  ToolDetail as ToolDetailType,
-  AgentSummary,
+  ToolSummary,
   StateOfRecord,
-  BlastRadiusPreviewResponse,
 } from '@/ipc/types';
 
-vi.mock('@/ipc', () => ({
-  ipc: {
-    getTool: vi.fn(),
-    setToolGrant: vi.fn().mockResolvedValue({ deduped: false }),
-    getBlastRadiusPreview: vi.fn().mockResolvedValue({
-      affected_agents: [],
-      affected_plans: [],
-      computed_at: '2026-01-01T00:00:00Z',
-      cache_ttl_ms: 5000,
-    } as BlastRadiusPreviewResponse),
-  },
-}));
-
-function makeTool(overrides: Partial<ToolDetailType> = {}): ToolDetailType {
+function makeTool(overrides: Partial<ToolSummary> = {}): ToolSummary {
   return {
     id: 'tool-1',
     description: 'A test tool',
@@ -31,25 +16,14 @@ function makeTool(overrides: Partial<ToolDetailType> = {}): ToolDetailType {
     granted_agent_count: 0,
     recent_invocation_count: 0,
     last_cost: 0,
-    manifest_version: '1.0',
-    schema_json: '{}',
-    granted_agents: [],
     ...overrides,
   };
 }
 
-function makeAgent(id: string): AgentSummary {
-  return {
-    id,
-    trait: 'Cognitive',
-    scope_summary: '',
-    trust_score: 0.5,
-    last_activity_at: new Date().toISOString(),
-    last_state: 'idle',
-  };
-}
-
-function makeState(agents: AgentSummary[] = [], role: 'operator' | 'viewer' = 'operator'): StateOfRecord {
+function makeState(
+  tools: ToolSummary[] = [],
+  role: 'operator' | 'viewer' = 'operator',
+): StateOfRecord {
   return {
     connection: { status: 'live', endpoint: null, last_known_state_at: null, reason: null },
     role,
@@ -62,8 +36,8 @@ function makeState(agents: AgentSummary[] = [], role: 'operator' | 'viewer' = 'o
     sessions: [],
     audit_tail: [],
     pending_hitl: [],
-    agents,
-    tools: [],
+    agents: [],
+    tools,
     skills: [],
     mcp_servers: [],
     scope: {},
@@ -74,180 +48,102 @@ function makeState(agents: AgentSummary[] = [], role: 'operator' | 'viewer' = 'o
   };
 }
 
-function seedAgents(agents: AgentSummary[]) {
-  projectionStore.setState({ state: makeState(agents) });
-}
-
-async function renderAndOpenActions(toolId = 'tool-1', role: 'operator' | 'viewer' = 'operator') {
-  render(<ToolDetail toolId={toolId} role={role} />);
-  await waitFor(() => {
-    expect(screen.getByText(toolId)).toBeInTheDocument();
-  });
-  const actionsTab = screen.getByRole('tab', { name: 'Actions' });
-  fireEvent.mouseDown(actionsTab);
-  fireEvent.click(actionsTab);
-}
-
-describe('ToolDetail Actions tab', () => {
+describe('ToolDetail', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(ipc.getTool).mockResolvedValue(makeTool());
-    projectionStore.setState({ state: makeState() });
   });
 
-  it('hides grant/revoke controls for Viewer role', async () => {
-    seedAgents([makeAgent('agent-1')]);
-    await renderAndOpenActions('tool-1', 'viewer');
+  it('renders tool info from projection', () => {
+    const tool = makeTool({
+      id: 'tool-alpha',
+      description: 'Alpha tool',
+      danger: true,
+      granted_agent_count: 3,
+      recent_invocation_count: 12,
+      last_cost: 0.45,
+    });
+    projectionStore.setState({
+      state: makeState([tool], 'operator'),
+    });
 
-    expect(screen.queryByRole('button', { name: /Grant/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /Revoke/i })).not.toBeInTheDocument();
-    expect(screen.getByText(/require the Operator role/i)).toBeInTheDocument();
+    render(<ToolDetail toolId="tool-alpha" role="operator" />);
+
+    expect(screen.getByText('tool-alpha')).toBeInTheDocument();
+    expect(screen.getByText('Alpha tool')).toBeInTheDocument();
+    expect(screen.getByText('Danger')).toBeInTheDocument();
+    expect(screen.getByText('3')).toBeInTheDocument();
+    expect(screen.getByText('12')).toBeInTheDocument();
+    expect(screen.getByText('$0.45')).toBeInTheDocument();
   });
 
-  it('shows Grant for ungranted agents and Revoke for granted agents', async () => {
-    seedAgents([makeAgent('agent-1'), makeAgent('agent-2')]);
-    vi.mocked(ipc.getTool).mockResolvedValue(makeTool({ granted_agents: ['agent-1'] }));
+  it('shows empty state when tool not found', () => {
+    projectionStore.setState({
+      state: makeState([], 'operator'),
+    });
 
-    await renderAndOpenActions('tool-1', 'operator');
+    render(<ToolDetail toolId="missing-tool" role="operator" />);
 
-    expect(screen.getByRole('button', { name: 'Revoke agent-1' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Grant agent-2' })).toBeInTheDocument();
+    expect(screen.getByText('Tool not found in the current projection.')).toBeInTheDocument();
   });
 
-  it('disables confirm when reason is empty and enables with valid reason', async () => {
-    seedAgents([makeAgent('agent-1')]);
-    await renderAndOpenActions('tool-1', 'operator');
-
-    fireEvent.click(screen.getByRole('button', { name: 'Grant agent-1' }));
-
-    await waitFor(() => {
-      expect(screen.getByLabelText(/Reason/i)).toBeInTheDocument();
+  it('shows loading skeleton when projection is hydrating', () => {
+    projectionStore.setState({
+      state: null,
+      isHydrating: true,
     });
-
-    const confirmBtn = screen.getByRole('button', { name: 'Grant' });
-    expect(confirmBtn).toBeDisabled();
-
-    fireEvent.change(screen.getByLabelText(/Reason/i), {
-      target: { value: 'needed for task' },
-    });
-
-    expect(confirmBtn).not.toBeDisabled();
-  });
-
-  it('calls setToolGrant with correct params on confirm', async () => {
-    seedAgents([makeAgent('agent-1')]);
-    await renderAndOpenActions('tool-1', 'operator');
-
-    fireEvent.click(screen.getByRole('button', { name: 'Grant agent-1' }));
-
-    await waitFor(() => {
-      expect(screen.getByLabelText(/Reason/i)).toBeInTheDocument();
-    });
-
-    fireEvent.change(screen.getByLabelText(/Reason/i), {
-      target: { value: 'needed for task' },
-    });
-
-    fireEvent.click(screen.getByRole('button', { name: 'Grant' }));
-
-    await waitFor(() => {
-      expect(vi.mocked(ipc.setToolGrant)).toHaveBeenCalledWith({
-        agent_id: 'agent-1',
-        tool_name: 'tool-1',
-        granted: true,
-        reason: 'needed for task',
-      });
-    });
-  });
-
-  it('shows ErrorState on kernel error', async () => {
-    seedAgents([makeAgent('agent-1')]);
-    vi.mocked(ipc.setToolGrant).mockRejectedValueOnce(new Error('PermissionDenied'));
-
-    await renderAndOpenActions('tool-1', 'operator');
-
-    fireEvent.click(screen.getByRole('button', { name: 'Grant agent-1' }));
-
-    await waitFor(() => {
-      expect(screen.getByLabelText(/Reason/i)).toBeInTheDocument();
-    });
-
-    fireEvent.change(screen.getByLabelText(/Reason/i), {
-      target: { value: 'needed for task' },
-    });
-
-    fireEvent.click(screen.getByRole('button', { name: 'Grant' }));
-
-    const alert = await screen.findByRole('alert');
-    expect(alert).toHaveTextContent('PermissionDenied');
-  });
-
-  it('fetches blast-radius preview before opening the dialog', async () => {
-    seedAgents([makeAgent('agent-1')]);
-    const previewResp: BlastRadiusPreviewResponse = {
-      affected_agents: [],
-      affected_plans: [],
-      computed_at: '2026-01-01T00:00:00Z',
-      cache_ttl_ms: 5000,
-    };
-    vi.mocked(ipc.getBlastRadiusPreview).mockResolvedValueOnce(previewResp);
-
-    await renderAndOpenActions('tool-1', 'operator');
-
-    fireEvent.click(screen.getByRole('button', { name: 'Grant agent-1' }));
-
-    await waitFor(() => {
-      expect(vi.mocked(ipc.getBlastRadiusPreview)).toHaveBeenCalledWith({
-        kind: 'set_tool_grant',
-        agent_id: 'agent-1',
-        tool_name: 'tool-1',
-        granted: true,
-      });
-    });
-
-    await waitFor(() => {
-      expect(screen.getByText('Blast radius preview')).toBeInTheDocument();
-    });
-  });
-
-  it('closes dialog after successful grant mutation', async () => {
-    seedAgents([makeAgent('agent-1')]);
-    await renderAndOpenActions('tool-1', 'operator');
-
-    fireEvent.click(screen.getByRole('button', { name: 'Grant agent-1' }));
-
-    await waitFor(() => {
-      expect(screen.getByLabelText(/Reason/i)).toBeInTheDocument();
-    });
-
-    fireEvent.change(screen.getByLabelText(/Reason/i), {
-      target: { value: 'needed for task' },
-    });
-
-    fireEvent.click(screen.getByRole('button', { name: 'Grant' }));
-
-    await waitFor(() => {
-      expect(screen.queryByLabelText(/Reason/i)).not.toBeInTheDocument();
-    });
-    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
-  });
-
-  it('renders without crashing when fields are empty', async () => {
-    vi.mocked(ipc.getTool).mockResolvedValue(
-      makeTool({
-        description: '',
-        schema_json: '',
-        manifest_version: '',
-        granted_agents: [],
-        last_cost: 0,
-      }),
-    );
-    seedAgents([]);
 
     render(<ToolDetail toolId="tool-1" role="operator" />);
 
-    await waitFor(() => {
-      expect(screen.getByText('tool-1')).toBeInTheDocument();
+    expect(document.querySelector('.animate-pulse')).toBeInTheDocument();
+  });
+
+  it('viewer role sees operator notice in Actions tab', async () => {
+    const tool = makeTool({ id: 'tool-1' });
+    projectionStore.setState({
+      state: makeState([tool], 'viewer'),
     });
+
+    render(<ToolDetail toolId="tool-1" role="viewer" />);
+
+    expect(screen.getByText('tool-1')).toBeInTheDocument();
+
+    const actionsTab = screen.getByRole('tab', { name: 'Actions' });
+    fireEvent.mouseDown(actionsTab);
+    fireEvent.click(actionsTab);
+
+    expect(screen.getByText(/require the Operator role/i)).toBeInTheDocument();
+  });
+
+  it('shows degradation notice for per-agent grant list', () => {
+    const tool = makeTool({ id: 'tool-1', granted_agent_count: 2 });
+    projectionStore.setState({
+      state: makeState([tool], 'operator'),
+    });
+
+    render(<ToolDetail toolId="tool-1" role="operator" />);
+
+    expect(screen.getByText(/not projected by the current kernel build/i)).toBeInTheDocument();
+  });
+
+  it('renders without crashing when fields are empty', () => {
+    const tool = makeTool({ description: '', last_cost: 0, granted_agent_count: 0 });
+    projectionStore.setState({
+      state: makeState([tool], 'operator'),
+    });
+
+    render(<ToolDetail toolId="tool-1" role="operator" />);
+
+    expect(screen.getByText('tool-1')).toBeInTheDocument();
+  });
+
+  it('has no a11y violations', async () => {
+    const tool = makeTool({ id: 'tool-1' });
+    projectionStore.setState({
+      state: makeState([tool], 'operator'),
+    });
+    const { container } = render(<ToolDetail toolId="tool-1" role="operator" />);
+    expect(screen.getByText('tool-1')).toBeInTheDocument();
+    const results = await axe(container);
+    expect(results).toHaveNoViolations();
   });
 });

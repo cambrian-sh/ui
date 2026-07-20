@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearch } from '@tanstack/react-router';
 import { Card, CardContent, EmptyState, ScrollArea } from '@/design-system/components';
 import { useStore } from '@/store/useStore';
@@ -45,8 +45,14 @@ export function WatchConsole() {
     ? search.focus
     : null;
 
+  useEffect(() => {
+    if (search.focus && !configs.some((c) => c.id === search.focus)) {
+      navigate({ to: '/watch', search: { focus: undefined }, replace: true });
+    }
+  }, [search.focus, configs]);
+
   const handleSelect = (configId: string) => {
-    navigate({ to: '/watch', search: { focus: configId } });
+    navigate({ to: '/watch', search: { focus: configId }, replace: true });
   };
 
   return (

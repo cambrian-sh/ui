@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { ipc } from '@/ipc';
-import type { MCPServerDetail, Role } from '@/ipc/types';
+import type { Role } from '@/ipc/types';
 import {
   Button,
   Card,
@@ -19,6 +19,8 @@ import { ConfirmMutationDialog } from '@/screens/sessions/ConfirmMutationDialog'
 import { ErrorState } from '@/design-system/components/cambrian/error-state';
 import { relativeTime } from '@/lib/relativeTime';
 import { MCPConnectionPill } from './MCPConnectionPill';
+import { useStore } from '@/store/useStore';
+import { projectionStore } from '@/store/projection';
 
 interface MCPDetailProps {
   serverId: string;
@@ -26,32 +28,11 @@ interface MCPDetailProps {
 }
 
 export function MCPDetail({ serverId, role }: MCPDetailProps) {
-  const [detail, setDetail] = useState<MCPServerDetail | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    setError(null);
-    ipc
-      .getMCPServer(serverId)
-      .then((d) => {
-        if (!cancelled) {
-          setDetail(d);
-          setLoading(false);
-        }
-      })
-      .catch((e: Error) => {
-        if (!cancelled) {
-          setError(e.message);
-          setLoading(false);
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [serverId]);
+  const entity = useStore(
+    projectionStore,
+    (s) => s.state?.mcp_servers?.find((m) => m.id === serverId) ?? null,
+  );
+  const isConnecting = useStore(projectionStore, (s) => s.state === null);
 
   const [regName, setRegName] = useState('');
   const [regCommand, setRegCommand] = useState('');
@@ -87,7 +68,7 @@ export function MCPDetail({ serverId, role }: MCPDetailProps) {
     if (!open) setConfirmOpen(false);
   };
 
-  if (loading) {
+  if (isConnecting) {
     return (
       <div className="flex h-full flex-col gap-3 p-4">
         <div className="h-5 w-2/3 rounded bg-[var(--bg-elevated)] animate-pulse" />
@@ -97,11 +78,11 @@ export function MCPDetail({ serverId, role }: MCPDetailProps) {
     );
   }
 
-  if (error || !detail) {
+  if (!entity) {
     return (
       <Card className="m-4">
         <CardContent className="pt-6">
-          <EmptyState title="Failed to load MCP server" body={error ?? 'Server not found.'} />
+          <EmptyState title="MCP server not found" body="The MCP server was not found in the current projection." />
         </CardContent>
       </Card>
     );
@@ -113,8 +94,8 @@ export function MCPDetail({ serverId, role }: MCPDetailProps) {
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
-              <MCPConnectionPill state={detail.connection_state} />
-              <h2 className="truncate text-sm font-semibold">{detail.id}</h2>
+              <MCPConnectionPill state={entity.connection_state} />
+              <h2 className="truncate text-sm font-semibold">{entity.id}</h2>
             </div>
           </div>
         </div>
@@ -122,19 +103,19 @@ export function MCPDetail({ serverId, role }: MCPDetailProps) {
           <div>
             <dt className="text-[var(--fg-muted)]">Tools</dt>
             <dd className="tabular-nums text-[var(--fg-secondary)]">
-              {detail.tool_count}
+              {entity.tool_count}
             </dd>
           </div>
           <div>
             <dt className="text-[var(--fg-muted)]">Default price</dt>
             <dd className="tabular-nums text-[var(--fg-secondary)]">
-              ${detail.default_price.toFixed(2)}
+              ${entity.default_price.toFixed(2)}
             </dd>
           </div>
           <div>
             <dt className="text-[var(--fg-muted)]">Last health check</dt>
             <dd className="text-[var(--fg-secondary)]">
-              {relativeTime(detail.last_health_check_at)}
+              {relativeTime(entity.last_health_check_at)}
             </dd>
           </div>
         </dl>
@@ -143,7 +124,6 @@ export function MCPDetail({ serverId, role }: MCPDetailProps) {
       <Tabs defaultValue="overview" className="flex flex-1 flex-col overflow-hidden">
         <TabsList className="mx-4 mt-2 self-start">
           <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="tools">Discovered Tools</TabsTrigger>
           <TabsTrigger value="actions">Actions</TabsTrigger>
         </TabsList>
 
@@ -159,50 +139,17 @@ export function MCPDetail({ serverId, role }: MCPDetailProps) {
               <dl className="flex flex-col gap-2 text-xs">
                 <div className="flex justify-between">
                   <dt className="text-[var(--fg-muted)]">Current state</dt>
-                  <dd><MCPConnectionPill state={detail.connection_state} /></dd>
+                  <dd><MCPConnectionPill state={entity.connection_state} /></dd>
                 </div>
               </dl>
             </CardContent>
           </Card>
 
-          {detail.health_check_history.length > 0 && (
-            <Card className="mt-3">
-              <CardHeader>
-                <CardTitle>Health check history</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <ul className="flex flex-col gap-1 text-xs">
-                  {detail.health_check_history.map((entry, i) => (
-                    <li key={i} className="text-[var(--fg-secondary)]">
-                      {entry}
-                    </li>
-                  ))}
-                </ul>
-              </CardContent>
-            </Card>
-          )}
-        </TabsContent>
-
-        <TabsContent
-          value="tools"
-          className="flex-1 overflow-y-auto px-4 pb-4 focus-visible:outline-none"
-        >
-          <Card>
-            <CardHeader>
-              <CardTitle>Discovered Tools</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {detail.discovered_tools.length > 0 ? (
-                <ul className="flex flex-col gap-1 text-xs">
-                  {detail.discovered_tools.map((tool) => (
-                    <li key={tool} className="font-mono text-[var(--fg-secondary)]">
-                      {tool}
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="text-xs text-[var(--fg-muted)]">No tools discovered.</p>
-              )}
+          <Card className="mt-3">
+            <CardContent className="pt-4">
+              <p className="text-xs italic text-[var(--fg-muted)]">
+                Health-check history and discovered tools are not projected by the current kernel build.
+              </p>
             </CardContent>
           </Card>
         </TabsContent>

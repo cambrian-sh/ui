@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
+import { axe } from 'vitest-axe';
 import { PlanWorkSurface } from './PlanWorkSurface';
 import { ipc } from '@/ipc';
 import { projectionStore } from '@/store/projection';
@@ -117,5 +118,16 @@ describe('PlanWorkSurface', () => {
     render(<PlanWorkSurface />);
 
     expect(screen.getByText(/No plan in flight/i)).toBeInTheDocument();
+  });
+
+  it('has no a11y violations', async () => {
+    projectionStore.getState().hydrate(makeState([makePlan({ plan_id: 'plan-1' })]));
+    searchState.focus = 'plan-1';
+    const { container } = render(<PlanWorkSurface />);
+    await waitFor(() => {
+      expect(screen.getByText(/plan-1/)).toBeInTheDocument();
+    });
+    const results = await axe(container);
+    expect(results).toHaveNoViolations();
   });
 });

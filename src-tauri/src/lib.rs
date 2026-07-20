@@ -10,7 +10,7 @@ pub mod transport;
 
 use tauri::{AppHandle, State};
 
-use state::StateOfRecord;
+use state::{SkillSummary, StateOfRecord, ToolSummary};
 use transport::{MemoryHit, Transport};
 
 // ---- Tauri command bridge (webview → core → kernel) ---------------------
@@ -164,6 +164,77 @@ async fn op_query_memory(
         .await
 }
 
+#[tauri::command]
+async fn op_set_scope(
+    transport: State<'_, Transport>,
+    agent_id: String,
+    required_tags: Vec<String>,
+    any_of_tags: Vec<String>,
+    forbidden_tags: Vec<String>,
+    reason: String,
+) -> Result<bool, String> {
+    transport
+        .inner()
+        .clone()
+        .set_scope(agent_id, required_tags, any_of_tags, forbidden_tags, reason)
+        .await
+}
+
+#[tauri::command]
+async fn op_register_mcp(
+    transport: State<'_, Transport>,
+    name: String,
+    command: String,
+    url: String,
+    reason: String,
+) -> Result<bool, String> {
+    transport
+        .inner()
+        .clone()
+        .register_mcp(name, command, url, reason)
+        .await
+}
+
+#[tauri::command]
+async fn op_register_skill(
+    transport: State<'_, Transport>,
+    name: String,
+    description: String,
+    instructions: String,
+    tool_grants: Vec<String>,
+    scope_tags: Vec<String>,
+    reason: String,
+) -> Result<bool, String> {
+    transport
+        .inner()
+        .clone()
+        .register_skill(name, description, instructions, tool_grants, scope_tags, reason)
+        .await
+}
+
+#[tauri::command]
+async fn op_trigger_consolidation(
+    transport: State<'_, Transport>,
+    scope: String,
+    reason: String,
+) -> Result<bool, String> {
+    transport
+        .inner()
+        .clone()
+        .trigger_consolidation(scope, reason)
+        .await
+}
+
+#[tauri::command]
+async fn op_list_tools(transport: State<'_, Transport>) -> Result<Vec<ToolSummary>, String> {
+    transport.inner().clone().list_tools().await
+}
+
+#[tauri::command]
+async fn op_list_skills(transport: State<'_, Transport>) -> Result<Vec<SkillSummary>, String> {
+    transport.inner().clone().list_skills().await
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -179,6 +250,12 @@ pub fn run() {
             op_resume_session,
             op_resolve_hitl,
             op_set_tool_grant,
+            op_set_scope,
+            op_register_mcp,
+            op_register_skill,
+            op_trigger_consolidation,
+            op_list_tools,
+            op_list_skills,
             op_ingest_memory,
             op_query_memory,
         ])

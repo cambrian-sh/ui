@@ -1,14 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { ipc } from '@/ipc';
 import { projectionStore } from '@/store/projection';
 import { useStore } from '@/store/useStore';
-import type {
-  ToolDetail as ToolDetailType,
-  Role,
-  BlastRadiusPreviewResponse,
-} from '@/ipc/types';
+import type { Role } from '@/ipc/types';
 import {
-  Button,
   Card,
   CardContent,
   CardHeader,
@@ -48,40 +43,15 @@ const GRANT_META = {
 } as const;
 
 export function ToolDetail({ toolId, role }: ToolDetailProps) {
-  const [detail, setDetail] = useState<ToolDetailType | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const tool = useStore(
+    projectionStore,
+    (s) => s.state?.tools?.find((t) => t.id === toolId) ?? null,
+  );
+  const isHydrating = useStore(projectionStore, (s) => s.state === null);
 
   const [pending, setPending] = useState<PendingGrant | null>(null);
-  const [preview, setPreview] = useState<BlastRadiusPreviewResponse | null>(null);
-  const [previewLoading, setPreviewLoading] = useState(false);
 
-  const agents = useStore(projectionStore, (s) => s.state?.agents ?? []);
-
-  useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    setError(null);
-    ipc
-      .getTool(toolId)
-      .then((d) => {
-        if (!cancelled) {
-          setDetail(d);
-          setLoading(false);
-        }
-      })
-      .catch((e: Error) => {
-        if (!cancelled) {
-          setError(e.message);
-          setLoading(false);
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [toolId]);
-
-  const { mutate, isLoading, error: mutationError } = useMutation(
+  const { mutate, error: mutationError } = useMutation(
     async (args: { agent_id: string; granted: boolean; reason: string }) => {
       return ipc.setToolGrant({
         agent_id: args.agent_id,
@@ -93,25 +63,6 @@ export function ToolDetail({ toolId, role }: ToolDetailProps) {
   );
 
   const isOperator = role === 'operator';
-
-  const handleOpenGrant = async (agent_id: string, granted: boolean) => {
-    setPending({ agent_id, granted });
-    setPreview(null);
-    setPreviewLoading(true);
-    try {
-      const resp = await ipc.getBlastRadiusPreview({
-        kind: 'set_tool_grant',
-        agent_id,
-        tool_name: toolId,
-        granted,
-      });
-      setPreview(resp);
-    } catch {
-      setPreview(null);
-    } finally {
-      setPreviewLoading(false);
-    }
-  };
 
   const handleConfirm = async (reason: string) => {
     if (!pending) return;
@@ -125,11 +76,10 @@ export function ToolDetail({ toolId, role }: ToolDetailProps) {
   const handleDialogClose = (open: boolean) => {
     if (!open) {
       setPending(null);
-      setPreview(null);
     }
   };
 
-  if (loading) {
+  if (isHydrating) {
     return (
       <div className="flex h-full flex-col gap-3 p-4">
         <div className="h-5 w-2/3 animate-pulse rounded bg-[var(--bg-elevated)]" />
@@ -139,11 +89,11 @@ export function ToolDetail({ toolId, role }: ToolDetailProps) {
     );
   }
 
-  if (error || !detail) {
+  if (!tool) {
     return (
       <Card className="m-4">
         <CardContent className="pt-6">
-          <EmptyState title="Failed to load tool" body={error ?? 'Tool not found.'} />
+          <EmptyState title="Failed to load tool" body="Tool not found in the current projection." />
         </CardContent>
       </Card>
     );
@@ -155,33 +105,32 @@ export function ToolDetail({ toolId, role }: ToolDetailProps) {
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
-              {detail.danger && (
+              {tool.danger && (
                 <span className="inline-flex items-center rounded-full bg-[var(--status-warn)]/10 px-2 py-0.5 text-xs font-medium text-[var(--status-warn)]">
                   Danger
                 </span>
               )}
-              <h2 className="truncate text-sm font-semibold">{detail.id}</h2>
+              <h2 className="truncate text-sm font-semibold">{tool.id}</h2>
             </div>
-            <p className="mt-1 text-xs text-[var(--fg-muted)]">v{detail.manifest_version}</p>
           </div>
         </div>
         <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
           <div>
             <dt className="text-[var(--fg-muted)]">Granted agents</dt>
             <dd className="tabular-nums text-[var(--fg-secondary)]">
-              {detail.granted_agent_count}
+              {tool.granted_agent_count}
             </dd>
           </div>
           <div>
             <dt className="text-[var(--fg-muted)]">Recent invocations</dt>
             <dd className="tabular-nums text-[var(--fg-secondary)]">
-              {detail.recent_invocation_count}
+              {tool.recent_invocation_count}
             </dd>
           </div>
           <div>
             <dt className="text-[var(--fg-muted)]">Last cost</dt>
             <dd className="tabular-nums text-[var(--fg-secondary)]">
-              ${detail.last_cost.toFixed(2)}
+              ${tool.last_cost.toFixed(2)}
             </dd>
           </div>
         </dl>
@@ -203,7 +152,7 @@ export function ToolDetail({ toolId, role }: ToolDetailProps) {
               <CardTitle>Description</CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-xs text-[var(--fg-secondary)]">{detail.description}</p>
+              <p className="text-xs text-[var(--fg-secondary)]">{tool.description}</p>
             </CardContent>
           </Card>
 
@@ -212,13 +161,9 @@ export function ToolDetail({ toolId, role }: ToolDetailProps) {
               <CardTitle>Schema</CardTitle>
             </CardHeader>
             <CardContent>
-              {detail.schema_json !== '{}' ? (
-                <pre className="max-h-64 overflow-y-auto rounded bg-[var(--bg-elevated)] p-2 font-mono text-[10px] text-[var(--fg-muted)]">
-                  {detail.schema_json}
-                </pre>
-              ) : (
-                <p className="text-xs text-[var(--fg-muted)]">No schema provided.</p>
-              )}
+              <p className="text-xs text-[var(--fg-muted)]">
+                Rich schema (JSON Schema / manifest version) is not projected by the current kernel build.
+              </p>
             </CardContent>
           </Card>
         </TabsContent>
@@ -232,17 +177,12 @@ export function ToolDetail({ toolId, role }: ToolDetailProps) {
               <CardTitle>Granted Agents</CardTitle>
             </CardHeader>
             <CardContent>
-              {detail.granted_agents.length > 0 ? (
-                <ul className="flex flex-col gap-1 text-xs">
-                  {detail.granted_agents.map((agentId) => (
-                    <li key={agentId} className="font-mono text-[var(--fg-secondary)]">
-                      {agentId}
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="text-xs text-[var(--fg-muted)]">No agents granted.</p>
-              )}
+              <p className="text-xs text-[var(--fg-secondary)]">
+                Granted to {tool.granted_agent_count} agent(s).
+              </p>
+              <p className="mt-1 text-xs text-[var(--fg-muted)]">
+                Per-agent grant list is not projected by the current kernel build.
+              </p>
             </CardContent>
           </Card>
         </TabsContent>
@@ -268,78 +208,10 @@ export function ToolDetail({ toolId, role }: ToolDetailProps) {
                 <CardTitle>Tool controls</CardTitle>
               </CardHeader>
               <CardContent className="flex flex-col gap-3">
-                {pending && (
-                  <div className="rounded-sm border border-[var(--border-subtle)] bg-[var(--bg-elevated)] p-3">
-                    <p className="text-xs font-medium text-[var(--fg-secondary)]">
-                      Blast radius preview
-                    </p>
-                    {previewLoading ? (
-                      <p className="mt-1 text-xs text-[var(--fg-muted)]">
-                        Loading blast radius…
-                      </p>
-                    ) : preview ? (
-                      <dl className="mt-1 flex flex-col gap-1 text-xs">
-                        <div>
-                          <dt className="inline text-[var(--fg-muted)]">Affected agents: </dt>
-                          <dd className="inline tabular-nums text-[var(--fg-secondary)]">
-                            {preview.affected_agents.length}
-                          </dd>
-                        </div>
-                        <div>
-                          <dt className="inline text-[var(--fg-muted)]">Affected plans: </dt>
-                          <dd className="inline tabular-nums text-[var(--fg-secondary)]">
-                            {preview.affected_plans.length}
-                          </dd>
-                        </div>
-                      </dl>
-                    ) : (
-                      <p className="mt-1 text-xs text-[var(--fg-muted)]">
-                        Preview unavailable.
-                      </p>
-                    )}
-                  </div>
-                )}
-
-                {agents.length > 0 ? (
-                  <ul className="flex flex-col gap-1">
-                    {agents.map((agent) => {
-                      const isGranted = detail.granted_agents.includes(agent.id);
-                      return (
-                        <li
-                          key={agent.id}
-                          className="flex items-center justify-between gap-2 text-xs"
-                        >
-                          <span className="truncate font-mono text-[var(--fg-secondary)]">
-                            {agent.id}
-                          </span>
-                          {isGranted ? (
-                            <Button
-                              variant="danger"
-                              size="sm"
-                              disabled={isLoading}
-                              onClick={() => handleOpenGrant(agent.id, false)}
-                              aria-label={`Revoke ${agent.id}`}
-                            >
-                              Revoke
-                            </Button>
-                          ) : (
-                            <Button
-                              variant="default"
-                              size="sm"
-                              disabled={isLoading}
-                              onClick={() => handleOpenGrant(agent.id, true)}
-                              aria-label={`Grant ${agent.id}`}
-                            >
-                              Grant
-                            </Button>
-                          )}
-                        </li>
-                      );
-                    })}
-                  </ul>
-                ) : (
-                  <p className="text-xs text-[var(--fg-muted)]">No agents registered.</p>
-                )}
+                <p className="text-xs text-[var(--fg-muted)]">
+                  Per-agent grant list is not projected by the current kernel build.
+                  Grant/revoke controls are unavailable. ({tool.granted_agent_count} agent(s) currently granted.)
+                </p>
 
                 {mutationError && <ErrorState reason={mutationError} />}
               </CardContent>

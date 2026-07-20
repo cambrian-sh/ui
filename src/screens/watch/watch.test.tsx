@@ -103,6 +103,7 @@ describe('WatchConsole', () => {
     expect(navigateMock).toHaveBeenCalledWith({
       to: '/watch',
       search: { focus: config.id },
+      replace: true,
     });
     expect(searchState.focus).toBe(config.id);
   });
