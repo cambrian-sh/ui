@@ -7,6 +7,7 @@ class MockIPC {
   private stateListeners = new Set<(state: t.StateOfRecord) => void>();
   private tokenListeners = new Set<(chunk: t.TokenChunk) => void>();
   private ingestCount = 0;
+  private zeroHitsMode = false;
 
   private initialState(): t.StateOfRecord {
     return {
@@ -176,21 +177,43 @@ class MockIPC {
     if (!hasText && !hasContent) throw new Error('one of text or content is required');
     if (hasText && hasContent) throw new Error('text and content are mutually exclusive');
     if (hasContent && params.filename === '') throw new Error('filename is required when content is set');
-    return [`mock-doc-${this.ingestCount++}`, false];
+    const id = `mock-doc-${this.ingestCount++}`;
+    const deduped = this.ingestCount % 5 === 0;
+    return [id, deduped];
   }
 
   async queryMemory(params: t.QueryMemoryParams): Promise<t.MemoryHit[]> {
-    if (params.query === '') return [];
+    if (params.query === '' || this.zeroHitsMode) return [];
     return [
       {
         doc_id: 'mock-doc-0',
         summary: 'Ops review: two SEV-2s, both closed.',
-        text: 'Two SEV-2 incidents were raised this week; both were closed within SLA.',
+        text: 'Two SEV-2 incidents were raised this week; both were closed within SLA. The first was a database lock contention on the primary replica pair. The second involved a misconfigured autoscaling policy that caused a 12-minute outage on the east-1 region. Root cause analysis for both incidents is attached below.',
         section_path: 'Ops Review > 3.2 Incidents',
         score: 0.82,
-        source: 'operator_ingest',
+        source: '2026-W29-ops-review.pdf',
         importance: 0.6,
-        tags: [],
+        tags: ['ops', 'incidents'],
+      },
+      {
+        doc_id: 'mock-doc-1',
+        summary: 'Q3 budget allocation for AI infra.',
+        text: 'The Q3 budget allocates $2.4M to AI infrastructure, split across compute (60%), storage (25%), and networking (15%). Key risk: GPU supply constraints in APAC may delay the planned cluster expansion by 4–6 weeks.',
+        section_path: '',
+        score: 0.71,
+        source: 'Q3-budget-draft.pdf',
+        importance: 0.8,
+        tags: ['finance', 'budget'],
+      },
+      {
+        doc_id: 'mock-doc-2',
+        summary: 'Meeting notes from platform team standup.',
+        text: 'Platform team agreed to deprecate the v2 API gateway by end of Q3. Migration guide is in progress. No blockers reported.',
+        section_path: 'Standup > 2026-07-18',
+        score: 0.54,
+        source: 'platform-standup-notes.md',
+        importance: 0.3,
+        tags: ['platform'],
       },
     ];
   }
@@ -231,6 +254,10 @@ class MockIPC {
 
   async listSkills(): Promise<t.SkillSummary[]> {
     return this.state.skills;
+  }
+
+  async listWatches(): Promise<t.WatchConfigSummary[]> {
+    return this.state.watch_configs;
   }
 
   async getSkill(skillId: string): Promise<t.SkillDetail> {
@@ -349,6 +376,10 @@ class MockIPC {
   __seedWatchConfigs(configs: t.WatchConfigSummary[]) {
     this.state = { ...this.state, watch_configs: configs };
     this.emitState();
+  }
+
+  __setZeroHitsMode(enabled: boolean) {
+    this.zeroHitsMode = enabled;
   }
 
   __seedLifecycle(lifecycle: t.LifecycleState) {

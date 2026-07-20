@@ -23,7 +23,34 @@ What follows is **exactly what core must add to `StateOfRecord`** (the
 projection structs in `src/state.rs` + the `pb`/`StateOfRecord` message in
 `operator.proto`) for each detail screen to show its full content again. No new
 RPCs needed — only new **fields on the existing summary types** or a richer
-projection. Everything below is additive.
+  projection. Everything below is additive.
+
+## 0. Kernel-limited subsystems (MCP & Scope) — need new kernel RPCs
+
+Of the six subsystems, **only Agents, Tools, Skills, and Watch can be
+populated by the UI from what 0057 already provides**:
+
+- **Agents** — populated by folding the `AgentReadyOp` feed event
+  (no list RPC exists; live population depends on receiving the event).
+- **Tools / Skills / Watch** — populated by calling the existing
+  `ListTools` / `ListSkills` / `ListWatches` RPCs on mount and
+  folding `WatchTriggeredOp`. The UI already does this.
+
+**MCP and Scope are NOT recoverable from 0057 — they need kernel work:**
+
+- **MCP servers**: there is **no RPC** (no `ListMCPServers`) and **no
+  feed event** in 0057. `mcp_servers` is therefore always empty.
+  Request: add `rpc ListMCPServers` to `OperatorConsole` (+ register it
+  in the Rust core and emit to the projection), or a `MCPDiscoveredOp`
+  feed event. Until then `MCPServersConsole` renders "No MCP servers".
+- **Scope**: there is **no RPC** (the old `GetScope` was removed) and
+  **no feed event** in 0057. `scope` (the `agent_id -> ScopeSummary`
+  map) is therefore always empty. Request: add `rpc GetScope` /
+  `ListScopes` (+ feed events) or project scope into `SnapshotResponse`.
+  Until then `ScopeConsole` renders "No scope configured".
+
+These two are explicitly **out of scope for the UI repo** — flagging so the
+gap is not mistaken for a UI bug.
 
 ---
 
@@ -54,15 +81,21 @@ Missing for full detail:
 - `last_successful_plan_id: string` (nullable)
 - `scope: ScopeConfig` (the agent's full effective scope, not just `scope_summary`)
 
-## 4. MCP server  (`mcp_servers: MCPServerSummary[]`)
-Currently projected: `id, description, transport, url, connected, tool_count, current_agent_count`
-Missing for full detail:
+## 4. MCP server  (`mcp_servers: MCPServerSummary[]`) — KERNEL-LIMITED
+Nothing is projected today: there is **no `ListMCPServers` RPC and no
+feed event** in 0057, so `mcp_servers` is always empty. See section 0 —
+this needs a new kernel RPC (or feed event) before any UI work helps.
+Once the RPC exists, the UI upserts `MCPServerSummary` from it. Rich
+fields still worth projecting when the RPC lands:
 - `health_check_history: HealthCheck[]` (recent health probe results)
 - `discovered_tools: string[]` (tools the server advertised on discovery)
 
-## 5. Scope  (`scope: map<agent_id, ScopeSummary>`)
-Currently projected: `agent_id, required_tags, any_of_tags, forbidden_tags, last_updated_at`
-Missing for full detail:
+## 5. Scope  (`scope: map<agent_id, ScopeSummary>`) — KERNEL-LIMITED
+Nothing is projected today: the old `GetScope` RPC was **removed** in
+0057 and there is **no feed event**, so `scope` is always empty. See
+section 0 — this needs a new kernel RPC (or snapshot projection) before
+any UI work helps. The UI `ScopeSummary` shape is ready; it just never
+gets filled. Rich fields worth projecting when the RPC lands:
 - `effective_scope: ScopeConfig` (resolved scope after inheritance/blending)
 - `k_anonymity_floor: number`
 - `caller_scope: ScopeConfig` (the operator's own scope when viewing)

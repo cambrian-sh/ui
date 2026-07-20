@@ -12,6 +12,7 @@ import {
 } from '@/design-system/components';
 import { useStore } from '@/store/useStore';
 import { projectionStore } from '@/store/projection';
+import { ipc } from '@/ipc';
 import type { ToolSummary, SkillSummary } from '@/ipc/types';
 import { ToolFilters, type ToolFiltersState } from './ToolFilters';
 import { SkillFilters, type SkillFiltersState } from './SkillFilters';
@@ -90,6 +91,11 @@ export function ToolsSkillsConsole() {
       navigate({ to: '/tools', search: { tab: activeTab, focus: undefined }, replace: true });
     }
   }, [search.focus, activeTab, tools, skills]);
+
+  useEffect(() => {
+    ipc.listTools().catch(() => {});
+    ipc.listSkills().catch(() => {});
+  }, []);
 
   const handleTabChange = (v: string) => {
     navigate({ to: '/tools', search: { tab: v as 'tools' | 'skills', focus: undefined }, replace: true });

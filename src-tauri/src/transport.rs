@@ -15,7 +15,7 @@ use tonic::{Request, Status};
 
 use crate::pb;
 use crate::pb::operator_console_client::OperatorConsoleClient;
-use crate::state::{ConnectionStatus, SkillSummary, StateOfRecord, ToolSummary};
+use crate::state::{ConnectionStatus, SkillSummary, StateOfRecord, ToolSummary, WatchConfigSummary};
 
 /// Tauri event names emitted to the webview.
 const EV_STATE: &str = "kernel://state";
@@ -417,7 +417,7 @@ impl Transport {
         Ok(ack.deduped)
     }
 
-    pub async fn list_tools(&self) -> Result<Vec<ToolSummary>, String> {
+    pub async fn list_tools(&self, app: &AppHandle) -> Result<Vec<ToolSummary>, String> {
         let mut client = self.client().await?;
         let resp = client
             .list_tools(Request::new(pb::ListToolsOpRequest {
@@ -430,7 +430,7 @@ impl Transport {
             .await
             .map_err(map_status)?
             .into_inner();
-        Ok(resp
+        let tools: Vec<ToolSummary> = resp
             .tools
             .into_iter()
             .map(|t| ToolSummary {
@@ -441,10 +441,16 @@ impl Transport {
                 recent_invocation_count: 0,
                 last_cost: 0.0,
             })
-            .collect())
+            .collect();
+        {
+            let mut st = self.state.lock().await;
+            st.tools = tools.clone();
+        }
+        self.emit_state(app).await;
+        Ok(tools)
     }
 
-    pub async fn list_skills(&self) -> Result<Vec<SkillSummary>, String> {
+    pub async fn list_skills(&self, app: &AppHandle) -> Result<Vec<SkillSummary>, String> {
         let mut client = self.client().await?;
         let resp = client
             .list_skills(Request::new(pb::ListSkillsOpRequest {
@@ -455,7 +461,7 @@ impl Transport {
             .await
             .map_err(map_status)?
             .into_inner();
-        Ok(resp
+        let skills: Vec<SkillSummary> = resp
             .skills
             .into_iter()
             .map(|s| SkillSummary {
@@ -465,7 +471,47 @@ impl Transport {
                 loaded_in_count: 0,
                 last_loaded_at: String::new(),
             })
-            .collect())
+            .collect();
+        {
+            let mut st = self.state.lock().await;
+            st.skills = skills.clone();
+        }
+        self.emit_state(app).await;
+        Ok(skills)
+    }
+
+    pub async fn list_watches(&self, app: &AppHandle) -> Result<Vec<WatchConfigSummary>, String> {
+        let mut client = self.client().await?;
+        let resp = client
+            .list_watches(Request::new(pb::ListWatchesOpRequest {
+                page: 0,
+                page_size: 0,
+                active_only: false,
+            }))
+            .await
+            .map_err(map_status)?
+            .into_inner();
+        let watches: Vec<WatchConfigSummary> = resp
+            .configs
+            .into_iter()
+            .map(|c| WatchConfigSummary {
+                id: c.id,
+                target_streams: if c.source_stream_id.is_empty() {
+                    vec![]
+                } else {
+                    vec![c.source_stream_id]
+                },
+                last_fire_at: None,
+                last_fire_status: String::new(),
+                error_count: 0,
+            })
+            .collect();
+        {
+            let mut st = self.state.lock().await;
+            st.watch_configs = watches.clone();
+        }
+        self.emit_state(app).await;
+        Ok(watches)
     }
 
     // ---- Memory (ADR-0047 A2.4, contract 0057) ---------------------------

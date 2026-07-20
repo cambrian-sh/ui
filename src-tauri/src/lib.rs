@@ -10,7 +10,7 @@ pub mod transport;
 
 use tauri::{AppHandle, State};
 
-use state::{SkillSummary, StateOfRecord, ToolSummary};
+use state::{SkillSummary, StateOfRecord, ToolSummary, WatchConfigSummary};
 use transport::{MemoryHit, Transport};
 
 // ---- Tauri command bridge (webview → core → kernel) ---------------------
@@ -226,13 +226,27 @@ async fn op_trigger_consolidation(
 }
 
 #[tauri::command]
-async fn op_list_tools(transport: State<'_, Transport>) -> Result<Vec<ToolSummary>, String> {
-    transport.inner().clone().list_tools().await
+async fn op_list_tools(
+    transport: State<'_, Transport>,
+    app: AppHandle,
+) -> Result<Vec<ToolSummary>, String> {
+    transport.inner().clone().list_tools(&app).await
 }
 
 #[tauri::command]
-async fn op_list_skills(transport: State<'_, Transport>) -> Result<Vec<SkillSummary>, String> {
-    transport.inner().clone().list_skills().await
+async fn op_list_skills(
+    transport: State<'_, Transport>,
+    app: AppHandle,
+) -> Result<Vec<SkillSummary>, String> {
+    transport.inner().clone().list_skills(&app).await
+}
+
+#[tauri::command]
+async fn op_list_watches(
+    transport: State<'_, Transport>,
+    app: AppHandle,
+) -> Result<Vec<WatchConfigSummary>, String> {
+    transport.inner().clone().list_watches(&app).await
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -256,6 +270,7 @@ pub fn run() {
             op_trigger_consolidation,
             op_list_tools,
             op_list_skills,
+            op_list_watches,
             op_ingest_memory,
             op_query_memory,
         ])

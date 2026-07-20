@@ -3,6 +3,7 @@ import { useNavigate, useSearch } from '@tanstack/react-router';
 import { Card, CardContent, EmptyState, ScrollArea } from '@/design-system/components';
 import { useStore } from '@/store/useStore';
 import { projectionStore } from '@/store/projection';
+import { ipc } from '@/ipc';
 import type { WatchConfigSummary } from '@/ipc/types';
 import { WatchFilters, type WatchFiltersState } from './WatchFilters';
 import { WatchListRow } from './WatchListRow';
@@ -50,6 +51,10 @@ export function WatchConsole() {
       navigate({ to: '/watch', search: { focus: undefined }, replace: true });
     }
   }, [search.focus, configs]);
+
+  useEffect(() => {
+    ipc.listWatches().catch(() => {});
+  }, []);
 
   const handleSelect = (configId: string) => {
     navigate({ to: '/watch', search: { focus: configId }, replace: true });

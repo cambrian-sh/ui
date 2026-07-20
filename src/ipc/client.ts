@@ -94,6 +94,9 @@ export const ipc = {
   listSkills: (): Promise<t.SkillSummary[]> =>
     invoke<t.SkillSummary[]>('op_list_skills'),
 
+  listWatches: (): Promise<t.WatchConfigSummary[]> =>
+    invoke<t.WatchConfigSummary[]>('op_list_watches'),
+
   // ----- Memory (kernel contract 0057) -----
 
   /** Ingest one document. See `IngestMemoryParams` for the two body lanes. */

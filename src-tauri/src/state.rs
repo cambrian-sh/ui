@@ -7,9 +7,14 @@
 
 use std::collections::HashMap;
 
+use chrono::Utc;
 use serde::Serialize;
 
 use crate::pb;
+
+fn now_iso() -> String {
+    Utc::now().to_rfc3339()
+}
 
 // ============================================================================
 // Connection
@@ -516,9 +521,34 @@ impl StateOfRecord {
                     self.audit_tail.drain(0..drop);
                 }
             }
-            // auction / agent_ready / verifier / llm_health / memory_* / watch /
-            // daemon: surfaced to the webview as raw feed events for now; richer
-            // projections land with their console screens.
+            Payload::AgentReady(a) => {
+                if let Some(existing) = self.agents.iter_mut().find(|x| x.id == a.agent_id) {
+                    existing.trust_score = a.trust_score;
+                    existing.last_activity_at = now_iso();
+                } else {
+                    self.agents.push(AgentSummary {
+                        id: a.agent_id.clone(),
+                        trust_score: a.trust_score,
+                        last_activity_at: now_iso(),
+                        ..Default::default()
+                    });
+                }
+            }
+            Payload::WatchTriggered(w) => {
+                if let Some(existing) = self.watch_configs.iter_mut().find(|x| x.id == w.watch_config_id) {
+                    existing.last_fire_at = Some(now_iso());
+                    existing.target_streams = vec![w.stream_id.clone()];
+                    existing.last_fire_status = "ok".to_string();
+                } else {
+                    self.watch_configs.push(WatchConfigSummary {
+                        id: w.watch_config_id.clone(),
+                        target_streams: vec![w.stream_id.clone()],
+                        last_fire_at: Some(now_iso()),
+                        last_fire_status: "ok".to_string(),
+                        ..Default::default()
+                    });
+                }
+            }
             _ => {}
         }
         true
@@ -528,5 +558,78 @@ impl StateOfRecord {
         if let Some(s) = self.sessions.iter_mut().find(|s| s.session_id == id) {
             s.state = state.to_string();
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::pb::operator_event::Payload;
+
+    fn agent_ready(seq: u64, agent_id: &str, trust_score: f64) -> pb::OperatorEvent {
+        pb::OperatorEvent {
+            seq,
+            payload: Some(Payload::AgentReady(pb::AgentReadyOp {
+                agent_id: agent_id.to_string(),
+                trust_score,
+                ..Default::default()
+            })),
+            ..Default::default()
+        }
+    }
+
+    fn watch_triggered(seq: u64, watch_config_id: &str, stream_id: &str) -> pb::OperatorEvent {
+        pb::OperatorEvent {
+            seq,
+            payload: Some(Payload::WatchTriggered(pb::WatchTriggeredOp {
+                watch_config_id: watch_config_id.to_string(),
+                stream_id: stream_id.to_string(),
+                ..Default::default()
+            })),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn fold_agent_ready_inserts_then_updates_idempotently() {
+        let mut s = StateOfRecord::default();
+        assert!(s.fold(&agent_ready(1, "a1", 0.5)));
+        assert_eq!(s.agents.len(), 1);
+        assert_eq!(s.agents[0].id, "a1");
+        assert_eq!(s.agents[0].trust_score, 0.5);
+        assert!(!s.agents[0].last_activity_at.is_empty());
+
+        assert!(s.fold(&agent_ready(2, "a1", 0.9)));
+        assert_eq!(s.agents.len(), 1);
+        assert_eq!(s.agents[0].trust_score, 0.9);
+        assert_eq!(s.cursor, 2);
+    }
+
+    #[test]
+    fn fold_watch_triggered_inserts_then_updates_idempotently() {
+        let mut s = StateOfRecord::default();
+        assert!(s.fold(&watch_triggered(3, "w1", "stream-1")));
+        assert_eq!(s.watch_configs.len(), 1);
+        assert_eq!(s.watch_configs[0].id, "w1");
+        assert_eq!(s.watch_configs[0].target_streams, vec!["stream-1".to_string()]);
+        assert_eq!(s.watch_configs[0].last_fire_status, "ok");
+        assert!(s.watch_configs[0].last_fire_at.is_some());
+
+        assert!(s.fold(&watch_triggered(4, "w1", "stream-2")));
+        assert_eq!(s.watch_configs.len(), 1);
+        assert_eq!(s.watch_configs[0].target_streams, vec!["stream-2".to_string()]);
+    }
+
+    #[test]
+    fn fold_token_is_live_only_and_does_not_advance_cursor() {
+        let mut s = StateOfRecord::default();
+        s.cursor = 7;
+        let ev = pb::OperatorEvent {
+            seq: 0,
+            payload: Some(Payload::Token(pb::TokenChunkOp { ..Default::default() })),
+            ..Default::default()
+        };
+        assert!(!s.fold(&ev));
+        assert_eq!(s.cursor, 7);
     }
 }

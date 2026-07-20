@@ -18,7 +18,7 @@ The Rust core is the **only** thing that talks gRPC to the runtime-core. The web
 |---|---|
 | `build.rs` | `tonic-build` codegen — generates the `OperatorConsole` **client** (no server stubs) from `../proto/operator.proto`; `rerun-if-changed` on the proto. |
 | `src/pb.rs` | `tonic::include_proto!("cambrian")` + `PINNED_CONTRACT_VERSION = "0057"`. The generated `tonic`/`prost` types live here; **nothing outside the core references them**. |
-| `src/state.rs` | The **state of record**: `StateOfRecord` (connection, role, handshake, cursor, plans-by-id, sessions, audit tail, pending HITL) + an **idempotent absolute-state `fold`** (last-writer-wins by id; `token` events return `false` and are excluded) + `apply_snapshot` + `reset_live`. Serde-serializable (it IS the projection). |
+| `src/state.rs` | The **state of record**: `StateOfRecord` (connection, role, handshake, cursor, plans-by-id, sessions, audit tail, pending HITL) + an **idempotent absolute-state `fold`** (last-writer-wins by id; `token` events return `false` and are excluded) + `apply_snapshot` + `reset_live`. The fold also populates **subsystem caches**: `AgentReadyOp` → `agents`, `WatchTriggeredOp` → `watch_configs` (idempotent by id). `tools`/`skills`/`watch_configs` are additionally upserted from the `List*` RPCs. Serde-serializable (it IS the projection). |
 | `src/transport.rs` | The gRPC client + **`AuthInterceptor`** (bearer token), `login` (+ OS-keychain persistence), the **command senders**, and the **feed loop** (`run_feed`/`drain`/`backoff`): snapshot-seed → subscribe-from-cursor → fold+emit → `Resync` re-snapshot → reconnect with exponential backoff → `Unreachable`. |
 | `src/lib.rs` | The **Tauri bridge**: managed `Transport` state + the `op_*` commands + `run()`. |
 
@@ -42,6 +42,9 @@ The Rust core is the **only** thing that talks gRPC to the runtime-core. The web
 | `op_set_tool_grant` | `agent_id, tool_name, granted, reason` | `deduped: bool` |
 | `op_ingest_memory` | `text, content, filename, content_type, context, tags, importance, source, session_id, reason` | `(doc_id, deduped)` |
 | `op_query_memory` | `query, top_k, source, session, min_importance` | `MemoryHit[]` |
+| `op_list_tools` | — | `ToolSummary[]` — also **upserts** `tools` into `StateOfRecord` and re-emits `kernel://state` |
+| `op_list_skills` | — | `SkillSummary[]` — also **upserts** `skills` into `StateOfRecord` and re-emits `kernel://state` |
+| `op_list_watches` | — | `WatchConfigSummary[]` — also **upserts** `watch_configs` into `StateOfRecord` and re-emits `kernel://state` |
 
 > `command_id` (UUID) is generated **inside the core** per call; `reason` is mandatory (the kernel rejects empty). The webview never sends a token or actor — auth is the core's interceptor.
 
