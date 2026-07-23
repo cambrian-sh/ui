@@ -351,6 +351,27 @@ pub struct CostDashboard {
 }
 
 // ============================================================================
+// Memory ingest observability (contract 0057 MemoryWrittenOp)
+// ============================================================================
+
+/// One `MemoryWrittenOp` off the feed. The ingest queue matches these to the
+/// `doc_id` returned by `IngestMemory` to move a row parsing → chunked without
+/// polling; the count of events for a `doc_id` IS the chunk count.
+#[derive(Clone, Serialize, Default)]
+pub struct MemoryWrittenEvent {
+    /// The feed seq this came from. `MemoryWrittenOp` carries no id of its own and
+    /// one document emits one event per chunk, so seq is the only dedup key that
+    /// survives a resync replay without collapsing distinct chunks.
+    pub seq: u64,
+    pub doc_id: String,
+    pub doc_type: String,
+    pub session_id: String,
+    pub source: String,
+    pub summary: String,
+    pub written_at: String,
+}
+
+// ============================================================================
 // The full projection pushed to the webview — MUST match `StateOfRecord`
 // in src/ipc/types.ts exactly.
 // ============================================================================
@@ -382,9 +403,12 @@ pub struct StateOfRecord {
     pub lifecycle: LifecycleState,
     pub verifier_pool: VerifierPoolState,
     pub cost_dashboard: CostDashboard,
+    /// Bounded tail of `MemoryWrittenOp`s — the ingest queue's status lane.
+    pub memory_written: Vec<MemoryWrittenEvent>,
 }
 
 const AUDIT_TAIL_MAX: usize = 200;
+const MEMORY_WRITTEN_MAX: usize = 500;
 
 impl StateOfRecord {
     /// Reset the live, feed-derived state (kept across a resync: connection/role
@@ -406,6 +430,7 @@ impl StateOfRecord {
         self.lifecycle = LifecycleState::default();
         self.verifier_pool = VerifierPoolState::default();
         self.cost_dashboard = CostDashboard::default();
+        self.memory_written.clear();
     }
 
     /// Apply a Snapshot's bounded live state and the capability/version handshake.
@@ -417,13 +442,21 @@ impl StateOfRecord {
         self.capabilities = snap.capabilities.clone();
         self.contract_skew = if !snap.contract_version.is_empty()
             && snap.contract_version != pb::PINNED_CONTRACT_VERSION
-        { 1 } else { 0 };
+        {
+            1
+        } else {
+            0
+        };
 
         for p in &snap.plans {
             self.plans.push(PlanInFlight {
                 session_id: p.session_id.clone(),
                 plan_id: p.plan_id.clone(),
-                active_agent: if p.active_agent.is_empty() { None } else { Some(p.active_agent.clone()) },
+                active_agent: if p.active_agent.is_empty() {
+                    None
+                } else {
+                    Some(p.active_agent.clone())
+                },
                 status: p.status.clone(),
                 cost: p.cost_so_far,
                 step_count: p.active_step,
@@ -468,9 +501,15 @@ impl StateOfRecord {
             Payload::PlanState(p) => {
                 if p.terminal {
                     self.plans.retain(|x| x.plan_id != p.plan_id);
-                } else if let Some(existing) = self.plans.iter_mut().find(|x| x.plan_id == p.plan_id) {
+                } else if let Some(existing) =
+                    self.plans.iter_mut().find(|x| x.plan_id == p.plan_id)
+                {
                     existing.session_id = p.session_id.clone();
-                    existing.active_agent = if p.active_agent.is_empty() { None } else { Some(p.active_agent.clone()) };
+                    existing.active_agent = if p.active_agent.is_empty() {
+                        None
+                    } else {
+                        Some(p.active_agent.clone())
+                    };
                     existing.status = p.status.clone();
                     existing.cost = p.cost_so_far;
                     existing.step_count = p.active_step;
@@ -478,7 +517,11 @@ impl StateOfRecord {
                     self.plans.push(PlanInFlight {
                         session_id: p.session_id.clone(),
                         plan_id: p.plan_id.clone(),
-                        active_agent: if p.active_agent.is_empty() { None } else { Some(p.active_agent.clone()) },
+                        active_agent: if p.active_agent.is_empty() {
+                            None
+                        } else {
+                            Some(p.active_agent.clone())
+                        },
                         status: p.status.clone(),
                         cost: p.cost_so_far,
                         step_count: p.active_step,
@@ -494,12 +537,20 @@ impl StateOfRecord {
             }
             Payload::HitlRaised(h) => {
                 // de-dup by intervention id (idempotent).
-                if !self.pending_hitl.iter().any(|x| x.intervention_id == h.intervention_id) {
+                if !self
+                    .pending_hitl
+                    .iter()
+                    .any(|x| x.intervention_id == h.intervention_id)
+                {
                     self.pending_hitl.push(HITLIntervention {
                         intervention_id: h.intervention_id.clone(),
                         agent_id: h.agent_id.clone(),
                         reason: h.description.clone(),
-                        nature: if h.is_destructive { "destructive_command".into() } else { "approval_request".into() },
+                        nature: if h.is_destructive {
+                            "destructive_command".into()
+                        } else {
+                            "approval_request".into()
+                        },
                         ..Default::default()
                     });
                 }
@@ -534,8 +585,27 @@ impl StateOfRecord {
                     });
                 }
             }
+            Payload::MemoryWritten(m) if !self.memory_written.iter().any(|x| x.seq == ev.seq) => {
+                self.memory_written.push(MemoryWrittenEvent {
+                    seq: ev.seq,
+                    doc_id: m.doc_id.clone(),
+                    doc_type: m.doc_type.clone(),
+                    session_id: m.session_id.clone(),
+                    source: m.source.clone(),
+                    summary: m.summary.clone(),
+                    written_at: now_iso(),
+                });
+                if self.memory_written.len() > MEMORY_WRITTEN_MAX {
+                    let drop = self.memory_written.len() - MEMORY_WRITTEN_MAX;
+                    self.memory_written.drain(0..drop);
+                }
+            }
             Payload::WatchTriggered(w) => {
-                if let Some(existing) = self.watch_configs.iter_mut().find(|x| x.id == w.watch_config_id) {
+                if let Some(existing) = self
+                    .watch_configs
+                    .iter_mut()
+                    .find(|x| x.id == w.watch_config_id)
+                {
                     existing.last_fire_at = Some(now_iso());
                     existing.target_streams = vec![w.stream_id.clone()];
                     existing.last_fire_status = "ok".to_string();
@@ -611,13 +681,19 @@ mod tests {
         assert!(s.fold(&watch_triggered(3, "w1", "stream-1")));
         assert_eq!(s.watch_configs.len(), 1);
         assert_eq!(s.watch_configs[0].id, "w1");
-        assert_eq!(s.watch_configs[0].target_streams, vec!["stream-1".to_string()]);
+        assert_eq!(
+            s.watch_configs[0].target_streams,
+            vec!["stream-1".to_string()]
+        );
         assert_eq!(s.watch_configs[0].last_fire_status, "ok");
         assert!(s.watch_configs[0].last_fire_at.is_some());
 
         assert!(s.fold(&watch_triggered(4, "w1", "stream-2")));
         assert_eq!(s.watch_configs.len(), 1);
-        assert_eq!(s.watch_configs[0].target_streams, vec!["stream-2".to_string()]);
+        assert_eq!(
+            s.watch_configs[0].target_streams,
+            vec!["stream-2".to_string()]
+        );
     }
 
     #[test]
@@ -626,7 +702,9 @@ mod tests {
         s.cursor = 7;
         let ev = pb::OperatorEvent {
             seq: 0,
-            payload: Some(Payload::Token(pb::TokenChunkOp { ..Default::default() })),
+            payload: Some(Payload::Token(pb::TokenChunkOp {
+                ..Default::default()
+            })),
             ..Default::default()
         };
         assert!(!s.fold(&ev));

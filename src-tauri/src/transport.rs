@@ -7,7 +7,7 @@ use std::sync::{Arc, Mutex as StdMutex};
 use std::time::Duration;
 
 use tauri::{AppHandle, Emitter};
-use tokio::sync::Mutex as AsyncMutex;
+use tokio::sync::{Mutex as AsyncMutex, Notify};
 use tonic::codegen::InterceptedService;
 use tonic::service::Interceptor;
 use tonic::transport::Channel;
@@ -15,7 +15,9 @@ use tonic::{Request, Status};
 
 use crate::pb;
 use crate::pb::operator_console_client::OperatorConsoleClient;
-use crate::state::{ConnectionStatus, SkillSummary, StateOfRecord, ToolSummary, WatchConfigSummary};
+use crate::state::{
+    ConnectionStatus, SkillSummary, StateOfRecord, ToolSummary, WatchConfigSummary,
+};
 
 /// Tauri event names emitted to the webview.
 const EV_STATE: &str = "kernel://state";
@@ -24,6 +26,10 @@ const EV_TOKEN: &str = "kernel://token";
 const RECONNECT_BASE: Duration = Duration::from_secs(1);
 const RECONNECT_CAP: Duration = Duration::from_secs(30);
 const UNREACHABLE_AFTER: Duration = Duration::from_secs(180); // ~3 min of failed attempts
+/// Ceiling for a single encoded/decoded gRPC message. See the note in `client()`.
+/// 512 MiB to match the kernel's `maxGRPCMessageBytes` — the operator ingest lane
+/// carries whole files, so the encode (send) side must clear large uploads.
+const MAX_MESSAGE_BYTES: usize = 512 * 1024 * 1024;
 
 type SharedToken = Arc<StdMutex<Option<String>>>;
 type ConsoleClient = OperatorConsoleClient<InterceptedService<Channel, AuthInterceptor>>;
@@ -43,6 +49,42 @@ pub struct MemoryHit {
     pub source: String,
     pub importance: f64,
     pub tags: Vec<String>,
+}
+
+/// One citation the answer's [n] markers resolve to (ADR-0081).
+#[derive(Clone, serde::Serialize, Default)]
+pub struct Citation {
+    pub marker: i32,
+    pub doc_id: String,
+    pub text: String,
+    pub section_path: String,
+    pub source: String,
+    pub score: f64,
+    pub importance: f64,
+    pub tags: Vec<String>,
+}
+
+impl From<pb::MemoryCitation> for Citation {
+    fn from(c: pb::MemoryCitation) -> Self {
+        Self {
+            marker: c.marker,
+            doc_id: c.doc_id,
+            text: c.text,
+            section_path: c.section_path,
+            source: c.source,
+            score: c.score,
+            importance: c.importance,
+            tags: c.tags,
+        }
+    }
+}
+
+/// A grounded, cited answer (ADR-0081).
+#[derive(Clone, serde::Serialize, Default)]
+pub struct AnswerMemory {
+    pub status: String,
+    pub answer: String,
+    pub citations: Vec<Citation>,
 }
 
 impl From<pb::MemoryOp> for MemoryHit {
@@ -87,6 +129,12 @@ pub struct Transport {
     channel: Arc<AsyncMutex<Option<Channel>>>,
     pub state: Arc<AsyncMutex<StateOfRecord>>,
     feed_running: Arc<StdMutex<bool>>,
+    /// Set by `disconnect` to unwind the feed loop. Without it the loop
+    /// reconnects forever and "disconnected" could only ever be cosmetic.
+    stop_requested: Arc<StdMutex<bool>>,
+    /// Wakes the loop out of a `stream.message()` or a backoff sleep so a
+    /// disconnect is immediate rather than waiting on kernel traffic.
+    stop_notify: Arc<Notify>,
 }
 
 impl Default for Transport {
@@ -97,6 +145,8 @@ impl Default for Transport {
             channel: Arc::new(AsyncMutex::new(None)),
             state: Arc::new(AsyncMutex::new(StateOfRecord::default())),
             feed_running: Arc::new(StdMutex::new(false)),
+            stop_requested: Arc::new(StdMutex::new(false)),
+            stop_notify: Arc::new(Notify::new()),
         }
     }
 }
@@ -122,8 +172,22 @@ impl Transport {
         let channel = guard.as_ref().unwrap().clone();
         Ok(OperatorConsoleClient::with_interceptor(
             channel,
-            AuthInterceptor { token: self.token.clone() },
-        ))
+            AuthInterceptor {
+                token: self.token.clone(),
+            },
+        )
+        // tonic defaults to a 4 MiB decode cap. `Snapshot` carries every live
+        // session, and one session's `goal` can be a multi-KB agent prompt, so a
+        // busy kernel exceeds 4 MiB and the console wedges in "reconnecting"
+        // forever — the snapshot is the feed loop's first move. This is a safety
+        // valve for the client, NOT a licence for an unbounded snapshot: keeping
+        // it bounded is the kernel's side of ADR-0047 D6/D8.
+        //
+        // The encode side needs the same treatment: `IngestMemory` carries raw
+        // file bytes, so any PDF over the 4 MiB default would be rejected before
+        // it ever left the console.
+        .max_decoding_message_size(MAX_MESSAGE_BYTES)
+        .max_encoding_message_size(MAX_MESSAGE_BYTES))
     }
 
     fn set_token(&self, token: Option<String>) {
@@ -141,6 +205,40 @@ impl Transport {
         }
     }
 
+    /// Persist the full connection (endpoint, username, password) in the OS
+    /// keychain so the console can reconnect on launch without re-prompting.
+    ///
+    /// The password is stored ONLY because the kernel's login token is ephemeral
+    /// (an in-memory table entry, lost on kernel restart), so the token alone
+    /// cannot re-establish a session. It lives in the OS keychain, never in a
+    /// plaintext file, and is cleared on `disconnect`.
+    fn save_connection(endpoint: &str, username: &str, password: &str) {
+        if let Ok(entry) = keyring::Entry::new("cambrian-ui", "saved-connection") {
+            let blob = format!("{endpoint}\n{username}\n{password}");
+            let _ = entry.set_password(&blob);
+        }
+    }
+
+    fn clear_saved_connection() {
+        if let Ok(entry) = keyring::Entry::new("cambrian-ui", "saved-connection") {
+            let _ = entry.delete_credential();
+        }
+    }
+
+    /// Read the saved connection, if any. Returns `(endpoint, username, password)`.
+    pub fn saved_connection() -> Option<(String, String, String)> {
+        let entry = keyring::Entry::new("cambrian-ui", "saved-connection").ok()?;
+        let blob = entry.get_password().ok()?;
+        let mut parts = blob.splitn(3, '\n');
+        let endpoint = parts.next()?.to_string();
+        let username = parts.next()?.to_string();
+        let password = parts.next()?.to_string();
+        if endpoint.is_empty() || username.is_empty() {
+            return None;
+        }
+        Some((endpoint, username, password))
+    }
+
     async fn emit_state(&self, app: &AppHandle) {
         let snap = self.state.lock().await.clone();
         let _ = app.emit(EV_STATE, snap);
@@ -150,6 +248,21 @@ impl Transport {
         {
             let mut s = self.state.lock().await;
             s.connection.status = status;
+            if matches!(status, ConnectionStatus::Live) {
+                s.connection.reason = None; // a live feed clears the last fault
+            }
+        }
+        self.emit_state(app).await;
+    }
+
+    /// Record WHY the feed is not live. Without this a failing snapshot leaves the
+    /// console sitting in "reconnecting" with no explanation — the operator cannot
+    /// tell a dead kernel from an oversized response.
+    async fn set_fault(&self, app: &AppHandle, reason: String) {
+        tracing::warn!("feed fault: {reason}");
+        {
+            let mut s = self.state.lock().await;
+            s.connection.reason = Some(reason);
         }
         self.emit_state(app).await;
     }
@@ -157,32 +270,87 @@ impl Transport {
     // ---- Auth ------------------------------------------------------------
 
     /// Authenticate, store the token, and start the feed loop. Returns the role.
+    ///
+    /// When `remember` is set, the connection (incl. password) is written to the
+    /// OS keychain so the next launch can reconnect without prompting. It is saved
+    /// only AFTER the kernel accepts the credentials, so a bad password is never
+    /// persisted.
     pub async fn login(
         &self,
         app: &AppHandle,
         endpoint: String,
         username: String,
         password: String,
+        remember: bool,
     ) -> Result<String, String> {
-        *self.endpoint.lock().await = Some(endpoint);
+        *self.stop_requested.lock().unwrap() = false;
+        *self.endpoint.lock().await = Some(endpoint.clone());
         *self.channel.lock().await = None; // force reconnect to the (new) endpoint
         self.set_token(None);
-        self.set_connection(app, ConnectionStatus::Reconnecting).await;
+        {
+            // The webview names the instance it is operating; without this the
+            // connection panel can only ever show a blank endpoint.
+            let mut s = self.state.lock().await;
+            s.connection.endpoint = Some(endpoint.clone());
+        }
+        self.set_connection(app, ConnectionStatus::Reconnecting)
+            .await;
 
         let mut client = self.client().await?;
         let resp = client
-            .login(Request::new(pb::LoginRequest { username, password }))
+            .login(Request::new(pb::LoginRequest {
+                username: username.clone(),
+                password: password.clone(),
+            }))
             .await
             .map_err(|e| format!("login: {}", e.message()))?
             .into_inner();
 
         self.set_token(Some(resp.token.clone()));
+        if remember {
+            Self::save_connection(&endpoint, &username, &password);
+        }
         {
             let mut s = self.state.lock().await;
             s.role = Some(resp.role.clone());
         }
         self.start_feed(app.clone());
         Ok(resp.role)
+    }
+
+    fn stop_requested(&self) -> bool {
+        *self.stop_requested.lock().unwrap()
+    }
+
+    /// Tear down the operator session: stop the feed loop, drop the channel,
+    /// forget the token (including the keychain copy), and reset to Down.
+    ///
+    /// The role and the folded live state are cleared too — leaving them would
+    /// let a disconnected UI keep rendering a previous kernel's data as if it
+    /// were current.
+    pub async fn disconnect(&self, app: &AppHandle) -> Result<(), String> {
+        *self.stop_requested.lock().unwrap() = true;
+        self.stop_notify.notify_waiters();
+
+        self.set_token(None);
+        // Explicit disconnect means "forget me": drop the saved credentials so the
+        // next launch does not silently reconnect to an instance the operator left.
+        Self::clear_saved_connection();
+        *self.channel.lock().await = None;
+        *self.endpoint.lock().await = None;
+
+        {
+            let mut s = self.state.lock().await;
+            s.reset_live();
+            s.role = None;
+            s.capabilities.clear();
+            s.kernel_version.clear();
+            s.contract_version.clear();
+            s.connection.endpoint = None;
+            s.connection.reason = Some("disconnected by operator".to_string());
+        }
+        self.set_connection(app, ConnectionStatus::Down).await;
+        Ok(())
     }
 
     // ---- Reads -----------------------------------------------------------
@@ -301,7 +469,8 @@ impl Transport {
             .into_inner();
         // optimistic: drop the resolved intervention from the pending set.
         let mut s = self.state.lock().await;
-        s.pending_hitl.retain(|h| h.intervention_id != intervention_id);
+        s.pending_hitl
+            .retain(|h| h.intervention_id != intervention_id);
         Ok(ack.deduped)
     }
 
@@ -562,6 +731,36 @@ impl Transport {
         Ok((resp.doc_id, resp.deduped))
     }
 
+    /// AnswerMemory (ADR-0081): a grounded, [n]-cited answer + the evidence each
+    /// marker resolves to. Requires the kernel `memory-answer` capability; an older
+    /// or agentic-disabled kernel returns Unimplemented.
+    pub async fn answer_memory(
+        &self,
+        query: String,
+        top_k: i32,
+        source: String,
+        session: String,
+        min_importance: f64,
+    ) -> Result<AnswerMemory, String> {
+        let mut client = self.client().await?;
+        let resp = client
+            .answer_memory(Request::new(pb::AnswerMemoryRequest {
+                query,
+                top_k,
+                source,
+                session,
+                min_importance,
+            }))
+            .await
+            .map_err(map_status)?
+            .into_inner();
+        Ok(AnswerMemory {
+            status: resp.status,
+            answer: resp.answer,
+            citations: resp.citations.into_iter().map(Citation::from).collect(),
+        })
+    }
+
     /// Ranked recall over operator-visible memory. This is the deterministic
     /// single-pass lane (kernel `SearchSystem`) — it returns evidence, NOT a
     /// composed answer. Compose answers on the chat lane (`send_message`).
@@ -607,18 +806,19 @@ impl Transport {
 
     async fn run_feed(&self, app: AppHandle) {
         let mut attempt: u32 = 0;
+        let mut waited = Duration::ZERO;
         loop {
-            self.set_connection(
-                &app,
-                if attempt == 0 { ConnectionStatus::Reconnecting } else { ConnectionStatus::Reconnecting },
-            )
-            .await;
+            if self.stop_requested() {
+                return;
+            }
+            self.set_connection(&app, ConnectionStatus::Reconnecting)
+                .await;
 
             // Seed from a snapshot (state + capability/version handshake), then
             // subscribe from the cursor it stamped.
             if let Err(e) = self.snapshot_into_state().await {
-                tracing::warn!("feed snapshot failed: {e}");
-                if self.backoff(&app, &mut attempt).await {
+                self.set_fault(&app, format!("snapshot: {e}")).await;
+                if self.backoff(&app, &mut attempt, &mut waited).await {
                     return; // unreachable: stop the loop
                 }
                 continue;
@@ -629,8 +829,8 @@ impl Transport {
             let mut client = match self.client().await {
                 Ok(c) => c,
                 Err(e) => {
-                    tracing::warn!("feed client failed: {e}");
-                    if self.backoff(&app, &mut attempt).await {
+                    self.set_fault(&app, format!("connect: {e}")).await;
+                    if self.backoff(&app, &mut attempt, &mut waited).await {
                         return;
                     }
                     continue;
@@ -643,8 +843,9 @@ impl Transport {
             {
                 Ok(s) => s.into_inner(),
                 Err(e) => {
-                    tracing::warn!("stream_events failed: {}", e.message());
-                    if self.backoff(&app, &mut attempt).await {
+                    self.set_fault(&app, format!("stream_events: {}", e.message()))
+                        .await;
+                    if self.backoff(&app, &mut attempt, &mut waited).await {
                         return;
                     }
                     continue;
@@ -652,10 +853,14 @@ impl Transport {
             };
 
             attempt = 0; // connected
+            waited = Duration::ZERO;
             self.set_connection(&app, ConnectionStatus::Live).await;
 
             if self.drain(&app, stream).await {
                 // graceful end (rare) — reconnect
+            }
+            if self.stop_requested() {
+                return;
             }
             // dropped/errored: force a fresh channel + reconnect.
             *self.channel.lock().await = None;
@@ -669,7 +874,13 @@ impl Transport {
         mut stream: tonic::Streaming<pb::OperatorEvent>,
     ) -> bool {
         loop {
-            match stream.message().await {
+            // A quiet kernel would otherwise park us in `message()` indefinitely,
+            // so a disconnect has to be able to interrupt the await itself.
+            let next = tokio::select! {
+                msg = stream.message() => msg,
+                _ = self.stop_notify.notified() => return true,
+            };
+            match next {
                 Ok(Some(ev)) => {
                     use pb::operator_event::Payload;
                     match &ev.payload {
@@ -683,11 +894,14 @@ impl Transport {
                         }
                         Some(Payload::Token(t)) => {
                             // live-only lane — never folded, never replayed.
-                            let _ = app.emit(EV_TOKEN, TokenChunk {
-                                session_id: t.session_id.clone(),
-                                step_index: t.step_index,
-                                text: t.text.clone(),
-                            });
+                            let _ = app.emit(
+                                EV_TOKEN,
+                                TokenChunk {
+                                    session_id: t.session_id.clone(),
+                                    step_index: t.step_index,
+                                    text: t.text.clone(),
+                                },
+                            );
                         }
                         _ => {
                             let structural = {
@@ -700,7 +914,7 @@ impl Transport {
                         }
                     }
                 }
-                Ok(None) => return true,   // stream ended
+                Ok(None) => return true, // stream ended
                 Err(e) => {
                     tracing::warn!("stream error: {}", e.message());
                     return false;
@@ -711,16 +925,24 @@ impl Transport {
 
     /// Sleep with exponential backoff. Returns true if we've exceeded the
     /// unreachable threshold (caller should stop).
-    async fn backoff(&self, app: &AppHandle, attempt: &mut u32) -> bool {
+    async fn backoff(&self, app: &AppHandle, attempt: &mut u32, waited: &mut Duration) -> bool {
         let delay = RECONNECT_BASE
             .saturating_mul(2u32.saturating_pow(*attempt))
             .min(RECONNECT_CAP);
         *attempt += 1;
-        if delay >= UNREACHABLE_AFTER {
+        // Compare CUMULATIVE wait against the threshold. Comparing the single
+        // delay could never trip it: delay caps at RECONNECT_CAP (30s), which is
+        // below UNREACHABLE_AFTER (180s), so the console previously sat in
+        // "reconnecting" forever and never reported the kernel as unreachable.
+        *waited += delay;
+        if *waited >= UNREACHABLE_AFTER {
             self.set_connection(app, ConnectionStatus::Down).await;
         }
         *self.channel.lock().await = None;
-        tokio::time::sleep(delay).await;
+        tokio::select! {
+            _ = tokio::time::sleep(delay) => {}
+            _ = self.stop_notify.notified() => return true,
+        }
         // Stop after the cap has been hit enough times to cross the threshold.
         *attempt > 8
     }

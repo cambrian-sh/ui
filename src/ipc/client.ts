@@ -17,8 +17,23 @@ import * as t from './types';
 export const ipc = {
   // ----- 9 existing Tauri commands (per ui/src-tauri/src/lib.rs) -----
 
-  login: (endpoint: string, username: string, password: string): Promise<t.LoginResponse> =>
-    invoke<t.LoginResponse>('op_login', { endpoint, username, password }),
+  login: (
+    endpoint: string,
+    username: string,
+    password: string,
+    remember: boolean,
+  ): Promise<t.LoginResponse> =>
+    invoke<t.LoginResponse>('op_login', { endpoint, username, password, remember }),
+
+  /** Reconnect from the OS-keychain-saved connection (launch auto-connect). */
+  loginSaved: (): Promise<t.LoginResponse> => invoke<t.LoginResponse>('op_login_saved'),
+
+  /** The saved endpoint + username, if any. Password stays in the keychain. */
+  savedConnection: (): Promise<t.SavedConnection | null> =>
+    invoke<t.SavedConnection | null>('op_saved_connection'),
+
+  /** Stop the feed, forget the token, reset to Down. Reconnect = a fresh login. */
+  disconnect: (): Promise<void> => invoke<void>('op_disconnect'),
 
   getState: (): Promise<t.StateOfRecord> =>
     invoke<t.StateOfRecord>('op_get_state'),
@@ -104,12 +119,29 @@ export const ipc = {
     invoke<t.IngestMemoryResponse>('op_ingest_memory', { ...params }),
 
   /**
+   * File lane: the Rust core reads the bytes from a local path the OS dialog
+   * returned, so a large file never crosses the JS/IPC boundary as a number[].
+   */
+  ingestFile: (params: t.IngestFileParams): Promise<t.IngestMemoryResponse> =>
+    invoke<t.IngestMemoryResponse>('op_ingest_file', { ...params }),
+
+  /** Name + size of a picked file, without reading its bytes. */
+  statFile: (path: string): Promise<t.FileStat> => invoke<t.FileStat>('op_stat_file', { path }),
+
+  /**
    * Ranked recall. Returns EVIDENCE, not an answer — this is the kernel's
    * deterministic single-pass lane. To get a composed answer, drive the chat lane
    * (`createSession` + `sendMessage`) and cite these hits alongside it.
    */
   queryMemory: (params: t.QueryMemoryParams): Promise<t.MemoryHit[]> =>
     invoke<t.MemoryHit[]>('op_query_memory', { ...params }),
+
+  /**
+   * ADR-0081: a grounded, [n]-cited answer + the evidence each marker resolves to.
+   * Requires the kernel `memory-answer` capability; an older kernel rejects it.
+   */
+  answerMemory: (params: t.QueryMemoryParams): Promise<t.AnswerMemory> =>
+    invoke<t.AnswerMemory>('op_answer_memory', { ...params }),
 } as const;
 
 export type IPC = typeof ipc;

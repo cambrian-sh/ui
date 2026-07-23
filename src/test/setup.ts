@@ -40,3 +40,16 @@ afterEach(() => {
     cost_dashboard: { spend_rate_usd: 0, circuit_breakers: [], max_energy_per_step: 0.5, price_ledger: [], recent_acquires: [] },
   });
 });
+
+// jsdom's Blob/File predate `arrayBuffer()`. The Tauri webview has it, and the
+// ingest pane relies on it to read file bytes, so provide it for tests.
+if (typeof Blob !== 'undefined' && !Blob.prototype.arrayBuffer) {
+  Blob.prototype.arrayBuffer = function arrayBuffer(): Promise<ArrayBuffer> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as ArrayBuffer);
+      reader.onerror = () => reject(reader.error);
+      reader.readAsArrayBuffer(this as Blob);
+    });
+  };
+}

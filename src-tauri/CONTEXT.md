@@ -32,7 +32,8 @@ The Rust core is the **only** thing that talks gRPC to the runtime-core. The web
 
 | Command | Args | Returns |
 |---|---|---|
-| `op_login` | `endpoint, username, password` | `role` (`"operator"`/`"viewer"`) — also starts the feed loop |
+| `op_login` | `endpoint, username, password` | `role` (`"operator"`/`"viewer"`) — also records `connection.endpoint` and starts the feed loop |
+| `op_disconnect` | — | `()` — stops the feed loop, drops the channel, deletes the keychain token, resets to `down` |
 | `op_get_state` | — | `StateOfRecord` (for hydration on mount) |
 | `op_create_session` | `goal, reason` | `session_id` |
 | `op_send_message` | `session_id, text, reason` | `deduped: bool` |
@@ -48,7 +49,7 @@ The Rust core is the **only** thing that talks gRPC to the runtime-core. The web
 
 > `command_id` (UUID) is generated **inside the core** per call; `reason` is mandatory (the kernel rejects empty). The webview never sends a token or actor — auth is the core's interceptor.
 
-**Memory (contract `0057`, capability `memory-ingest-binary`).** `op_ingest_memory` has two mutually exclusive body lanes: `text` (markdown/plain) or `content` (raw file bytes) + `filename`. The kernel rejects both-or-neither and rejects `content` without a `filename` — the extension is what routes the chunker and what opens the docling_agent's binary-parse gate. Bytes cross the IPC bridge as a JS array, NOT a path: the kernel may not be on this machine, so a path it cannot read would be a lie. `context` is folded into the document body kernel-side (metadata is never chunked, so a note stored beside the document could never affect retrieval). `op_query_memory` returns ranked **evidence, not an answer** — `MemoryHit.text` is the quotable chunk and `section_path` its structural breadcrumb; `summary` is a truncated preview and must never be quoted as a source. Gate the file-upload affordance on the `memory-ingest-binary` capability: an older kernel silently ingests text-only.
+**Memory (contract `0057`, capability `memory-ingest-binary`).** `op_ingest_memory` has two mutually exclusive body lanes: `text` (markdown/plain) or `content` (raw file bytes) + `filename`. The kernel rejects both-or-neither and rejects `content` without a `filename` — the extension is what routes the chunker and what opens the docling_agent's binary-parse gate. Bytes cross the IPC bridge as a JS array, NOT a path: the kernel may not be on this machine, so a path it cannot read would be a lie. `context` is folded into the document body kernel-side (metadata is never chunked, so a note stored beside the document could never affect retrieval). `op_query_memory` returns ranked **evidence, not an answer** — `MemoryHit.text` is the quotable chunk and `section_path` its structural breadcrumb; `summary` is a truncated preview and must never be quoted as a source. Gate the file-upload affordance on the `memory-ingest-binary` capability: an older kernel silently ingests text-only. The core also folds `MemoryWrittenOp` into a bounded `memory_written` tail (cap 500) so the ingest queue derives its status from the feed instead of polling: one event per chunk, so the count for a `doc_id` **is** the chunk count. `MemoryWrittenOp` carries no id of its own and one document emits many, so the dedup key is the event `seq` — deduping by `doc_id` would collapse distinct chunks into one.
 
 **Events** (`listen('kernel://*')`):
 - `kernel://state` → the full `StateOfRecord` projection, emitted on connection change, snapshot, and each structural feed event.
@@ -91,6 +92,10 @@ The kernel retains a bounded in-memory spool (~**120 s**). Two moves:
 ### Reconnect (Rust core ↔ kernel)
 
 Backoff + jitter on the one connection: `base=1s, factor=2, cap=30s, jitter=±10%`; cap attempts ~2–5 min, then emit a first-class **"kernel unreachable"** projection. Before reconnecting, refresh the token if expired. The webview↔core hop is in-process — not given network-grade resilience; a webview reload re-hydrates from the still-live core.
+
+### Operator-requested disconnect
+
+The reconnect loop is otherwise unstoppable by design, so `op_disconnect` sets a stop flag **and** wakes the loop through a `Notify`: `drain` selects over `stream.message()` (a quiet kernel would otherwise park there indefinitely) and `backoff` selects over its sleep. The loop then re-checks the flag at the top and after `drain`, and exits. Disconnect also clears the folded state, role, capabilities and version handshake — a disconnected console must not keep rendering a previous kernel's data as though it were current. Reconnecting is a fresh `op_login`; there is no resume.
 
 ---
 

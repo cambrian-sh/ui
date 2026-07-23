@@ -1,4 +1,5 @@
 import { useCallback, useRef, useState } from "react";
+import { errorMessage } from "./errorMessage";
 
 export interface MutationApi<TArgs extends unknown[], T> {
   mutate: (...args: TArgs) => Promise<T | undefined>;
@@ -23,7 +24,7 @@ export function useMutation<TArgs extends unknown[], T>(
       try {
         return await fn(...args);
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Unknown error");
+        setError(errorMessage(err));
         return undefined;
       } finally {
         setIsLoading(false);

@@ -1,7 +1,7 @@
 
 import { createFileRoute } from '@tanstack/react-router';
-import { MemoryExplorer } from '@/screens/memory/MemoryExplorer';
+import { MemoryPage } from '@/screens/memory/MemoryPage';
 
 export const Route = createFileRoute('/memory')({
-  component: MemoryExplorer,
+  component: MemoryPage,
 });

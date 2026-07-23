@@ -8,6 +8,7 @@ class MockIPC {
   private tokenListeners = new Set<(chunk: t.TokenChunk) => void>();
   private ingestCount = 0;
   private zeroHitsMode = false;
+  private memoryWrittenSeq = 1;
 
   private initialState(): t.StateOfRecord {
     return {
@@ -20,7 +21,16 @@ class MockIPC {
       role: 'operator',
       kernel_version: '0.6.9-alpha',
       contract_version: '0047',
-      capabilities: ['audit', 'scope', 'memory_tag', 'hitl_resolve'],
+      capabilities: [
+        'audit',
+        'scope',
+        'memory_tag',
+        'hitl_resolve',
+        'memory-read',
+        'memory-ingest',
+        'memory-ingest-binary',
+        'memory-answer',
+      ],
       contract_skew: 0,
       cursor: 0,
       plans: [],
@@ -51,6 +61,7 @@ class MockIPC {
         price_ledger: [],
         recent_acquires: [],
       },
+      memory_written: [],
     };
   }
 
@@ -58,8 +69,50 @@ class MockIPC {
   // Commands (9 existing + 2 new; same shape as the real client)
   // --------------------------------------------------------------------------
 
-  async login(_endpoint: string, _username: string, _password: string): Promise<t.LoginResponse> {
+  private savedConn: t.SavedConnection | null = null;
+
+  async login(
+    endpoint: string,
+    username: string,
+    _password: string,
+    remember = false,
+  ): Promise<t.LoginResponse> {
+    this.state = {
+      ...this.state,
+      role: 'operator',
+      connection: { ...this.state.connection, status: 'live', endpoint, reason: null },
+    };
+    if (remember) this.savedConn = { endpoint, username };
+    this.emitState();
     return { role: 'operator' };
+  }
+
+  async loginSaved(): Promise<t.LoginResponse> {
+    if (!this.savedConn) throw 'no saved connection';
+    return this.login(this.savedConn.endpoint, this.savedConn.username, '', true);
+  }
+
+  async savedConnection(): Promise<t.SavedConnection | null> {
+    return this.savedConn;
+  }
+
+  /** Mirrors the core: the feed stops and the folded state is dropped. */
+  async disconnect(): Promise<void> {
+    this.savedConn = null;
+    this.state = {
+      ...this.initialState(),
+      role: null,
+      capabilities: [],
+      kernel_version: '',
+      contract_version: '',
+      connection: {
+        status: 'down',
+        endpoint: null,
+        last_known_state_at: this.state.connection.last_known_state_at,
+        reason: 'disconnected by operator',
+      },
+    };
+    this.emitState();
   }
 
   async getState(): Promise<t.StateOfRecord> {
@@ -179,7 +232,64 @@ class MockIPC {
     if (hasContent && params.filename === '') throw new Error('filename is required when content is set');
     const id = `mock-doc-${this.ingestCount++}`;
     const deduped = this.ingestCount % 5 === 0;
+    // The kernel emits one MemoryWrittenOp per chunk. Emit them synchronously so
+    // tests are deterministic; real latency supplies the parsing animation.
+    const source = params.filename !== '' ? params.filename : 'operator paste';
+    const chunks = hasContent ? 3 : 1;
+    for (let i = 0; i < chunks; i++) {
+      this.__emitMemoryWritten({
+        doc_id: id,
+        doc_type: 'episodic_memory',
+        session_id: params.session_id,
+        source,
+        summary: (params.text || source).slice(0, 200),
+      });
+    }
     return [id, deduped];
+  }
+
+  async ingestFile(params: t.IngestFileParams): Promise<t.IngestMemoryResponse> {
+    const name = params.path.split(/[\\/]/).pop() || params.path;
+    return this.ingestMemory({
+      text: '',
+      content: [1, 2, 3],
+      filename: name,
+      content_type: 'application/pdf',
+      context: params.context,
+      tags: params.tags,
+      importance: params.importance,
+      source: '',
+      session_id: '',
+      reason: params.reason,
+    });
+  }
+
+  async statFile(path: string): Promise<t.FileStat> {
+    const name = path.split(/[\\/]/).pop() || path;
+    return { name, size: 1024 };
+  }
+
+  async answerMemory(params: t.QueryMemoryParams): Promise<t.AnswerMemory> {
+    const hits = await this.queryMemory(params);
+    if (hits.length === 0) {
+      return { status: 'abstention', answer: 'not found in memory', citations: [] };
+    }
+    return {
+      status: 'answer',
+      answer:
+        'Two SEV-2 incidents were raised this week; both were closed within SLA [1]. ' +
+        'The deploy freeze was lifted Wednesday [2].',
+      citations: hits.slice(0, 2).map((h, i) => ({
+        marker: i + 1,
+        doc_id: h.doc_id,
+        text: h.text,
+        section_path: h.section_path,
+        source: h.source,
+        score: h.score,
+        importance: h.importance,
+        tags: h.tags,
+      })),
+    };
   }
 
   async queryMemory(params: t.QueryMemoryParams): Promise<t.MemoryHit[]> {
@@ -380,6 +490,19 @@ class MockIPC {
 
   __setZeroHitsMode(enabled: boolean) {
     this.zeroHitsMode = enabled;
+  }
+
+  /** Append one MemoryWrittenOp to the projection tail, as the feed would. */
+  __emitMemoryWritten(ev: Omit<t.MemoryWrittenEvent, 'seq' | 'written_at'>) {
+    const tail = this.state.memory_written ?? [];
+    this.state = {
+      ...this.state,
+      memory_written: [
+        ...tail,
+        { ...ev, seq: this.memoryWrittenSeq++, written_at: new Date().toISOString() },
+      ],
+    };
+    this.emitState();
   }
 
   __seedLifecycle(lifecycle: t.LifecycleState) {

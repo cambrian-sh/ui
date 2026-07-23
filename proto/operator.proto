@@ -1,6 +1,6 @@
 // VENDORED — DO NOT EDIT BY HAND.
 // Source of truth: cambrian-core api/proto/operator.proto
-// Pinned to kernel/contract version: 0057 (kernel 0.6.9-alpha).
+// Pinned to kernel/contract version: 0060 (kernel 0.6.9-alpha).
 // Re-vendor from the kernel repo when the contract bumps; verify via the
 // Snapshot handshake (contract_version) at runtime. ADR-0047 0047-13.
 
@@ -74,6 +74,14 @@ service OperatorConsole {
   rpc ListTools(ListToolsOpRequest)     returns (ListToolsOpResponse);
   rpc ListSkills(ListSkillsOpRequest)   returns (ListSkillsOpResponse);
   rpc QueryMemory(QueryMemoryRequest) returns (QueryMemoryResponse);
+
+  // AnswerMemory (ADR-0081) runs the agentic retrieval loop and returns a GROUNDED
+  // composed answer with inline [n] citation markers, plus the evidence each marker
+  // resolves to. Distinct from QueryMemory's single-pass evidence lane: this is a
+  // read that synthesizes (no auction, no mutation, no x-agent-id principal). Gated
+  // on the "memory-answer" capability; OSS / agentic-disabled builds return
+  // Unimplemented.
+  rpc AnswerMemory(AnswerMemoryRequest) returns (AnswerMemoryResponse);
 
   // Tool permission management: bound an existing grant with a resource policy
   // (Operator-only, idempotent, audited). A2.3.
@@ -316,6 +324,8 @@ message OperatorEvent {
     TokenChunkOp token = 23; // live-only lane; seq is 0 and is never replayed
     ScoutUsefulnessOp scout_usefulness = 24; // ROUTE-08 phase A
     ReactiveBudgetOp reactive_budget = 25;   // REACT-02 / ADR-0062: backpressure shed event
+    AgentStepOp agent_step = 26;             // agent-loop observability (query-thrash + poisoning)
+    AgentLLMExchangeOp llm_exchange = 27;    // provider-tap: full prompt+completion of every agent reasoning turn (live-only)
   }
 }
 
@@ -332,6 +342,43 @@ message ScoutUsefulnessOp {
   int32 plan_steps = 6;
   int32 replan_count = 7;
   bool replanned = 8;
+}
+
+// AgentStepOp reports one in-loop agent action (a memory_query today) so the harness can
+// diagnose agent-internal failure modes the orchestration trace hides: query-thrash (count
+// + near-duplicate queries per session) and context poisoning (self_hits = retrievals the
+// caller itself authored; cross_session_hits = retrievals from a different session).
+message AgentStepOp {
+  string session_id = 1;
+  string agent_id = 2;
+  string action = 3; // "memory_query" (extensible)
+  string query = 4;
+  int32 hits = 5;
+  int32 self_hits = 6;
+  int32 cross_session_hits = 7;
+}
+
+// AgentLLMExchangeOp is one agent reasoning turn captured at the managed LLM
+// provider chokepoint (the same tap that feeds Langfuse): the full request prompt and
+// completion for a single GenerateViaModelStream call, attributed to the agent and its
+// step. Because every SDK ReAct round is one such call — the prompt embeds the running
+// trajectory and the completion is one action (memory_query/tool_call/final_answer) —
+// the ordered sequence of these per session reconstructs an agent's entire internal
+// loop, so a benchmark can review every agent output AND every loop step without any
+// SDK change. Live-only/never-replayed (like TokenChunkOp) and gated behind
+// execution.capture_llm_exchanges (default off): prompts are large and may be
+// sensitive, so this is a benchmark/diagnostic lane, not a production default. request
+// and response are truncated to a bounded size by the emitter.
+message AgentLLMExchangeOp {
+  string session_id = 1;
+  string agent_id = 2;
+  int32 step_index = 3;
+  string purpose = 4;        // "agent_llm" today (extensible: planner, verifier, ...)
+  string model_id = 5;
+  string request = 6;        // the full prompt sent to the provider (truncated)
+  string response = 7;       // the completion returned (truncated)
+  int32 request_chars = 8;   // untruncated request length (so truncation is visible)
+  int32 response_chars = 9;  // untruncated response length
 }
 
 // ResyncRequired tells the client its cursor has fallen out of the retained
@@ -586,6 +633,34 @@ message MemoryOp {
 }
 message QueryMemoryResponse {
   repeated MemoryOp results = 1;
+}
+
+// AnswerMemory (ADR-0081): grounded, span-cited answer.
+message AnswerMemoryRequest {
+  string query = 1;
+  int32 top_k = 2;          // evidence-pool cap (0 = kernel default)
+  string source = 3;        // optional filter on the evidence pool
+  string session = 4;       // optional filter
+  double min_importance = 5;// optional filter
+}
+// MemoryCitation is one piece of evidence the answer's [n] markers point to.
+message MemoryCitation {
+  int32 marker = 1;         // the [n] used inline in `answer`
+  string doc_id = 2;
+  string text = 3;          // the verbatim chunk — what a citation quotes
+  string section_path = 4;  // ADR-0060 breadcrumb; empty for flat docs
+  string source = 5;
+  double score = 6;
+  double importance = 7;
+  repeated string tags = 8;
+}
+message AnswerMemoryResponse {
+  // answer | abstention | clarification. Abstention means the evidence does not
+  // answer the question — a UI must render it as such, never as an empty answer.
+  string status = 1;
+  // Grounded prose with inline 1-based [n] markers resolving to `citations`.
+  string answer = 2;
+  repeated MemoryCitation citations = 3;
 }
 
 // SetToolPolicy binds an existing grant with a resource policy (A2.3). Setting a

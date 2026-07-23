@@ -18,6 +18,12 @@ export interface ConnectionState {
 // Existing 9 Tauri commands — response types.
 // ============================================================================
 
+/** The endpoint + username saved in the OS keychain. Password is never returned. */
+export interface SavedConnection {
+  endpoint: string;
+  username: string;
+}
+
 export interface LoginResponse {
   role: Role;
 }
@@ -248,6 +254,12 @@ export interface StateOfRecord {
   lifecycle: LifecycleState;
   verifier_pool: VerifierPoolState;
   cost_dashboard: CostDashboard;
+  /**
+   * Bounded tail of MemoryWrittenOps. Optional because a core predating the
+   * memory page omits it entirely — read sites must tolerate `undefined` rather
+   * than assume an empty array means "nothing was ingested".
+   */
+  memory_written?: MemoryWrittenEvent[];
 }
 
 // ============================================================================
@@ -497,10 +509,62 @@ export interface IngestMemoryParams {
 /** `[doc_id, deduped]`. `deduped` = replayed command_id, NOT a content duplicate. */
 export type IngestMemoryResponse = [string, boolean];
 
+/** File lane: the core reads bytes from this local `path`; no bytes cross IPC. */
+export interface IngestFileParams {
+  path: string;
+  context: string;
+  tags: string[];
+  importance: number;
+  reason: string;
+}
+
+/** Name + size of a picked file (bytes not read). */
+export interface FileStat {
+  name: string;
+  size: number;
+}
+
 export interface QueryMemoryParams {
   query: string;
   top_k: number;
   source: string;
   session: string;
   min_importance: number;
+}
+
+/** One citation the answer's [n] markers resolve to (ADR-0081). */
+export interface Citation {
+  /** The [n] used inline in `answer`. */
+  marker: number;
+  doc_id: string;
+  /** The verbatim chunk — what this citation quotes. */
+  text: string;
+  section_path: string;
+  source: string;
+  score: number;
+  importance: number;
+  tags: string[];
+}
+
+/** A grounded, cited answer (ADR-0081). `status` = answer | abstention | clarification. */
+export interface AnswerMemory {
+  status: string;
+  /** Grounded prose with inline 1-based [n] markers resolving to `citations`. */
+  answer: string;
+  citations: Citation[];
+}
+
+/**
+ * One `MemoryWrittenOp` off the feed — the ingest queue's status lane (no polling).
+ * A document emits one event per chunk, so the count for a `doc_id` is its chunk
+ * count. `seq` is the dedup key: the op carries no id of its own.
+ */
+export interface MemoryWrittenEvent {
+  seq: number;
+  doc_id: string;
+  doc_type: string;
+  session_id: string;
+  source: string;
+  summary: string;
+  written_at: string;
 }

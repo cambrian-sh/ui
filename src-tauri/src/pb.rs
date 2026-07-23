@@ -8,4 +8,4 @@ tonic::include_proto!("cambrian");
 
 /// The contract version this client is pinned to. Compare against
 /// `SnapshotResponse.contract_version` to detect kernel skew (ADR-0047 D14).
-pub const PINNED_CONTRACT_VERSION: &str = "0057";
+pub const PINNED_CONTRACT_VERSION: &str = "0060";
