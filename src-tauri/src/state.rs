@@ -16,6 +16,20 @@ fn now_iso() -> String {
     Utc::now().to_rfc3339()
 }
 
+/// Render a protobuf Timestamp as RFC-3339, or "" when absent.
+///
+/// The webview treats "" as "unknown" and renders an em-dash. That matters: five of the
+/// eight SessionSummary fields used to be structurally blank because the kernel had no way
+/// to send them, and the time-range filter silently discarded every session as a result.
+fn ts_iso(ts: &Option<::prost_types::Timestamp>) -> String {
+    match ts {
+        Some(t) => chrono::DateTime::from_timestamp(t.seconds, t.nanos as u32)
+            .map(|d| d.to_rfc3339())
+            .unwrap_or_default(),
+        None => String::new(),
+    }
+}
+
 // ============================================================================
 // Connection
 // ============================================================================
@@ -614,11 +628,40 @@ impl StateOfRecord {
                     });
                 }
             }
+            // Phase 2 (contract 0064): the ABSOLUTE lifecycle state, emitted on every
+            // transition — open, pause, resume, dormant, complete. This is an UPSERT, so a
+            // session created after the console connected appears immediately instead of
+            // staying invisible until the next snapshot, and "paused" becomes a state the
+            // UI can actually observe rather than unreachable paint.
+            Payload::SessionState(st) => {
+                let created = ts_iso(&st.created_at);
+                let updated = ts_iso(&st.updated_at);
+                if let Some(existing) =
+                    self.sessions.iter_mut().find(|x| x.session_id == st.session_id)
+                {
+                    existing.state = st.status.clone();
+                    if !st.goal.is_empty() {
+                        existing.title = st.goal.clone();
+                    }
+                    if !created.is_empty() {
+                        existing.created_at = created;
+                    }
+                    if !updated.is_empty() {
+                        existing.last_activity_at = updated;
+                    }
+                } else {
+                    self.sessions.push(SessionSummary {
+                        session_id: st.session_id.clone(),
+                        title: st.goal.clone(),
+                        state: st.status.clone(),
+                        created_at: created,
+                        last_activity_at: updated,
+                        ..Default::default()
+                    });
+                }
+            }
             Payload::SessionDormant(s) => {
                 self.set_session_state(&s.session_id, "dormant");
-            }
-            Payload::SessionCompleted(s) => {
-                self.set_session_state(&s.session_id, "completed");
             }
             Payload::HitlRaised(h) => {
                 // de-dup by intervention id (idempotent).
@@ -730,6 +773,58 @@ mod tests {
                 ..Default::default()
             })),
             ..Default::default()
+        }
+    }
+
+    fn session_state(seq: u64, id: &str, status: &str, goal: &str) -> pb::OperatorEvent {
+        pb::OperatorEvent {
+            seq,
+            payload: Some(Payload::SessionState(pb::SessionStateOp {
+                session_id: id.to_string(),
+                status: status.to_string(),
+                goal: goal.to_string(),
+                created_at: Some(::prost_types::Timestamp { seconds: 1_700_000_000, nanos: 0 }),
+                updated_at: Some(::prost_types::Timestamp { seconds: 1_700_000_500, nanos: 0 }),
+                ..Default::default()
+            })),
+            ..Default::default()
+        }
+    }
+
+    // A session created after the console connected must appear immediately. Before contract
+    // 0064 the feed had no "created" signal at all, so new sessions stayed invisible until
+    // the next snapshot.
+    #[test]
+    fn session_state_inserts_unknown_session() {
+        let mut st = StateOfRecord::default();
+        st.fold(&session_state(1, "s1", "active", "ship it"));
+
+        assert_eq!(st.sessions.len(), 1);
+        assert_eq!(st.sessions[0].session_id, "s1");
+        assert_eq!(st.sessions[0].state, "active");
+        assert_eq!(st.sessions[0].title, "ship it");
+        assert!(!st.sessions[0].created_at.is_empty(), "created_at must be populated");
+        assert!(!st.sessions[0].last_activity_at.is_empty());
+    }
+
+    // Absolute state: a later event upserts rather than duplicating.
+    #[test]
+    fn session_state_upserts_existing_session() {
+        let mut st = StateOfRecord::default();
+        st.fold(&session_state(1, "s1", "active", "ship it"));
+        st.fold(&session_state(2, "s1", "paused", "ship it"));
+
+        assert_eq!(st.sessions.len(), 1, "must upsert, not duplicate");
+        assert_eq!(st.sessions[0].state, "paused");
+    }
+
+    // "paused" was previously unreachable paint: nothing could ever set it.
+    #[test]
+    fn session_state_reaches_every_status() {
+        let mut st = StateOfRecord::default();
+        for status in ["active", "paused", "dormant", "completed"] {
+            st.fold(&session_state(1, "s1", status, "g"));
+            assert_eq!(st.sessions[0].state, status);
         }
     }
 

@@ -9,6 +9,7 @@ import { projectionStore } from "@/store/projection";
 import { shellStore } from "@/store/shell";
 import { useStore } from "@/store/useStore";
 import { ipc, onKernelState } from "@/ipc";
+import { autoConnectOnce } from "@/lib/autoConnect";
 
 const RIGHT_INSPECTOR_DEFAULT_PX = 360;
 
@@ -21,6 +22,13 @@ export function Shell() {
   useEffect(() => {
     let cancelled = false;
     let unlisten: (() => void) | undefined;
+
+    // Reconnect to the last instance at LAUNCH. The saved-credential login already existed
+    // but only ran from the connection panel, so the app started disconnected until the
+    // operator navigated to Settings. Fire-and-forget: the connection status arrives through
+    // the same kernel-state stream as everything else, and a failure surfaces on the
+    // connection panel rather than blocking the shell.
+    void autoConnectOnce();
 
     ipc.getState().then((state) => {
       if (!cancelled) projectionStore.getState().hydrate(state);

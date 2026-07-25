@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ipc } from '@/ipc';
 import { projectionStore } from '@/store/projection';
 import { useStore } from '@/store/useStore';
 import { ErrorState } from '@/design-system/components/cambrian/error-state';
 import { errorMessage } from '@/lib/errorMessage';
+import { autoConnectOnce } from '@/lib/autoConnect';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/design-system/components';
 import { cn } from '@/design-system/lib/utils';
 
@@ -99,31 +100,23 @@ export function ConnectionSettings() {
 
   const isConnected = status !== 'down';
 
-  // On first mount, if a saved connection is in the keychain, reconnect with it
-  // so the operator does not re-enter a password every launch. Runs once.
-  const autoTried = useRef(false);
+  // The saved-connection login is attempted at LAUNCH by the Shell, not here — otherwise it
+  // only ran once the operator navigated to this screen. This panel just reflects the
+  // outcome: prefill the fields it recovered, and surface why it failed if it did.
+  //
+  // autoConnectOnce is shared and idempotent, so reaching this screen never fires a second
+  // login against the same kernel.
   useEffect(() => {
-    if (autoTried.current || isConnected) return;
-    autoTried.current = true;
     let cancelled = false;
-    (async () => {
-      const saved = await ipc.savedConnection().catch(() => null);
-      if (cancelled || !saved) return;
-      setEndpoint(saved.endpoint);
-      setUsername(saved.username);
-      setBusy(true);
-      try {
-        await ipc.loginSaved();
-      } catch (err) {
-        setError(errorMessage(err));
-      } finally {
-        if (!cancelled) setBusy(false);
-      }
-    })();
+    void autoConnectOnce().then((result) => {
+      if (cancelled || !result.saved) return;
+      setEndpoint(result.saved.endpoint);
+      setUsername(result.saved.username);
+      if (result.error) setError(result.error);
+    });
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const onConnect = async (e: React.FormEvent) => {

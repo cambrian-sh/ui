@@ -4,6 +4,7 @@ import { axe } from 'vitest-axe';
 import { ConnectionSettings } from './ConnectionSettings';
 import { projectionStore } from '@/store/projection';
 import type { StateOfRecord } from '@/ipc/types';
+import { resetAutoConnectForTests } from '@/lib/autoConnect';
 
 vi.mock('@/ipc', () => ({
   ipc: {
@@ -71,6 +72,9 @@ function disconnectedState(): StateOfRecord {
 describe('ConnectionSettings', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // The saved-connection login runs at most ONCE per app launch (it is shared with the
+    // Shell). Reset that guard so each test gets a fresh launch.
+    resetAutoConnectForTests();
     vi.mocked(ipc.login).mockResolvedValue({ role: 'operator' });
     vi.mocked(ipc.loginSaved).mockResolvedValue({ role: 'operator' });
     vi.mocked(ipc.savedConnection).mockResolvedValue(null);
@@ -158,7 +162,7 @@ describe('ConnectionSettings', () => {
     });
   });
 
-  it('auto-connects from a saved connection on mount', async () => {
+  it('reconnects from the saved connection without a password', async () => {
     vi.mocked(ipc.savedConnection).mockResolvedValue({
       endpoint: 'http://saved:50051',
       username: 'ops',

@@ -248,12 +248,6 @@ async fn op_resume_session(
     Ok(CommandAck { deduped })
 }
 
-// TODO(UI-IMPL-19): add op_complete_session when the kernel exposes a
-// CompleteSession RPC. The proto is pinned at 0047 and has PauseSession /
-// ResumeSession only. The webview already calls this command; the mock
-// handles it; the Rust side returns "not implemented" until the contract
-// bumps.
-
 #[tauri::command(rename_all = "snake_case")]
 async fn op_resolve_hitl(
     transport: State<'_, Transport>,
@@ -329,18 +323,25 @@ async fn op_ingest_memory(
 
 // ---- Declared-but-unimplemented commands --------------------------------
 //
-// `src/ipc/client.ts` calls these three, but no kernel RPC backs them yet. They
+// `src/ipc/client.ts` calls these, but no kernel RPC backs them yet. They
 // are registered so the failure is a legible reason instead of Tauri's opaque
 // "command not found", which reads like a build problem rather than a missing
 // kernel capability.
 
+/// UI-IMPL-19, resolved: the kernel exposes CloseSession as of contract 0064, so this is a
+/// real command instead of a legible refusal.
 #[tauri::command(rename_all = "snake_case")]
-async fn op_complete_session(_session_id: String, _reason: String) -> Result<CommandAck, String> {
-    Err(
-        "not implemented: the operator contract has PauseSession/ResumeSession only, \
-         there is no CompleteSession RPC (UI-IMPL-19)"
-            .into(),
-    )
+async fn op_complete_session(
+    transport: State<'_, Transport>,
+    session_id: String,
+    reason: String,
+) -> Result<CommandAck, String> {
+    let deduped = transport
+        .inner()
+        .clone()
+        .close_session(session_id, reason)
+        .await?;
+    Ok(CommandAck { deduped })
 }
 
 #[tauri::command(rename_all = "snake_case")]

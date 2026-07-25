@@ -34,21 +34,21 @@ const MUTATION_META: Record<
   pause: {
     title: 'Pause session',
     description:
-      'The session will stop accepting new work. Running plans will be paused; queued steps will not dispatch. The session can be resumed later.',
+      'The running plan is paused — queued steps stop dispatching — and the session is marked paused. It can be resumed later.',
     confirmLabel: 'Pause',
     destructive: false,
   },
   resume: {
     title: 'Resume session',
     description:
-      'The session will resume accepting work. Any paused plans will continue from their last checkpoint.',
+      'The paused plan continues from where it stopped, and the session is marked active again.',
     confirmLabel: 'Resume',
     destructive: false,
   },
   complete: {
     title: 'Complete session',
     description:
-      'The session will be sealed and moved to the completed state. This is irreversible — the session cannot be resumed after completion.',
+      'The session is sealed and moved to the completed state. This is irreversible — a completed session cannot be resumed or reused for new work.',
     confirmLabel: 'Complete',
     destructive: true,
   },
@@ -179,7 +179,7 @@ export function SessionDetail({ session, role }: SessionDetailProps) {
         >
           <EmptyState
             title="No checkpoints yet"
-            body="Checkpoints appear here as the session executes. The operator can resume from any historical checkpoint (kernel ADR-0012)."
+            body="Checkpoints are written by the kernel as the session executes, but no read RPC exposes them yet, so none can be listed here."
           />
         </TabsContent>
       </Tabs>

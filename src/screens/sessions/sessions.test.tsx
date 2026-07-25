@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, within, fireEvent, waitFor } from '@testing-library/react';
-import { SessionsConsole } from '@/screens/sessions/SessionsConsole';
+import { SessionsConsole, filterSessions, matchesTimeRange } from '@/screens/sessions/SessionsConsole';
 import { projectionStore } from '@/store/projection';
 import type { SessionSummary, StateOfRecord } from '@/ipc/types';
 
@@ -137,5 +137,81 @@ describe('SessionsConsole', () => {
         }),
       ),
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Kernel-gap regressions (contract 0064).
+//
+// The kernel's SessionSummaryOp carries only {id, goal, status}. Everything else on
+// SessionSummary was filled from Default::default() in the Rust core, so five of eight
+// fields were structurally blank — and the console's own filters were not written for that.
+// ---------------------------------------------------------------------------
+describe('session filtering — kernel-gap regressions (contract 0064)', () => {
+  const ALL = { states: [], timeRange: 'all' as const, agents: [], search: '' };
+
+  it('keeps sessions with no timestamp when a time range is selected', () => {
+    // The kernel's SessionSummaryOp carries only {id, goal, status}; everything else was
+    // filled from Default::default(), so last_activity_at was "". A missing timestamp must
+    // read as UNKNOWN, not "too old" — `now - NaN <= window` is false, which previously
+    // filtered out EVERY session the moment any range but "all" was picked.
+    const s = makeSession({ title: 'No timestamp', last_activity_at: '' });
+    expect(matchesTimeRange('', '24h')).toBe(true);
+    expect(filterSessions([s], { ...ALL, timeRange: '24h' })).toHaveLength(1);
+  });
+
+  it('still excludes genuinely old sessions', () => {
+    const old = makeSession({ last_activity_at: new Date(Date.now() - 48 * 3600 * 1000).toISOString() });
+    const recent = makeSession({ last_activity_at: new Date().toISOString() });
+    const got = filterSessions([old, recent], { ...ALL, timeRange: '24h' });
+    expect(got).toHaveLength(1);
+    expect(got[0].session_id).toBe(recent.session_id);
+  });
+
+  it('applies the agent filter, which was previously counted but never used', () => {
+    const analyst = makeSession({ agent_mix: ['analyst'] });
+    const writer = makeSession({ agent_mix: ['writer'] });
+    const got = filterSessions([analyst, writer], { ...ALL, agents: ['analyst'] });
+    expect(got).toHaveLength(1);
+    expect(got[0].session_id).toBe(analyst.session_id);
+  });
+
+  it('leaves everything through when no agent filter is set', () => {
+    const a = makeSession({ agent_mix: [] });
+    const b = makeSession({ agent_mix: ['writer'] });
+    expect(filterSessions([a, b], ALL)).toHaveLength(2);
+  });
+});
+
+describe('SessionsConsole — derived fields', () => {
+  beforeEach(() => {
+    projectionStore.getState().reset();
+    searchState.focus = undefined;
+    navigateMock.mockClear();
+  });
+
+  it('derives plan count, cost and agent mix from the plans projection', () => {
+    // These three are not the SessionManager's to know, so the console joins them from the
+    // plans it already holds rather than rendering permanent zeroes.
+    const state = makeState([makeSession({ session_id: 's1', title: 'Joined' })]);
+    state.plans = [
+      {
+        plan_id: 'p1', session_id: 's1', subject: 'a', step_count: 2,
+        active_agent: 'analyst', status: 'running', elapsed_ms: 0, cost: 1.5,
+        started_at: new Date().toISOString(),
+      },
+      {
+        plan_id: 'p2', session_id: 's1', subject: 'b', step_count: 1,
+        active_agent: 'writer', status: 'completed', elapsed_ms: 0, cost: 2.5,
+        started_at: new Date().toISOString(),
+      },
+    ];
+    projectionStore.getState().hydrate(state);
+
+    render(<SessionsConsole />);
+    fireEvent.click(within(screen.getByRole('list', { name: 'Sessions' })).getAllByRole('button')[0]);
+
+    expect(screen.getByText('$4.00')).toBeInTheDocument();
+    expect(screen.getByText('analyst, writer')).toBeInTheDocument();
   });
 });

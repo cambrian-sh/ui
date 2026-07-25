@@ -214,9 +214,22 @@ impl Transport {
     /// cannot re-establish a session. It lives in the OS keychain, never in a
     /// plaintext file, and is cleared on `disconnect`.
     fn save_connection(endpoint: &str, username: &str, password: &str) {
-        if let Ok(entry) = keyring::Entry::new("cambrian-ui", "saved-connection") {
-            let blob = format!("{endpoint}\n{username}\n{password}");
-            let _ = entry.set_password(&blob);
+        // Failures are LOGGED, not swallowed. A silent `let _ =` here is what hid the real
+        // bug: keyring's mock store accepted every write and forgot it, so "remember me"
+        // reported success and persisted nothing. If the keychain is unavailable the
+        // operator should learn it from the log, not from re-typing a password every launch.
+        match keyring::Entry::new("cambrian-ui", "saved-connection") {
+            Ok(entry) => {
+                let blob = format!("{endpoint}
+{username}
+{password}");
+                if let Err(err) = entry.set_password(&blob) {
+                    tracing::warn!(?err, "keychain write failed; this instance will not be remembered");
+                }
+            }
+            Err(err) => {
+                tracing::warn!(?err, "keychain unavailable; this instance will not be remembered");
+            }
         }
     }
 
@@ -228,8 +241,19 @@ impl Transport {
 
     /// Read the saved connection, if any. Returns `(endpoint, username, password)`.
     pub fn saved_connection() -> Option<(String, String, String)> {
-        let entry = keyring::Entry::new("cambrian-ui", "saved-connection").ok()?;
-        let blob = entry.get_password().ok()?;
+        let entry = keyring::Entry::new("cambrian-ui", "saved-connection")
+            .inspect_err(|err| tracing::warn!(?err, "keychain unavailable; cannot auto-connect"))
+            .ok()?;
+        // NoEntry is the ordinary "nothing saved yet" case and must stay quiet; anything
+        // else means auto-connect will fail every launch, which is worth seeing.
+        let blob = match entry.get_password() {
+            Ok(v) => v,
+            Err(keyring::Error::NoEntry) => return None,
+            Err(err) => {
+                tracing::warn!(?err, "keychain read failed; cannot auto-connect");
+                return None;
+            }
+        };
         let mut parts = blob.splitn(3, '\n');
         let endpoint = parts.next()?.to_string();
         let username = parts.next()?.to_string();
@@ -549,6 +573,22 @@ impl Transport {
         }
         .map_err(map_status)?
         .into_inner();
+        Ok(ack.deduped)
+    }
+
+    /// Seal a session (contract 0064). Unlike pause/resume this needs no live execution —
+    /// the common case is closing work that has already stopped.
+    pub async fn close_session(&self, session_id: String, reason: String) -> Result<bool, String> {
+        let mut client = self.client().await?;
+        let ack = client
+            .close_session(Request::new(pb::SessionCommandRequest {
+                command_id: new_command_id(),
+                reason,
+                session_id,
+            }))
+            .await
+            .map_err(map_status)?
+            .into_inner();
         Ok(ack.deduped)
     }
 

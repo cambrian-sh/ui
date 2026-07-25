@@ -16,9 +16,13 @@ const INITIAL_FILTERS: SessionFiltersState = {
   search: '',
 };
 
-function matchesTimeRange(iso: string, range: SessionFiltersState['timeRange']): boolean {
+export function matchesTimeRange(iso: string, range: SessionFiltersState['timeRange']): boolean {
   if (range === 'all') return true;
   const then = new Date(iso).getTime();
+  // A session with no timestamp is UNKNOWN, not "outside the window". Without this guard
+  // `now - NaN <= window` is false for every session, so picking any range but "all"
+  // emptied the list entirely. relativeTime() has always guarded this; the filter did not.
+  if (!Number.isFinite(then)) return true;
   const now = Date.now();
   const windowMs: Record<Exclude<SessionFiltersState['timeRange'], 'all'>, number> = {
     '1h': 60 * 60 * 1000,
@@ -29,7 +33,7 @@ function matchesTimeRange(iso: string, range: SessionFiltersState['timeRange']):
   return now - then <= windowMs[range];
 }
 
-function filterSessions(
+export function filterSessions(
   sessions: SessionSummary[],
   filters: SessionFiltersState,
 ): SessionSummary[] {
@@ -37,6 +41,11 @@ function filterSessions(
   return sessions.filter((s) => {
     if (filters.states.length > 0 && !filters.states.includes(s.state)) return false;
     if (!matchesTimeRange(s.last_activity_at, filters.timeRange)) return false;
+    // The agent filter was counted in isFiltered but never applied here, so selecting an
+    // agent narrowed nothing.
+    if (filters.agents.length > 0 && !s.agent_mix.some((a) => filters.agents.includes(a))) {
+      return false;
+    }
     if (q) {
       const hay = `${s.title} ${s.session_id}`.toLowerCase();
       if (!hay.includes(q)) return false;
@@ -51,7 +60,31 @@ export function SessionsConsole() {
   const search = useSearch({ strict: false }) as { focus?: string };
   const [filters, setFilters] = useState<SessionFiltersState>(INITIAL_FILTERS);
 
-  const sessions = projection.state?.sessions ?? [];
+  const rawSessions = projection.state?.sessions ?? [];
+  const plans = projection.state?.plans ?? [];
+  // The kernel's SessionSummaryOp carries only {id, goal, status}: plan count, cost and
+  // agent mix are not the SessionManager's to know. They ARE derivable from the plans the
+  // console already holds, so join them here rather than rendering three permanent zeroes.
+  const sessions = useMemo(() => {
+    const bySession = new Map<string, { plans: number; cost: number; agents: Set<string> }>();
+    for (const p of plans) {
+      const acc = bySession.get(p.session_id) ?? { plans: 0, cost: 0, agents: new Set<string>() };
+      acc.plans += 1;
+      acc.cost += p.cost;
+      if (p.active_agent) acc.agents.add(p.active_agent);
+      bySession.set(p.session_id, acc);
+    }
+    return rawSessions.map((s) => {
+      const acc = bySession.get(s.session_id);
+      if (!acc) return s;
+      return {
+        ...s,
+        plan_count: s.plan_count || acc.plans,
+        cost: s.cost || acc.cost,
+        agent_mix: s.agent_mix.length > 0 ? s.agent_mix : Array.from(acc.agents).sort(),
+      };
+    });
+  }, [rawSessions, plans]);
   const role = projection.state?.role ?? null;
   const availableAgents = useMemo(() => {
     const set = new Set<string>();

@@ -34,7 +34,10 @@ prost-types = "0.13"
 tokio = { version = "1", features = ["full"] }
 tokio-stream = "0.1"
 uuid = { version = "1", features = ["v4"] }
-keyring = "3"
+# keyring 3 gates every platform credential store behind a feature. With none enabled it
+# falls back to an in-memory MOCK that accepts set_password and forgets it, so "remember me"
+# silently did nothing across restarts. These features are what make it an actual keychain.
+keyring = { version = "3", features = ["apple-native", "windows-native", "sync-secret-service"] }
 thiserror = "1"
 tracing = "0.1"
 chrono = "0.4"
