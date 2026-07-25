@@ -19,6 +19,7 @@ import { Route as MemoryRouteImport } from './routes/memory'
 import { Route as McpRouteImport } from './routes/mcp'
 import { Route as LifecycleRouteImport } from './routes/lifecycle'
 import { Route as CostRouteImport } from './routes/cost'
+import { Route as ChatRouteImport } from './routes/chat'
 import { Route as AuditRouteImport } from './routes/audit'
 import { Route as AgentsRouteImport } from './routes/agents'
 import { Route as IndexRouteImport } from './routes/index'
@@ -75,6 +76,11 @@ const CostRoute = CostRouteImport.update({
   path: '/cost',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ChatRoute = ChatRouteImport.update({
+  id: '/chat',
+  path: '/chat',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AuditRoute = AuditRouteImport.update({
   id: '/audit',
   path: '/audit',
@@ -105,6 +111,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/agents': typeof AgentsRoute
   '/audit': typeof AuditRoute
+  '/chat': typeof ChatRoute
   '/cost': typeof CostRoute
   '/lifecycle': typeof LifecycleRoute
   '/mcp': typeof McpRoute
@@ -122,6 +129,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/agents': typeof AgentsRoute
   '/audit': typeof AuditRoute
+  '/chat': typeof ChatRoute
   '/cost': typeof CostRoute
   '/lifecycle': typeof LifecycleRoute
   '/mcp': typeof McpRoute
@@ -140,6 +148,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/agents': typeof AgentsRoute
   '/audit': typeof AuditRoute
+  '/chat': typeof ChatRoute
   '/cost': typeof CostRoute
   '/lifecycle': typeof LifecycleRoute
   '/mcp': typeof McpRoute
@@ -159,6 +168,7 @@ export interface FileRouteTypes {
     | '/'
     | '/agents'
     | '/audit'
+    | '/chat'
     | '/cost'
     | '/lifecycle'
     | '/mcp'
@@ -176,6 +186,7 @@ export interface FileRouteTypes {
     | '/'
     | '/agents'
     | '/audit'
+    | '/chat'
     | '/cost'
     | '/lifecycle'
     | '/mcp'
@@ -193,6 +204,7 @@ export interface FileRouteTypes {
     | '/'
     | '/agents'
     | '/audit'
+    | '/chat'
     | '/cost'
     | '/lifecycle'
     | '/mcp'
@@ -211,6 +223,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AgentsRoute: typeof AgentsRoute
   AuditRoute: typeof AuditRoute
+  ChatRoute: typeof ChatRoute
   CostRoute: typeof CostRoute
   LifecycleRoute: typeof LifecycleRoute
   McpRoute: typeof McpRoute
@@ -297,6 +310,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof CostRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/chat': {
+      id: '/chat'
+      path: '/chat'
+      fullPath: '/chat'
+      preLoaderRoute: typeof ChatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/audit': {
       id: '/audit'
       path: '/audit'
@@ -339,6 +359,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AgentsRoute: AgentsRoute,
   AuditRoute: AuditRoute,
+  ChatRoute: ChatRoute,
   CostRoute: CostRoute,
   LifecycleRoute: LifecycleRoute,
   McpRoute: McpRoute,

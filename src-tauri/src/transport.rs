@@ -16,7 +16,8 @@ use tonic::{Request, Status};
 use crate::pb;
 use crate::pb::operator_console_client::OperatorConsoleClient;
 use crate::state::{
-    ConnectionStatus, SkillSummary, StateOfRecord, ToolSummary, WatchConfigSummary,
+    ConnectionStatus, ConversationMessage, ConversationSummary, SkillSummary, StateOfRecord, ToolSummary,
+    WatchConfigSummary,
 };
 
 /// Tauri event names emitted to the webview.
@@ -421,6 +422,107 @@ impl Transport {
                 reason,
                 session_id,
                 instruction,
+            }))
+            .await
+            .map_err(map_status)?
+            .into_inner();
+        Ok(ack.deduped)
+    }
+
+    // ---- Conversations (ADR-0084 D9 OSS chat lane) ----------------------
+    //
+    // Distinct from create_session/send_message above, which drive the task PLANNER: a
+    // conversation turn is owned by a single agent loop on the kernel's chat worker pool and
+    // is never decomposed into a plan. send_turn returns the agent's reply synchronously.
+    // conversation_id is client-generated (a UUID here) so open is idempotent on it.
+
+    pub async fn open_conversation(
+        &self,
+        conversation_id: String,
+        title: String,
+        profile: String,
+        policy: String,
+        reason: String,
+    ) -> Result<String, String> {
+        let mut client = self.client().await?;
+        let resp = client
+            .open_conversation(Request::new(pb::OpenConversationOpRequest {
+                command_id: new_command_id(),
+                reason,
+                conversation_id,
+                title,
+                profile,
+                policy,
+            }))
+            .await
+            .map_err(map_status)?
+            .into_inner();
+        Ok(resp.conversation_id)
+    }
+
+    pub async fn send_turn(
+        &self,
+        conversation_id: String,
+        text: String,
+        reason: String,
+    ) -> Result<Option<ConversationMessage>, String> {
+        let mut client = self.client().await?;
+        let resp = client
+            .send_turn(Request::new(pb::SendTurnOpRequest {
+                command_id: new_command_id(),
+                reason,
+                conversation_id,
+                text,
+            }))
+            .await
+            .map_err(map_status)?
+            .into_inner();
+        Ok(resp.reply.map(ConversationMessage::from))
+    }
+
+    pub async fn list_conversations(
+        &self,
+        limit: i32,
+    ) -> Result<Vec<ConversationSummary>, String> {
+        let mut client = self.client().await?;
+        let resp = client
+            .list_conversations(Request::new(pb::ListConversationsOpRequest { limit }))
+            .await
+            .map_err(map_status)?
+            .into_inner();
+        Ok(resp.conversations.into_iter().map(ConversationSummary::from).collect())
+    }
+
+    pub async fn list_conversation_messages(
+        &self,
+        conversation_id: String,
+        after_seq: i64,
+        limit: i32,
+    ) -> Result<Vec<ConversationMessage>, String> {
+        let mut client = self.client().await?;
+        let resp = client
+            .list_conversation_messages(Request::new(pb::ListConversationMessagesOpRequest {
+                conversation_id,
+                after_seq,
+                limit,
+            }))
+            .await
+            .map_err(map_status)?
+            .into_inner();
+        Ok(resp.messages.into_iter().map(ConversationMessage::from).collect())
+    }
+
+    pub async fn close_conversation(
+        &self,
+        conversation_id: String,
+        reason: String,
+    ) -> Result<bool, String> {
+        let mut client = self.client().await?;
+        let ack = client
+            .close_conversation(Request::new(pb::CloseConversationOpRequest {
+                command_id: new_command_id(),
+                reason,
+                conversation_id,
             }))
             .await
             .map_err(map_status)?

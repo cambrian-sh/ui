@@ -11,6 +11,8 @@ export interface PlanStep {
   bids_count: number;
   output_peek?: string;
   trust_score?: number;
+  depends_on?: number[]; // zero-based indices this step waits on (real DAG edges)
+  is_thought?: boolean;
 }
 
 const ROW_CLASS: Record<PlanStepStatus, string> = {

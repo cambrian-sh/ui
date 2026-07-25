@@ -54,6 +54,29 @@ impl Default for ConnectionState {
 // Plans
 // ============================================================================
 
+/// One node of a plan's DAG. Matches webview `PlanStep` (index/label/depends_on/status).
+#[derive(Clone, Serialize)]
+pub struct PlanStep {
+    pub index: i32,
+    pub label: String,
+    pub depends_on: Vec<i32>,
+    pub is_thought: bool,
+    pub status: String,
+    pub agent: Option<String>,
+}
+
+/// Map a proto DAG node to its projection form.
+fn plan_step_from_op(op: &pb::PlanStepOp) -> PlanStep {
+    PlanStep {
+        index: op.index,
+        label: op.label.clone(),
+        depends_on: op.depends_on.clone(),
+        is_thought: op.is_thought,
+        status: op.status.clone(),
+        agent: if op.agent.is_empty() { None } else { Some(op.agent.clone()) },
+    }
+}
+
 /// Matches webview `PlanInFlight`.
 #[derive(Clone, Serialize)]
 pub struct PlanInFlight {
@@ -66,6 +89,9 @@ pub struct PlanInFlight {
     pub elapsed_ms: i64,
     pub cost: f64,
     pub started_at: String,
+    /// The plan's DAG for live rendering. Absolute-state: replaced wholesale on each
+    /// PlanState fold. Empty until the first PlanState event carries it (snapshots don't).
+    pub steps: Vec<PlanStep>,
 }
 
 impl Default for PlanInFlight {
@@ -80,6 +106,7 @@ impl Default for PlanInFlight {
             elapsed_ms: 0,
             cost: 0.0,
             started_at: String::new(),
+            steps: Vec::new(),
         }
     }
 }
@@ -254,6 +281,58 @@ pub struct WatchConfigSummary {
     pub last_fire_at: Option<String>,
     pub last_fire_status: String,
     pub error_count: i32,
+}
+
+// ============================================================================
+// Conversations (ADR-0084 D9 OSS chat lane)
+// ============================================================================
+
+/// One persisted conversation turn, projected for the webview (no gRPC types cross
+/// the IPC seam).
+#[derive(Clone, Serialize, Default)]
+pub struct ConversationMessage {
+    pub id: String,
+    pub conversation_id: String,
+    pub seq: i64,
+    /// "user" | "agent" | "system".
+    pub role: String,
+    pub content: String,
+    pub created_at: String,
+}
+
+impl From<pb::MessageOp> for ConversationMessage {
+    fn from(m: pb::MessageOp) -> Self {
+        Self {
+            id: m.id,
+            conversation_id: m.conversation_id,
+            seq: m.seq,
+            role: m.role,
+            content: m.content,
+            created_at: m.created_at,
+        }
+    }
+}
+
+/// A conversation summary for the ChatGPT-style sidebar (no messages).
+#[derive(Clone, Serialize, Default)]
+pub struct ConversationSummary {
+    pub id: String,
+    pub title: String,
+    pub status: String,
+    pub profile: String,
+    pub updated_at: String,
+}
+
+impl From<pb::ConversationOp> for ConversationSummary {
+    fn from(c: pb::ConversationOp) -> Self {
+        Self {
+            id: c.id,
+            title: c.title,
+            status: c.status,
+            profile: c.profile,
+            updated_at: c.updated_at,
+        }
+    }
 }
 
 // ============================================================================
@@ -513,6 +592,11 @@ impl StateOfRecord {
                     existing.status = p.status.clone();
                     existing.cost = p.cost_so_far;
                     existing.step_count = p.active_step;
+                    // Absolute-state: replace the DAG wholesale. A late (empty) emitter must
+                    // not wipe a graph we already have, so only overwrite when steps arrive.
+                    if !p.steps.is_empty() {
+                        existing.steps = p.steps.iter().map(plan_step_from_op).collect();
+                    }
                 } else {
                     self.plans.push(PlanInFlight {
                         session_id: p.session_id.clone(),
@@ -525,6 +609,7 @@ impl StateOfRecord {
                         status: p.status.clone(),
                         cost: p.cost_so_far,
                         step_count: p.active_step,
+                        steps: p.steps.iter().map(plan_step_from_op).collect(),
                         ..Default::default()
                     });
                 }

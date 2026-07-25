@@ -11,6 +11,7 @@ interface NavEntry {
 
 const NAV_ENTRIES: readonly NavEntry[] = [
   { path: "/sessions",  shortcut: "g s", label: "Sessions" },
+  { path: "/chat",      shortcut: "g h", label: "Chat" },
   { path: "/plans",     shortcut: "g p", label: "Plans in Flight" },
   { path: "/agents",    shortcut: "g a", label: "Agents" },
   { path: "/tools",     shortcut: "g t", label: "Tools & Skills" },

@@ -14,6 +14,22 @@ const PlanGraph = lazy(() => import('./PlanGraph').then((m) => ({ default: m.Pla
 
 type Mode = 'dag' | 'list';
 
+// Map the real DAG nodes projected from the PlanState feed to the view's PlanStep shape,
+// preserving the dependency edges so the graph draws the true DAG (not a linear chain).
+function realSteps(plan: PlanInFlight): PlanStep[] {
+  return (plan.steps ?? []).map((n) => ({
+    step_id: `${plan.plan_id}-step-${n.index}`,
+    index: n.index,
+    query: n.label,
+    status: n.status,
+    bids_count: 0,
+    depends_on: n.depends_on,
+    is_thought: n.is_thought,
+  }));
+}
+
+// Fallback for a plan seen via Snapshot before its first PlanState event (no DAG yet):
+// a flat, count-based placeholder so the surface isn't empty.
 function placeholderSteps(plan: PlanInFlight): PlanStep[] {
   const total = plan.step_count;
   return Array.from({ length: total }, (_, i) => {
@@ -45,7 +61,10 @@ export function PlanWorkSurface() {
   const [pending, setPending] = useState<'pause' | 'resume' | null>(null);
 
   const plan = useFocusedPlan(plans);
-  const steps = useMemo(() => (plan ? placeholderSteps(plan) : []), [plan]);
+  const steps = useMemo(() => {
+    if (!plan) return [];
+    return (plan.steps?.length ?? 0) > 0 ? realSteps(plan) : placeholderSteps(plan);
+  }, [plan]);
 
   const role = state?.role;
   const isOperator = role === 'operator';

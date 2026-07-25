@@ -10,7 +10,7 @@ pub mod transport;
 
 use tauri::{AppHandle, State};
 
-use state::{SkillSummary, StateOfRecord, ToolSummary, WatchConfigSummary};
+use state::{ConversationMessage, ConversationSummary, SkillSummary, StateOfRecord, ToolSummary, WatchConfigSummary};
 use transport::{MemoryHit, Transport};
 
 // ---- Command response DTOs ----------------------------------------------
@@ -145,6 +145,77 @@ async fn op_inject_correction(
         .inner()
         .clone()
         .inject_correction(session_id, instruction, reason)
+        .await?;
+    Ok(CommandAck { deduped })
+}
+
+// ---- Conversations (ADR-0084 D9 OSS chat lane) -------------------------
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_open_conversation(
+    transport: State<'_, Transport>,
+    conversation_id: String,
+    title: String,
+    profile: String,
+    policy: String,
+    reason: String,
+) -> Result<CreateSessionResponse, String> {
+    let id = transport
+        .inner()
+        .clone()
+        .open_conversation(conversation_id, title, profile, policy, reason)
+        .await?;
+    // Reuse the {session_id} shape as the id carrier so the webview has one id type; the
+    // field is the conversation id here.
+    Ok(CreateSessionResponse { session_id: id })
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_send_turn(
+    transport: State<'_, Transport>,
+    conversation_id: String,
+    text: String,
+    reason: String,
+) -> Result<Option<ConversationMessage>, String> {
+    transport
+        .inner()
+        .clone()
+        .send_turn(conversation_id, text, reason)
+        .await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_list_conversations(
+    transport: State<'_, Transport>,
+    limit: i32,
+) -> Result<Vec<ConversationSummary>, String> {
+    transport.inner().clone().list_conversations(limit).await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_list_conversation_messages(
+    transport: State<'_, Transport>,
+    conversation_id: String,
+    after_seq: i64,
+    limit: i32,
+) -> Result<Vec<ConversationMessage>, String> {
+    transport
+        .inner()
+        .clone()
+        .list_conversation_messages(conversation_id, after_seq, limit)
+        .await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_close_conversation(
+    transport: State<'_, Transport>,
+    conversation_id: String,
+    reason: String,
+) -> Result<CommandAck, String> {
+    let deduped = transport
+        .inner()
+        .clone()
+        .close_conversation(conversation_id, reason)
         .await?;
     Ok(CommandAck { deduped })
 }
@@ -511,6 +582,11 @@ pub fn run() {
             op_create_session,
             op_send_message,
             op_inject_correction,
+            op_open_conversation,
+            op_send_turn,
+            op_list_conversations,
+            op_list_conversation_messages,
+            op_close_conversation,
             op_pause_session,
             op_resume_session,
             op_resolve_hitl,

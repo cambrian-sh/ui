@@ -105,6 +105,59 @@ export interface SendMessageParams {
   reason: string;
 }
 
+// ---- Conversations (ADR-0084 D9 OSS chat lane) -------------------------
+// A conversation is NOT a task session: a turn is owned by one agent loop on the kernel's
+// chat pool and never decomposed into a plan. Gated on the "chat" capability.
+
+export interface ConversationMessage {
+  id: string;
+  conversation_id: string;
+  seq: number;
+  role: 'user' | 'agent' | 'system';
+  content: string;
+  created_at: string;
+}
+
+/** A conversation summary for the sidebar (no messages). */
+export interface ConversationSummary {
+  id: string;
+  title: string;
+  status: 'open' | 'closed';
+  profile: string;
+  updated_at: string;
+}
+
+export interface ListConversationsParams {
+  limit: number;
+}
+
+export interface OpenConversationParams {
+  /** client-generated stable id (UUID) — makes open idempotent */
+  conversation_id: string;
+  title: string;
+  /** "operator" | "employee" | "customer"; empty ⇒ operator */
+  profile: string;
+  policy: string;
+  reason: string;
+}
+
+export interface SendTurnParams {
+  conversation_id: string;
+  text: string;
+  reason: string;
+}
+
+export interface ListConversationMessagesParams {
+  conversation_id: string;
+  after_seq: number;
+  limit: number;
+}
+
+export interface CloseConversationParams {
+  conversation_id: string;
+  reason: string;
+}
+
 export interface InjectCorrectionParams {
   session_id: string;
   instruction: string;
@@ -182,6 +235,18 @@ export type HITLNature = 'destructive_command' | 'approval_request' | 'dangerous
 export type AuditStatus = 'applied' | 'failed' | 'denied';
 export type AuditKind = 'config' | 'data' | 'runtime';
 
+// PlanStepNode is one node of a plan's DAG, as projected by the Rust core from the
+// PlanState feed (field names match the serde serialization). Empty until the first
+// PlanState event carries the graph (snapshots don't include it).
+export interface PlanStepNode {
+  index: number;
+  label: string;
+  depends_on: number[];
+  is_thought: boolean;
+  status: 'pending' | 'running' | 'done' | 'failed';
+  agent: string | null;
+}
+
 export interface PlanInFlight {
   plan_id: string;
   session_id: string;
@@ -192,6 +257,7 @@ export interface PlanInFlight {
   elapsed_ms: number;
   cost: number;
   started_at: string; // ISO 8601
+  steps?: PlanStepNode[]; // the DAG; present on live PlanState folds, absent on snapshot-only plans
 }
 
 export interface SessionSummary {

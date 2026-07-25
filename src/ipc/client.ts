@@ -47,6 +47,27 @@ export const ipc = {
   injectCorrection: (params: t.InjectCorrectionParams): Promise<t.CommandAck> =>
     invoke<t.CommandAck>('op_inject_correction', { ...params }),
 
+  // ---- Conversations (ADR-0084 D9). SendTurn returns the agent reply synchronously; the
+  // core carries the conversation id in the {session_id} field of the open response.
+  openConversation: async (params: t.OpenConversationParams): Promise<string> => {
+    const resp = await invoke<t.CreateSessionResponse>('op_open_conversation', { ...params });
+    return resp.session_id;
+  },
+
+  sendTurn: (params: t.SendTurnParams): Promise<t.ConversationMessage | null> =>
+    invoke<t.ConversationMessage | null>('op_send_turn', { ...params }),
+
+  listConversations: (params: t.ListConversationsParams): Promise<t.ConversationSummary[]> =>
+    invoke<t.ConversationSummary[]>('op_list_conversations', { ...params }),
+
+  listConversationMessages: (
+    params: t.ListConversationMessagesParams,
+  ): Promise<t.ConversationMessage[]> =>
+    invoke<t.ConversationMessage[]>('op_list_conversation_messages', { ...params }),
+
+  closeConversation: (params: t.CloseConversationParams): Promise<t.CommandAck> =>
+    invoke<t.CommandAck>('op_close_conversation', { ...params }),
+
   pauseSession: (params: t.PauseSessionParams): Promise<t.CommandAck> =>
     invoke<t.CommandAck>('op_pause_session', { ...params }),
 

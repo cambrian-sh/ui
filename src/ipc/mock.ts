@@ -146,6 +146,62 @@ class MockIPC {
     return { deduped: false };
   }
 
+  // ---- Conversations (ADR-0084 D9): an in-memory transcript so the webview and tests run
+  // without a kernel. Mirrors the real semantics: user turn appended, an echo agent reply.
+  private convMsgs: Record<string, t.ConversationMessage[]> = {};
+
+  async openConversation(params: t.OpenConversationParams): Promise<string> {
+    if (!this.convMsgs[params.conversation_id]) {
+      this.convMsgs[params.conversation_id] = [];
+    }
+    return params.conversation_id;
+  }
+
+  async sendTurn(params: t.SendTurnParams): Promise<t.ConversationMessage | null> {
+    const list = this.convMsgs[params.conversation_id] ?? [];
+    const now = new Date().toISOString();
+    list.push({
+      id: `m-${list.length + 1}`,
+      conversation_id: params.conversation_id,
+      seq: list.length + 1,
+      role: 'user',
+      content: params.text,
+      created_at: now,
+    });
+    const reply: t.ConversationMessage = {
+      id: `m-${list.length + 1}`,
+      conversation_id: params.conversation_id,
+      seq: list.length + 1,
+      role: 'agent',
+      content: `(mock reply) you said: ${params.text}`,
+      created_at: now,
+    };
+    list.push(reply);
+    this.convMsgs[params.conversation_id] = list;
+    return reply;
+  }
+
+  async listConversations(_params: t.ListConversationsParams): Promise<t.ConversationSummary[]> {
+    return Object.keys(this.convMsgs).map((id, i) => ({
+      id,
+      title: `Conversation ${i + 1}`,
+      status: 'open' as const,
+      profile: 'operator',
+      updated_at: new Date().toISOString(),
+    }));
+  }
+
+  async listConversationMessages(
+    params: t.ListConversationMessagesParams,
+  ): Promise<t.ConversationMessage[]> {
+    const list = this.convMsgs[params.conversation_id] ?? [];
+    return list.filter((m) => m.seq > params.after_seq);
+  }
+
+  async closeConversation(_params: t.CloseConversationParams): Promise<t.CommandAck> {
+    return { deduped: false };
+  }
+
   async injectCorrection(_params: t.InjectCorrectionParams): Promise<t.CommandAck> {
     return { deduped: false };
   }

@@ -19,7 +19,7 @@ Do not assume anything about the runtime, the transport, or the domain terminolo
 | Memory explorer (PRD-05) — compare, graph, bulk | **Deferred** (P3 UI-IMPL-31…35). Detail + blast-radius are reachable from the Memory page's Inspect tab. Real browse is blocked on a `ListMemory` RPC. |
 | Audit & export (PRD-07) — list, deep-link, CSV/JSON export | **Vertical-slice minimal** — read-only audit tail. Mutations + export (P4 UI-IMPL-36…37) deferred. |
 | Configuration (PRD-07) — settings, first-run, profiles | **Connection panel shipped** — Settings → Connection operates **one instance at a time**: connect (endpoint/username/password), live instance card (status, endpoint, role, kernel + contract, capability count, skew warning), and a real `op_disconnect`. Endpoint + username persist locally for prefill; the password never does (the token lives in the OS keychain). Runtime/UI/Profiles (P5 UI-IMPL-37) deferred. |
-| Vendored contract `proto/operator.proto` | **Present, pinned to `0060`** (re-vendored 2026-07-23 for ADR-0081 AnswerMemory + `memory-answer` capability; earlier 2026-07-17 pass added the memory read/ingest surface) |
+| Vendored contract `proto/operator.proto` | **Present, pinned to `0062`** (re-vendored 2026-07-24 for ADR-0084 D9 conversation lane: `OpenConversation`/`SendTurn`/`CloseConversation`/`ListConversationMessages` + `chat` capability; 2026-07-23 added ADR-0081 AnswerMemory) |
 | Runtime-core Operator Transport Plane (the thing we integrate against) | **Implemented & serving** (kernel ADR-0047; see §6) |
 
 The **Rust core (`src-tauri`) and the webview (`src`) are both built**. The console subsystem and memory explorer are partially shipped (vertical slice + P2 console screens complete). The build order is the parent UX PRD §13 (vertical slice → P1 subsystems read → P2 subsystems read+mutate → P3 memory explorer → P4 audit & export → P5 configuration → P6 polish & a11y).
@@ -59,7 +59,7 @@ The presentation layer. Responsibilities: a **projection store** hydrated from t
 
 ### `proto/` — the vendored contract
 
-`operator.proto`, **vendored and pinned** to contract `0060`, header-stamped DO-NOT-EDIT. The single source of the wire types. Re-vendor from the kernel repo `api/proto/operator.proto` when the contract bumps.
+`operator.proto`, **vendored and pinned** to contract `0061`, header-stamped DO-NOT-EDIT. The single source of the wire types. Re-vendor from the kernel repo `api/proto/operator.proto` when the contract bumps.
 
 ### `docs/` — the product spec
 
