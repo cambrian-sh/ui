@@ -1,4 +1,5 @@
 import { cn } from '@/design-system/lib/utils';
+import { ToolEffects } from './ToolEffects';
 import type { ToolSummary } from '@/ipc/types';
 
 interface ToolListRowProps {
@@ -31,6 +32,7 @@ export function ToolListRow({ tool, selected, onClick }: ToolListRowProps) {
         <div className="mt-0.5 truncate max-w-64 text-xs text-[var(--fg-muted)]">
           {tool.description}
         </div>
+        <ToolEffects tool={tool} className="mt-1" />
       </div>
       <div className="flex shrink-0 items-center gap-4 text-right text-xs text-[var(--fg-muted)]">
         <div>

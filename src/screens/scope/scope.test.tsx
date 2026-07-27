@@ -1,15 +1,23 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import { ScopeConsole } from './ScopeConsole';
+import { AccessPolicyConsole } from './AccessPolicyConsole';
 import { projectionStore } from '@/store/projection';
 import type { StateOfRecord, ScopeSummary } from '@/ipc/types';
 
-const searchState: { focus: string | undefined } = { focus: undefined };
-const navigateMock = vi.fn((opts: { to?: string; search?: { focus?: string }; replace?: boolean }) => {
-  if (opts.search?.focus !== undefined) {
-    searchState.focus = opts.search.focus;
-  }
-});
+const searchState: { focus: string | undefined; tab: string | undefined } = {
+  focus: undefined,
+  tab: undefined,
+};
+const navigateMock = vi.fn(
+  (opts: { to?: string; search?: { focus?: string; tab?: string }; replace?: boolean }) => {
+    if (opts.search && 'focus' in opts.search) {
+      searchState.focus = opts.search.focus;
+    }
+    if (opts.search?.tab !== undefined) {
+      searchState.tab = opts.search.tab;
+    }
+  },
+);
 
 vi.mock('@tanstack/react-router', () => ({
   useNavigate: () => navigateMock,
@@ -29,6 +37,7 @@ function makeState(scope: Record<string, ScopeSummary> = {}): StateOfRecord {
     contract_version: '0047',
     capabilities: [],
     contract_skew: 0,
+    plugins: [],
     cursor: 0,
     plans: [],
     sessions: [],
@@ -46,18 +55,21 @@ function makeState(scope: Record<string, ScopeSummary> = {}): StateOfRecord {
   };
 }
 
-describe('ScopeConsole', () => {
+describe('AccessPolicyConsole — principals', () => {
   beforeEach(() => {
     projectionStore.getState().reset();
     searchState.focus = undefined;
+    searchState.tab = undefined;
     navigateMock.mockClear();
   });
 
   it('renders empty state when no scope data', () => {
     projectionStore.getState().hydrate(makeState());
-    render(<ScopeConsole />);
-    expect(screen.getByText('No agents to scope')).toBeInTheDocument();
-    expect(screen.getByText('Scope data will appear here when agents are registered.')).toBeInTheDocument();
+    render(<AccessPolicyConsole />);
+    expect(screen.getByText('No principals')).toBeInTheDocument();
+    expect(
+      screen.getByText('Principals appear here when agents are registered.'),
+    ).toBeInTheDocument();
   });
 
   it('renders agents and filters by search', () => {
@@ -78,7 +90,7 @@ describe('ScopeConsole', () => {
       }),
     );
 
-    render(<ScopeConsole />);
+    render(<AccessPolicyConsole />);
 
     expect(screen.getByText('agent-alpha')).toBeInTheDocument();
     expect(screen.getByText('agent-beta')).toBeInTheDocument();
@@ -102,14 +114,14 @@ describe('ScopeConsole', () => {
       }),
     );
 
-    render(<ScopeConsole />);
+    render(<AccessPolicyConsole />);
 
     const row = screen.getByRole('button', { name: /agent-alpha/i });
     fireEvent.click(row);
 
     expect(navigateMock).toHaveBeenCalledWith({
       to: '/scope',
-      search: { focus: 'agent-alpha' },
+      search: { focus: 'agent-alpha', tab: 'principals' },
       replace: true,
     });
     expect(searchState.focus).toBe('agent-alpha');
@@ -119,14 +131,14 @@ describe('ScopeConsole', () => {
     searchState.focus = 'ghost-agent';
     projectionStore.getState().hydrate(makeState({}));
 
-    render(<ScopeConsole />);
+    render(<AccessPolicyConsole />);
 
     await waitFor(() =>
       expect(navigateMock).toHaveBeenCalledWith(
         expect.objectContaining({
           to: '/scope',
           replace: true,
-          search: { focus: undefined },
+          search: { focus: undefined, tab: 'principals' },
         }),
       ),
     );

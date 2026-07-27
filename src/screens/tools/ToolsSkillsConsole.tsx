@@ -17,6 +17,7 @@ import type { ToolSummary, SkillSummary } from '@/ipc/types';
 import { ToolFilters, type ToolFiltersState } from './ToolFilters';
 import { SkillFilters, type SkillFiltersState } from './SkillFilters';
 import { ToolListRow } from './ToolListRow';
+import { EffectMigrationBanner } from './ToolEffects';
 import { SkillListRow } from './SkillListRow';
 import { ToolDetail } from './ToolDetail';
 import { SkillDetail } from './SkillDetail';
@@ -118,6 +119,7 @@ export function ToolsSkillsConsole() {
         </TabsList>
 
         <TabsContent value="tools" className="flex flex-1 flex-col overflow-hidden focus-visible:outline-none">
+          <EffectMigrationBanner tools={tools} />
           <ToolFilters filters={toolFilters} onChange={setToolFilters} />
 
           <div className="flex flex-1 overflow-hidden">

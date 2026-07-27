@@ -154,8 +154,8 @@ export const ipc = {
    * deterministic single-pass lane. To get a composed answer, drive the chat lane
    * (`createSession` + `sendMessage`) and cite these hits alongside it.
    */
-  queryMemory: (params: t.QueryMemoryParams): Promise<t.MemoryHit[]> =>
-    invoke<t.MemoryHit[]>('op_query_memory', { ...params }),
+  queryMemory: (params: t.QueryMemoryParams): Promise<t.MemoryQueryResult> =>
+    invoke<t.MemoryQueryResult>('op_query_memory', { ...params }),
 
   /**
    * ADR-0081: a grounded, [n]-cited answer + the evidence each marker resolves to.
@@ -163,7 +163,117 @@ export const ipc = {
    */
   answerMemory: (params: t.QueryMemoryParams): Promise<t.AnswerMemory> =>
     invoke<t.AnswerMemory>('op_answer_memory', { ...params }),
+
+  // ---- Access policy (ADR-0085/0086/0087) ---------------------------------
+  //
+  // The first premium UI surface. `explainAccess` and `listClassificationTags`
+  // ride the pinned OSS contract; the rest ride premium's own plane over the same
+  // connection (ADR-0088). All of them answer Unimplemented on a kernel without
+  // the policy plugin, so call sites gate on the `access-policy` capability and
+  // show an empty state naming what to enable.
+
+  /**
+   * Why a principal can or cannot reach something — answered WITHOUT performing
+   * the access. The reply names the reason, the specific tag or effect
+   * responsible, and which policy (linked where) contributed it.
+   */
+  explainAccess: (params: t.ExplainAccessParams): Promise<t.AccessDecision> =>
+    invoke<t.AccessDecision>('op_explain_access', { ...params }),
+
+  /**
+   * The controlled classification vocabulary. Tag inputs must SELECT from this,
+   * never accept free text: a typo is the primary route to a scope that silently
+   * matches nothing (ADR-0085 D11).
+   */
+  listClassificationTags: (): Promise<string[]> =>
+    invoke<string[]>('op_list_classification_tags'),
+
+  /**
+   * The vocabulary WITH closed-ness (ADR-0091). Separate from
+   * `listClassificationTags`, which rides the pinned OSS contract and carries only
+   * the names — closed-ness is a premium concept on the premium plane.
+   */
+  listTags: (): Promise<t.TagSpec[]> => invoke<t.TagSpec[]>('op_list_tags'),
+
+  listIngresses: (): Promise<t.IngressSpec[]> => invoke<t.IngressSpec[]>('op_list_ingresses'),
+
+  /**
+   * Draft a policy from a description in English. Read-only: it returns a
+   * proposal, and applying it is savePolicy + linkPolicy, called separately.
+   */
+  proposePolicy: (request: string, simulateLimit = 0): Promise<t.PolicyProposal> =>
+    invoke<t.PolicyProposal>('op_propose_policy', { request, simulate_limit: simulateLimit }),
+
+  /**
+   * Register an ingress. Registration MINTS A SURFACE — it decides what an entry
+   * point may reach — so this is policy-grade authority, not a convenience.
+   * Validation failures arrive in `error` for inline rendering.
+   */
+  registerIngress: (ingress: t.IngressSpec): Promise<t.SaveOutcome> =>
+    invoke<t.SaveOutcome>('op_register_ingress', { ingress }),
+
+  /** Deregister. Takes effect on EXISTING conversations, not just new ones. */
+  deregisterIngress: (agentId: string): Promise<void> =>
+    invoke<void>('op_deregister_ingress', { agent_id: agentId }),
+
+  listGroups: (): Promise<t.GroupSpec[]> => invoke<t.GroupSpec[]>('op_list_groups'),
+
+  /** Create or replace a group. A nesting cycle comes back in `error`, with the path. */
+  saveGroup: (group: t.GroupSpec): Promise<t.SaveOutcome> =>
+    invoke<t.SaveOutcome>('op_save_group', { group }),
+
+  deleteGroup: (id: string): Promise<void> => invoke<void>('op_delete_group', { id }),
+
+  listPolicies: (): Promise<t.PolicySpec[]> => invoke<t.PolicySpec[]>('op_list_policies'),
+
+  /**
+   * Save a policy. An unsatisfiable rule or a tag outside the vocabulary comes
+   * back in `error` — the administrator learns at save time, not through an empty
+   * result three days later.
+   */
+  savePolicy: (policy: t.PolicySpec): Promise<t.SaveOutcome> =>
+    invoke<t.SaveOutcome>('op_save_policy', { policy }),
+
+  deletePolicy: (id: string): Promise<void> => invoke<void>('op_delete_policy', { id }),
+
+  listLinks: (): Promise<t.LinkSpec[]> => invoke<t.LinkSpec[]>('op_list_links'),
+
+  linkPolicy: (link: t.LinkSpec): Promise<void> => invoke<void>('op_link_policy', { link }),
+
+  unlinkPolicy: (params: {
+    policy_id: string;
+    container_kind: string;
+    target_id: string;
+  }): Promise<void> => invoke<void>('op_unlink_policy', { ...params }),
+
+  /** The effective policy for a principal, and which link produced each term. */
+  resultantPolicy: (params: {
+    principal_id: string;
+    principal_kind?: string;
+    surface_kind?: string;
+    surface_id?: string;
+  }): Promise<t.ResultantPolicy> =>
+    invoke<t.ResultantPolicy>('op_resultant_policy', { ...params }),
+
+  /**
+   * What would change if this were enabled — replayed against REAL journalled
+   * history. Nothing is persisted and the simulation is not itself journalled.
+   */
+  simulatePolicy: (params: {
+    draft_policies?: t.PolicySpec[];
+    draft_links?: t.LinkSpec[];
+    limit?: number;
+  }): Promise<t.SimulationResult> =>
+    invoke<t.SimulationResult>('op_simulate_policy', { ...params }),
+
+  /** The decision journal, for audit. Denials are never sampled kernel-side. */
+  exportDecisions: (params: {
+    limit?: number;
+    denials_only?: boolean;
+  }): Promise<t.DecisionRecord[]> =>
+    invoke<t.DecisionRecord[]>('op_export_decisions', { ...params }),
 } as const;
+
 
 export type IPC = typeof ipc;
 

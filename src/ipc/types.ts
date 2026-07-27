@@ -298,6 +298,38 @@ export interface AuditEntry {
   after?: Record<string, unknown>;
 }
 
+/// How a kernel plugin's version compares to what this console was built against
+/// (ADR-0089). Three states, not a boolean: collapsing a patch difference and a
+/// breaking one either cries wolf on every release or stays silent through a
+/// breaking one. Computed in the Rust core, because the pinned table is a
+/// property of the compiled client.
+export type PluginSkew = 'aligned' | 'minor' | 'major' | 'unknown';
+
+export interface PluginPanelSpec {
+  id: string;
+  title: string;
+  capability: string;
+}
+
+/// One plugin the kernel declared, as the console sees it (ADR-0089). Present
+/// even when the plugin did NOT register, so the console can say why a surface
+/// is missing instead of simply not showing it.
+export interface PluginState {
+  id: string;
+  display_name: string;
+  version: string;
+  /// active | deps_unmet | not_entitled | expired (ADR-0082 D9)
+  state: string;
+  capabilities: string[];
+  panels: PluginPanelSpec[];
+  reason: string;
+  missing: string[];
+  expires_at: string;
+  skew: PluginSkew;
+  /// The version this console was built against; empty when nothing is pinned.
+  pinned_version: string;
+}
+
 export interface StateOfRecord {
   connection: ConnectionState;
   role: Role | null;
@@ -305,6 +337,7 @@ export interface StateOfRecord {
   contract_version: string;
   capabilities: string[];
   contract_skew: number; // 0 = aligned
+  plugins: PluginState[];
   cursor: number; // the last folded seq
   plans: PlanInFlight[];
   sessions: SessionSummary[];
@@ -359,6 +392,16 @@ export interface ToolSummary {
   granted_agent_count: number;
   recent_invocation_count: number;
   last_cost: number;
+  /** What domain the tool touches — `crm`, `filesystem`, `payments` (ADR-0085 D2). */
+  classification_tags?: string[];
+  /** The closed verb classes it exercises (ADR-0086). */
+  effects?: string[];
+  /**
+   * True when effects were DERIVED from the manifest rather than declared. The
+   * strict-mode migration checklist: an operator flips
+   * `execution.tool_effects_strict` once nothing is inferred.
+   */
+  effects_inferred?: boolean;
 }
 
 export interface ToolDetail extends ToolSummary {
@@ -612,12 +655,33 @@ export interface Citation {
   tags: string[];
 }
 
+/**
+ * A ranked recall, plus the kernel's explanation when access policy shaped it.
+ *
+ * `policy_note` is empty whenever policy played no part, so it can be rendered
+ * unconditionally. It matters most when `hits` is EMPTY: a fail-closed model
+ * turns a misconfiguration into zero rows and no error, which reads exactly like
+ * an empty corpus (ADR-0085 INV-3).
+ */
+export interface MemoryQueryResult {
+  hits: MemoryHit[];
+  policy_note: string;
+}
+
 /** A grounded, cited answer (ADR-0081). `status` = answer | abstention | clarification. */
 export interface AnswerMemory {
   status: string;
   /** Grounded prose with inline 1-based [n] markers resolving to `citations`. */
   answer: string;
   citations: Citation[];
+  /**
+   * Set when access policy CAUSED this abstention, rather than the corpus.
+   * Empty when policy played no part (ADR-0085 INV-3).
+   *
+   * "The corpus does not answer that" and "you are not permitted to see the
+   * answer" are very different statements. Without this they render identically.
+   */
+  policy_note?: string;
 }
 
 /**
@@ -633,4 +697,254 @@ export interface MemoryWrittenEvent {
   source: string;
   summary: string;
   written_at: string;
+}
+
+// ============================================================================
+// Access policy (ADR-0085 / 0086 / 0087) — the first premium UI surface.
+//
+// Two planes back these types. `explainAccess` and `listClassificationTags` ride
+// the pinned OSS contract, so they work against any kernel serving 0066. The
+// rest ride premium's own AccessPolicyAdmin plane (ADR-0073/0088) and exist only
+// when the kernel advertises the `access-policy` capability — gate on it the way
+// the memory page gates `memory-answer`, and render an empty state that names
+// what to enable rather than surfacing an Unimplemented error.
+// ============================================================================
+
+/** The controlled reason vocabulary a decision can carry. */
+export type DecisionReason =
+  | 'allowed'
+  | 'bypass'
+  | 'forbidden_tag'
+  | 'missing_required_tag'
+  | 'anyof_unsatisfied'
+  | 'effect_not_permitted'
+  | 'unsatisfiable_policy'
+  | 'no_principal'
+  | 'skill_grant_clipped'
+  | 'not_authorized';
+
+/** The closed set of tool effect classes (ADR-0086). */
+export type ToolEffect = 'read' | 'write' | 'egress' | 'spend' | 'admin';
+
+export const TOOL_EFFECTS: ToolEffect[] = ['read', 'write', 'egress', 'spend', 'admin'];
+
+/** Container kinds, in application order — broadest first. This IS the precedence order. */
+export type ContainerKind = 'organisation' | 'group' | 'principal' | 'surface';
+
+export const CONTAINER_KINDS: ContainerKind[] = [
+  'organisation',
+  'group',
+  'principal',
+  'surface',
+];
+
+/**
+ * One policy, linked at one container, contributing one term — what turns a
+ * denial from "no" into "because policy P, linked at L, contributed tag T".
+ */
+export interface PolicyContribution {
+  policy_id: string;
+  policy_name: string;
+  /** `organisation` | `group:<id>` | `principal:<id>` | `surface:<id>` */
+  linked_at: string;
+  /** `required` | `any_of` | `forbidden` | `effect` */
+  term: string;
+  values: string[];
+  /** A downstream Block Inheritance does not apply to this link. */
+  enforced: boolean;
+}
+
+/** A structured, explainable access decision. */
+export interface AccessDecision {
+  allowed: boolean;
+  reason: DecisionReason | string;
+  /** The SPECIFIC tag, clause, or effect responsible. */
+  detail: string;
+  decided_by: PolicyContribution[];
+  policy_version: string;
+  report_only: boolean;
+  would_have_denied: boolean;
+  /** One administrator-readable sentence, rendered kernel-side. */
+  explain: string;
+}
+
+export interface ScopeRule {
+  required_tags: string[];
+  any_of_tags: string[];
+  forbidden_tags: string[];
+  /**
+   * Reopens a CLOSED tag (ADR-0091) — the only term that adds access rather than
+   * removing it. The kernel refuses a grant on an open tag, so an editor must
+   * offer closed tags only; otherwise the author gets a rejection they cannot
+   * explain from the form they just filled in.
+   */
+  granted_tags: string[];
+}
+
+/**
+ * One classification tag and whether it is deny-by-default (ADR-0091).
+ *
+ * Closed-ness changes what every other term in a policy means, so it is shown
+ * wherever a tag is shown. A closed tag in a Forbidden field is redundant; one in
+ * a Required field with no matching grant is a boundary that matches nothing.
+ */
+export interface TagSpec {
+  tag: string;
+  closed: boolean;
+}
+
+/** One registered ingress — a point where the outside world enters (ADR-0090). */
+export interface IngressSpec {
+  agent_id: string;
+  surface_kind: string;
+  surface_id: string;
+  /** Prefixes of external ids this ingress may speak for. Empty = unrestricted. */
+  namespace: string[];
+}
+
+export interface EffectRule {
+  /** Empty means every effect (subject to `deny`). */
+  allow: string[];
+  /** Always wins, consistent with forbidden tags being absolute. */
+  deny: string[];
+}
+
+export interface GroupSpec {
+  id: string;
+  name: string;
+  members: string[];
+  subgroups: string[];
+  /** Stops policy accumulating from above — except denies, and except Enforced links. */
+  block_inheritance: boolean;
+}
+
+export interface PolicySpec {
+  id: string;
+  name: string;
+  version: number;
+  rule: ScopeRule;
+  effects: EffectRule;
+  /** `enforced` | `report_only` */
+  mode: string;
+  expires_at_unix_ms: number;
+  granted_by: string;
+  updated_at_unix_ms: number;
+}
+
+export interface LinkSpec {
+  policy_id: string;
+  container_kind: ContainerKind | string;
+  target_id: string;
+  enforced: boolean;
+  order: number;
+  expires_at_unix_ms: number;
+  granted_by: string;
+}
+
+/** `gpresult` for a principal: the effective predicate AND its attribution. */
+export interface ResultantPolicy {
+  effective: ScopeRule;
+  /** CNF: each clause is an OR-set, all clauses ANDed. */
+  any_of_clauses: string[][];
+  contributions: PolicyContribution[];
+  effects: EffectRule;
+  policy_version: string;
+  /**
+   * Set when the effective predicate can never match anything. A SAFE state
+   * (zero rows) and therefore the easiest to mistake for "there is no data",
+   * so it must be shown, not implied.
+   */
+  unsatisfiable_reason: string;
+  /** The containers the principal resolved into, outermost first. */
+  groups: string[];
+}
+
+export interface SimulatedDecision {
+  principal: string;
+  surface: string;
+  resource: string;
+  tags: string[];
+  allowed_now: boolean;
+  allowed_under_draft: boolean;
+  reason_under_draft: string;
+  detail_under_draft: string;
+  at_unix_ms: number;
+}
+
+/** The blast radius of a draft policy set. */
+export interface SimulationResult {
+  decisions: SimulatedDecision[];
+  /** Allowed today, denied under the draft — the number that matters. */
+  newly_denied: number;
+  newly_allowed: number;
+  unchanged: number;
+}
+
+/**
+ * One reason a proposal is not safe to apply as it stands. Severity is data
+ * rather than prose so the console can sort and colour without reading sentences.
+ */
+export interface ProposalProblem {
+  /** `blocking` | `warning` */
+  severity: string;
+  message: string;
+}
+
+/**
+ * A policy drafted from a description in English (ADR-0092).
+ *
+ * Nothing here is applied. Approving means calling savePolicy and linkPolicy —
+ * the same two calls used for hand-authored policy — so approval cannot route
+ * around a validation or an audit record.
+ */
+export interface PolicyProposal {
+  /** The model's explanation, shown as CONTEXT. Not the thing being approved. */
+  rationale: string;
+  policy: PolicySpec;
+  links: LinkSpec[];
+  problems: ProposalProblem[];
+  simulation: SimulationResult;
+  /**
+   * How many journalled decisions the simulation replayed. Zero counts over an
+   * empty journal mean "nothing to compare", NOT "no effect" — the pane must say
+   * which of the two it is showing.
+   */
+  simulation_basis: number;
+  /** Server-computed, so the client cannot disagree about what is safe. */
+  blocking: boolean;
+}
+
+export interface DecisionRecord {
+  at_unix_ms: number;
+  principal: string;
+  surface: string;
+  resource: string;
+  allowed: boolean;
+  reason: string;
+  detail: string;
+  policy_version: string;
+  report_only: boolean;
+  would_have_denied: boolean;
+  decided_by: PolicyContribution[];
+}
+
+/**
+ * An authoring outcome that is NOT an error: a group cycle, an unsatisfiable
+ * rule, a coined tag. Rendered next to the field rather than as a failure toast.
+ */
+export interface SaveOutcome {
+  ok: boolean;
+  error: string;
+  version: number;
+}
+
+export interface ExplainAccessParams {
+  principal_id: string;
+  principal_kind?: string;
+  surface_kind?: string;
+  surface_id?: string;
+  resource_kind?: string;
+  resource_id?: string;
+  tags?: string[];
+  effects?: string[];
 }

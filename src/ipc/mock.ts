@@ -32,6 +32,7 @@ class MockIPC {
         'memory-answer',
       ],
       contract_skew: 0,
+      plugins: [],
       cursor: 0,
       plans: [],
       sessions: [],

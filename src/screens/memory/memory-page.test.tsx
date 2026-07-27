@@ -15,7 +15,7 @@ vi.mock('@/ipc', () => ({
     ingestMemory: vi.fn().mockResolvedValue(['doc-1', false]),
     ingestFile: vi.fn().mockResolvedValue(['doc-1', false]),
     statFile: vi.fn().mockResolvedValue({ name: 'murat.pdf', size: 5_202_359 }),
-    queryMemory: vi.fn().mockResolvedValue([]),
+    queryMemory: vi.fn().mockResolvedValue({ hits: [], policy_note: '' }),
     answerMemory: vi.fn().mockResolvedValue({ status: 'answer', answer: '', citations: [] }),
     createSession: vi.fn().mockResolvedValue({ session_id: 'ses-1' }),
     sendMessage: vi.fn().mockResolvedValue({ deduped: false }),
@@ -61,6 +61,7 @@ function makeState(overrides: Partial<StateOfRecord> = {}): StateOfRecord {
     contract_version: '0057',
     capabilities: ['memory-ingest-binary', 'memory-answer'],
     contract_skew: 0,
+    plugins: [],
     cursor: 0,
     plans: [],
     sessions: [],
@@ -133,7 +134,7 @@ describe('MemoryPage — ingest', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(ipc.ingestMemory).mockResolvedValue(['doc-1', false]);
-    vi.mocked(ipc.queryMemory).mockResolvedValue([]);
+    vi.mocked(ipc.queryMemory).mockResolvedValue({ hits: [], policy_note: '' });
     projectionStore.getState().reset();
   });
 
@@ -412,7 +413,7 @@ describe('MemoryPage — ask (ADR-0081 grounded answer)', () => {
 describe('MemoryPage — inspect', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(ipc.queryMemory).mockResolvedValue([]);
+    vi.mocked(ipc.queryMemory).mockResolvedValue({ hits: [], policy_note: '' });
     projectionStore.getState().reset();
   });
 
@@ -444,7 +445,7 @@ describe('MemoryPage — inspect', () => {
 describe('MemoryPage — a11y', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(ipc.queryMemory).mockResolvedValue([]);
+    vi.mocked(ipc.queryMemory).mockResolvedValue({ hits: [], policy_note: '' });
     projectionStore.getState().reset();
   });
 

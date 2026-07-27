@@ -30,10 +30,10 @@ const UNREACHABLE_AFTER: Duration = Duration::from_secs(180); // ~3 min of faile
 /// Ceiling for a single encoded/decoded gRPC message. See the note in `client()`.
 /// 512 MiB to match the kernel's `maxGRPCMessageBytes` — the operator ingest lane
 /// carries whole files, so the encode (send) side must clear large uploads.
-const MAX_MESSAGE_BYTES: usize = 512 * 1024 * 1024;
+pub(crate) const MAX_MESSAGE_BYTES: usize = 512 * 1024 * 1024;
 
 type SharedToken = Arc<StdMutex<Option<String>>>;
-type ConsoleClient = OperatorConsoleClient<InterceptedService<Channel, AuthInterceptor>>;
+pub(crate) type ConsoleClient = OperatorConsoleClient<InterceptedService<Channel, AuthInterceptor>>;
 
 /// One retrieval hit, flattened for the webview (prost types are not Serialize).
 ///
@@ -50,6 +50,18 @@ pub struct MemoryHit {
     pub source: String,
     pub importance: f64,
     pub tags: Vec<String>,
+}
+
+/// A ranked recall, plus the kernel's explanation when access policy shaped it.
+///
+/// The note is the whole point of ADR-0085 INV-3: a fail-closed model turns a
+/// misconfiguration into zero rows and no error, which is indistinguishable from
+/// an empty corpus. It is empty whenever policy played no part, so a UI can show
+/// it unconditionally without training operators to ignore it.
+#[derive(Clone, serde::Serialize, Default)]
+pub struct MemoryQueryResult {
+    pub hits: Vec<MemoryHit>,
+    pub policy_note: String,
 }
 
 /// One citation the answer's [n] markers resolve to (ADR-0081).
@@ -86,6 +98,9 @@ pub struct AnswerMemory {
     pub status: String,
     pub answer: String,
     pub citations: Vec<Citation>,
+    /// Set when access policy CAUSED this abstention, rather than the corpus.
+    /// Empty when policy played no part (ADR-0085 INV-3).
+    pub policy_note: String,
 }
 
 impl From<pb::MemoryOp> for MemoryHit {
@@ -154,7 +169,7 @@ impl Default for Transport {
 
 impl Transport {
     /// Connect (lazily) and return a client with the auth interceptor attached.
-    async fn client(&self) -> Result<ConsoleClient, String> {
+    pub(crate) async fn client(&self) -> Result<ConsoleClient, String> {
         let mut guard = self.channel.lock().await;
         if guard.is_none() {
             let ep = self
@@ -189,6 +204,41 @@ impl Transport {
         // it ever left the console.
         .max_decoding_message_size(MAX_MESSAGE_BYTES)
         .max_encoding_message_size(MAX_MESSAGE_BYTES))
+    }
+
+    /// Connect (lazily) and return the raw authed channel, for a plane other than
+    /// `OperatorConsole`.
+    ///
+    /// ADR-0088: a premium plane rides the SAME connection and the SAME bearer
+    /// token as the operator console, because it is mounted on the same kernel
+    /// server behind the same auth interceptors (ADR-0073). Opening a second
+    /// connection would be a second thing to authenticate, reconnect, and reason
+    /// about — and it would make the premium plane look like a side door rather
+    /// than an extension of the plane we already trust.
+    pub(crate) async fn authed_channel(
+        &self,
+    ) -> Result<(Channel, AuthInterceptor), String> {
+        let mut guard = self.channel.lock().await;
+        if guard.is_none() {
+            let ep = self
+                .endpoint
+                .lock()
+                .await
+                .clone()
+                .ok_or_else(|| "not connected: call login first".to_string())?;
+            let channel = Channel::from_shared(ep)
+                .map_err(|e| format!("bad endpoint: {e}"))?
+                .connect()
+                .await
+                .map_err(|e| format!("connect: {e}"))?;
+            *guard = Some(channel);
+        }
+        Ok((
+            guard.as_ref().unwrap().clone(),
+            AuthInterceptor {
+                token: self.token.clone(),
+            },
+        ))
     }
 
     fn set_token(&self, token: Option<String>) {
@@ -751,6 +801,9 @@ impl Transport {
                 granted_agent_count: t.grants.len() as i32,
                 recent_invocation_count: 0,
                 last_cost: 0.0,
+                classification_tags: t.classification_tags,
+                effects: t.effects,
+                effects_inferred: t.effects_inferred,
             })
             .collect();
         {
@@ -900,6 +953,10 @@ impl Transport {
             status: resp.status,
             answer: resp.answer,
             citations: resp.citations.into_iter().map(Citation::from).collect(),
+            // The kernel only sets this when policy actually shaped the outcome,
+            // so it can be rendered unconditionally without teaching operators to
+            // ignore it.
+            policy_note: resp.policy_note.map(|d| d.explain).unwrap_or_default(),
         })
     }
 
@@ -913,7 +970,7 @@ impl Transport {
         source: String,
         session: String,
         min_importance: f64,
-    ) -> Result<Vec<MemoryHit>, String> {
+    ) -> Result<MemoryQueryResult, String> {
         let mut client = self.client().await?;
         let resp = client
             .query_memory(Request::new(pb::QueryMemoryRequest {
@@ -926,7 +983,14 @@ impl Transport {
             .await
             .map_err(map_status)?
             .into_inner();
-        Ok(resp.results.into_iter().map(MemoryHit::from).collect())
+        // ADR-0085 INV-3: when policy shaped the result set the kernel says so.
+        // Carrying it through matters most when the list is EMPTY — that is the
+        // case an operator would otherwise read as "there is no data".
+        let policy_note = resp.policy_note.map(|d| d.explain).unwrap_or_default();
+        Ok(MemoryQueryResult {
+            hits: resp.results.into_iter().map(MemoryHit::from).collect(),
+            policy_note,
+        })
     }
 
     // ---- The feed loop ---------------------------------------------------
@@ -1101,6 +1165,6 @@ fn new_command_id() -> String {
     uuid::Uuid::new_v4().to_string()
 }
 
-fn map_status(e: Status) -> String {
+pub(crate) fn map_status(e: Status) -> String {
     format!("{}: {}", e.code(), e.message())
 }

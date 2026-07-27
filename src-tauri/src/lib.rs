@@ -5,13 +5,19 @@
 //! client (`transport`), and the Tauri command/event bridge to the webview.
 
 pub mod pb;
+pub mod policy;
 pub mod state;
 pub mod transport;
 
 use tauri::{AppHandle, State};
 
+use policy::{
+    IngressSpec, PolicyProposal, TagSpec,
+    AccessDecision, DecisionRecord, GroupSpec, LinkSpec, PolicySpec, ResultantPolicy, SaveOutcome,
+    SimulationResult,
+};
 use state::{ConversationMessage, ConversationSummary, SkillSummary, StateOfRecord, ToolSummary, WatchConfigSummary};
-use transport::{MemoryHit, Transport};
+use transport::{MemoryQueryResult, Transport};
 
 // ---- Command response DTOs ----------------------------------------------
 //
@@ -464,7 +470,7 @@ async fn op_query_memory(
     source: String,
     session: String,
     min_importance: f64,
-) -> Result<Vec<MemoryHit>, String> {
+) -> Result<MemoryQueryResult, String> {
     transport
         .inner()
         .clone()
@@ -568,6 +574,206 @@ async fn op_list_watches(
     transport.inner().clone().list_watches(&app).await
 }
 
+// ---- Access policy (ADR-0085/0086/0087) ---------------------------------
+//
+// The first premium UI surface. `op_explain_access` and
+// `op_list_classification_tags` ride the pinned OSS contract; everything else
+// rides premium's own plane over the same connection (ADR-0088). None of them is
+// gated here — the kernel answers `Unimplemented` without the plugin, and the
+// webview gates on the `access-policy` capability so the operator gets an empty
+// state that names what to enable rather than an error.
+
+#[tauri::command(rename_all = "snake_case")]
+#[allow(clippy::too_many_arguments)]
+async fn op_explain_access(
+    transport: State<'_, Transport>,
+    principal_id: String,
+    principal_kind: Option<String>,
+    surface_kind: Option<String>,
+    surface_id: Option<String>,
+    resource_kind: Option<String>,
+    resource_id: Option<String>,
+    tags: Option<Vec<String>>,
+    effects: Option<Vec<String>>,
+) -> Result<AccessDecision, String> {
+    transport
+        .inner()
+        .clone()
+        .explain_access(
+            principal_id,
+            principal_kind.unwrap_or_default(),
+            surface_kind.unwrap_or_default(),
+            surface_id.unwrap_or_default(),
+            resource_kind.unwrap_or_default(),
+            resource_id.unwrap_or_default(),
+            tags.unwrap_or_default(),
+            effects.unwrap_or_default(),
+        )
+        .await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_list_classification_tags(
+    transport: State<'_, Transport>,
+) -> Result<Vec<String>, String> {
+    transport.inner().clone().list_classification_tags().await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_list_groups(transport: State<'_, Transport>) -> Result<Vec<GroupSpec>, String> {
+    transport.inner().clone().list_groups().await
+}
+
+/// The vocabulary WITH closed-ness (ADR-0091). Distinct from
+/// `op_list_classification_tags`, which rides the pinned OSS contract and carries
+/// only the names — closed-ness is a premium concept and lives on that plane.
+#[tauri::command(rename_all = "snake_case")]
+async fn op_list_tags(transport: State<'_, Transport>) -> Result<Vec<TagSpec>, String> {
+    transport.inner().clone().list_tags().await
+}
+
+/// Draft a policy from a description in English (ADR-0092).
+///
+/// This command CANNOT apply anything. It returns a proposal, and approving it
+/// means the front end calling `op_save_policy` and `op_link_policy` — the same
+/// commands used for hand-authored policy, so approval cannot route around a
+/// validation or an audit record.
+#[tauri::command(rename_all = "snake_case")]
+async fn op_propose_policy(
+    transport: State<'_, Transport>,
+    request: String,
+    simulate_limit: i32,
+) -> Result<PolicyProposal, String> {
+    transport.inner().clone().propose_policy(request, simulate_limit).await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_list_ingresses(transport: State<'_, Transport>) -> Result<Vec<IngressSpec>, String> {
+    transport.inner().clone().list_ingresses().await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_register_ingress(
+    transport: State<'_, Transport>,
+    ingress: IngressSpec,
+) -> Result<SaveOutcome, String> {
+    transport.inner().clone().register_ingress(ingress).await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_deregister_ingress(
+    transport: State<'_, Transport>,
+    agent_id: String,
+) -> Result<(), String> {
+    transport.inner().clone().deregister_ingress(agent_id).await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_save_group(
+    transport: State<'_, Transport>,
+    group: GroupSpec,
+) -> Result<SaveOutcome, String> {
+    transport.inner().clone().save_group(group).await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_delete_group(transport: State<'_, Transport>, id: String) -> Result<(), String> {
+    transport.inner().clone().delete_group(id).await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_list_policies(transport: State<'_, Transport>) -> Result<Vec<PolicySpec>, String> {
+    transport.inner().clone().list_policies().await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_save_policy(
+    transport: State<'_, Transport>,
+    policy: PolicySpec,
+) -> Result<SaveOutcome, String> {
+    transport.inner().clone().save_policy(policy).await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_delete_policy(transport: State<'_, Transport>, id: String) -> Result<(), String> {
+    transport.inner().clone().delete_policy(id).await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_list_links(transport: State<'_, Transport>) -> Result<Vec<LinkSpec>, String> {
+    transport.inner().clone().list_links().await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_link_policy(transport: State<'_, Transport>, link: LinkSpec) -> Result<(), String> {
+    transport.inner().clone().link_policy(link).await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_unlink_policy(
+    transport: State<'_, Transport>,
+    policy_id: String,
+    container_kind: String,
+    target_id: String,
+) -> Result<(), String> {
+    transport
+        .inner()
+        .clone()
+        .unlink_policy(policy_id, container_kind, target_id)
+        .await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_resultant_policy(
+    transport: State<'_, Transport>,
+    principal_id: String,
+    principal_kind: Option<String>,
+    surface_kind: Option<String>,
+    surface_id: Option<String>,
+) -> Result<ResultantPolicy, String> {
+    transport
+        .inner()
+        .clone()
+        .resultant_policy(
+            principal_id,
+            principal_kind.unwrap_or_default(),
+            surface_kind.unwrap_or_default(),
+            surface_id.unwrap_or_default(),
+        )
+        .await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_simulate_policy(
+    transport: State<'_, Transport>,
+    draft_policies: Option<Vec<PolicySpec>>,
+    draft_links: Option<Vec<LinkSpec>>,
+    limit: Option<i32>,
+) -> Result<SimulationResult, String> {
+    transport
+        .inner()
+        .clone()
+        .simulate_policy(
+            draft_policies.unwrap_or_default(),
+            draft_links.unwrap_or_default(),
+            limit.unwrap_or(0),
+        )
+        .await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_export_decisions(
+    transport: State<'_, Transport>,
+    limit: Option<i32>,
+    denials_only: Option<bool>,
+) -> Result<Vec<DecisionRecord>, String> {
+    transport
+        .inner()
+        .clone()
+        .export_decisions(limit.unwrap_or(0), denials_only.unwrap_or(false))
+        .await
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -607,6 +813,25 @@ pub fn run() {
             op_complete_session,
             op_blast_radius_preview,
             op_get_config_schema,
+            op_explain_access,
+            op_list_classification_tags,
+            op_list_groups,
+            op_list_tags,
+            op_propose_policy,
+            op_list_ingresses,
+            op_register_ingress,
+            op_deregister_ingress,
+            op_save_group,
+            op_delete_group,
+            op_list_policies,
+            op_save_policy,
+            op_delete_policy,
+            op_list_links,
+            op_link_policy,
+            op_unlink_policy,
+            op_resultant_policy,
+            op_simulate_policy,
+            op_export_decisions,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

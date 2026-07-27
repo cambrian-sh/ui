@@ -39,8 +39,25 @@ function makeState(watch_configs: WatchConfigSummary[] = []): StateOfRecord {
     role: 'operator',
     kernel_version: '0.6.9-alpha',
     contract_version: '0047',
-    capabilities: [],
+    // The watch console is the reactive plugin's surface (ADR-0089), so a kernel
+    // that renders it is one that advertises the capability and declares the plugin.
+    capabilities: ['watches-read'],
     contract_skew: 0,
+    plugins: [
+      {
+        id: 'reactive',
+        display_name: 'Reactive Engine',
+        version: '1.0.0',
+        state: 'active',
+        capabilities: ['watches-read'],
+        panels: [],
+        reason: '',
+        missing: [],
+        expires_at: '',
+        skew: 'aligned' as const,
+        pinned_version: '1.0.0',
+      },
+    ],
     cursor: 0,
     plans: [],
     sessions: [],

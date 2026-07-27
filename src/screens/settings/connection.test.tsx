@@ -30,6 +30,7 @@ function makeState(overrides: Partial<StateOfRecord> = {}): StateOfRecord {
     contract_version: '0057',
     capabilities: ['feed', 'snapshot'],
     contract_skew: 0,
+    plugins: [],
     cursor: 0,
     plans: [],
     sessions: [],

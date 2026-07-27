@@ -17,7 +17,7 @@ The Rust core is the **only** thing that talks gRPC to the runtime-core. The web
 | File | Responsibility |
 |---|---|
 | `build.rs` | `tonic-build` codegen — generates the `OperatorConsole` **client** (no server stubs) from `../proto/operator.proto`; `rerun-if-changed` on the proto. |
-| `src/pb.rs` | `tonic::include_proto!("cambrian")` + `PINNED_CONTRACT_VERSION = "0057"`. The generated `tonic`/`prost` types live here; **nothing outside the core references them**. |
+| `src/pb.rs` | `tonic::include_proto!("cambrian")` + `PINNED_CONTRACT_VERSION = "0067"`, plus `PINNED_PLUGIN_VERSIONS` and `plugin_skew()` — the per-plugin version expectation this build was compiled against (ADR-0089). The generated `tonic`/`prost` types live here; **nothing outside the core references them**. |
 | `src/state.rs` | The **state of record**: `StateOfRecord` (connection, role, handshake, cursor, plans-by-id, sessions, audit tail, pending HITL) + an **idempotent absolute-state `fold`** (last-writer-wins by id; `token` events return `false` and are excluded) + `apply_snapshot` + `reset_live`. The fold also populates **subsystem caches**: `AgentReadyOp` → `agents`, `WatchTriggeredOp` → `watch_configs` (idempotent by id). `tools`/`skills`/`watch_configs` are additionally upserted from the `List*` RPCs. Serde-serializable (it IS the projection). |
 | `src/transport.rs` | The gRPC client + **`AuthInterceptor`** (bearer token), `login` (+ OS-keychain persistence), the **command senders**, and the **feed loop** (`run_feed`/`drain`/`backoff`): snapshot-seed → subscribe-from-cursor → fold+emit → `Resync` re-snapshot → reconnect with exponential backoff → `Unreachable`. |
 | `src/lib.rs` | The **Tauri bridge**: managed `Transport` state + the `op_*` commands + `run()`. |
@@ -42,7 +42,16 @@ The Rust core is the **only** thing that talks gRPC to the runtime-core. The web
 | `op_resolve_hitl` | `intervention_id, approve, reason` | `deduped: bool` |
 | `op_set_tool_grant` | `agent_id, tool_name, granted, reason` | `deduped: bool` |
 | `op_ingest_memory` | `text, content, filename, content_type, context, tags, importance, source, session_id, reason` | `(doc_id, deduped)` |
-| `op_query_memory` | `query, top_k, source, session, min_importance` | `MemoryHit[]` |
+| `op_query_memory` | `query, top_k, source, session, min_importance` | `MemoryQueryResult` — `{hits, policy_note}` |
+| **Access policy (ADR-0085/0086/0087)** | | |
+| `op_explain_access` | `principal_id, principal_kind?, surface_*, resource_*, tags?, effects?` | `AccessDecision` — OSS contract |
+| `op_list_classification_tags` | — | `string[]` — OSS contract |
+| `op_list_groups` / `op_save_group` / `op_delete_group` | — / `group` / `id` | `GroupSpec[]` / `SaveOutcome` / — |
+| `op_list_policies` / `op_save_policy` / `op_delete_policy` | — / `policy` / `id` | `PolicySpec[]` / `SaveOutcome` / — |
+| `op_list_links` / `op_link_policy` / `op_unlink_policy` | — / `link` / `policy_id, container_kind, target_id` | `LinkSpec[]` / — / — |
+| `op_resultant_policy` | `principal_id, principal_kind?, surface_*` | `ResultantPolicy` |
+| `op_simulate_policy` | `draft_policies?, draft_links?, limit?` | `SimulationResult` |
+| `op_export_decisions` | `limit?, denials_only?` | `DecisionRecord[]` |
 | `op_list_tools` | — | `ToolSummary[]` — also **upserts** `tools` into `StateOfRecord` and re-emits `kernel://state` |
 | `op_list_skills` | — | `SkillSummary[]` — also **upserts** `skills` into `StateOfRecord` and re-emits `kernel://state` |
 | `op_list_watches` | — | `WatchConfigSummary[]` — also **upserts** `watch_configs` into `StateOfRecord` and re-emits `kernel://state` |
@@ -59,9 +68,18 @@ The Rust core is the **only** thing that talks gRPC to the runtime-core. The web
 
 ---
 
-## The contract: `OperatorConsole`
+## The contract: the operator PLANE (two services, one connection)
 
-One gRPC service, `cambrian.OperatorConsole` (NOT the agent-facing `Orchestrator`/`AgentService`). Generated from the pinned `../proto/operator.proto`.
+The core speaks **two** gRPC services, and it is important that they are not peers:
+
+1. **`cambrian.OperatorConsole`** — the pinned OSS contract, generated from `../proto/operator.proto`. Version-handshaked (`PINNED_CONTRACT_VERSION`, currently `0067`) with a skew banner. Since ADR-0089 the same handshake also carries every declared plugin with its own version line; `StateOfRecord.plugins` holds the kernel's report plus this build's skew verdict, computed here rather than in the webview because the pinned table is a property of the compiled client.
+2. **`cambrian.premium.authz.AccessPolicyAdmin`** — a PREMIUM-owned plane (ADR-0073/0088), generated from `../proto/authz/access_policy.proto`, mounted on the same kernel server behind the same operator auth interceptors. It rides the **same channel and the same bearer token** via `Transport::authed_channel` — a second connection would be a second thing to authenticate, reconnect and reason about, and would make the premium plane look like a side door rather than the extension it is.
+
+Neither is the agent-facing `Orchestrator`/`AgentService`, and the core never carries an `x-agent-id` principal. That was always the point of the rule and it is unchanged.
+
+**A premium plane has no version handshake.** It is versioned by its plugin, not by the operator contract, so a UI built against an older plugin fails at the RPC rather than at a banner. Acceptable while premium and the UI ship together; it needs its own handshake the moment they do not (ADR-0088 Risks).
+
+**Capability gating is the rendering contract.** The kernel folds a plugin's capability strings into the handshake without interpreting them (ADR-0082 D2). The premium client is compiled in unconditionally — what varies is whether the SERVER exists — so every premium RPC answers `Unimplemented` without the plugin. The webview gates on the capability (`access-policy`) so that becomes a good empty state instead of an error.
 
 ### RPCs
 

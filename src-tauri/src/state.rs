@@ -256,6 +256,17 @@ pub struct ToolSummary {
     pub granted_agent_count: i32,
     pub recent_invocation_count: i32,
     pub last_cost: f64,
+    /// What domain the tool touches — `crm`, `filesystem`, `payments` (ADR-0085 D2).
+    pub classification_tags: Vec<String>,
+    /// The closed-set verb classes it exercises: read | write | egress | spend |
+    /// admin (ADR-0086). A tag says what a tool is ABOUT; an effect says what the
+    /// invocation DOES to it, and policy checks both.
+    pub effects: Vec<String>,
+    /// True when the effects were DERIVED from the manifest's other fields rather
+    /// than declared. This is the strict-mode migration checklist: an operator
+    /// flips `execution.tool_effects_strict` once nothing is inferred, after which
+    /// an unclassified tool cannot register at all.
+    pub effects_inferred: bool,
 }
 
 #[derive(Clone, Serialize, Default)]
@@ -464,6 +475,37 @@ pub struct MemoryWrittenEvent {
     pub written_at: String,
 }
 
+/// One kernel plugin as the console sees it (ADR-0089): what the kernel reported,
+/// plus the skew verdict computed against this build's pinned expectation.
+///
+/// The verdict is computed HERE, in the state of record, rather than in the
+/// webview — the pinned table is a property of the compiled client, and a
+/// projection that re-derived it could disagree with the client it belongs to.
+#[derive(Clone, Serialize, Default)]
+pub struct PluginState {
+    pub id: String,
+    pub display_name: String,
+    pub version: String,
+    /// active | deps_unmet | not_entitled | expired (ADR-0082 D9)
+    pub state: String,
+    pub capabilities: Vec<String>,
+    pub panels: Vec<PluginPanel>,
+    pub reason: String,
+    pub missing: Vec<String>,
+    pub expires_at: String,
+    /// aligned | minor | major | unknown
+    pub skew: String,
+    /// The version this console was built against; empty when nothing is pinned.
+    pub pinned_version: String,
+}
+
+#[derive(Clone, Serialize, Default)]
+pub struct PluginPanel {
+    pub id: String,
+    pub title: String,
+    pub capability: String,
+}
+
 // ============================================================================
 // The full projection pushed to the webview — MUST match `StateOfRecord`
 // in src/ipc/types.ts exactly.
@@ -480,6 +522,9 @@ pub struct StateOfRecord {
     pub capabilities: Vec<String>,
     /// 0 = aligned; matches webview `number` (Rust `bool` would serialize to `true`/`false`).
     pub contract_skew: i32,
+    /// Every plugin the kernel DECLARED, with this console's skew verdict for each
+    /// (ADR-0089). Empty on an OSS kernel, which has no plugins — not a warning.
+    pub plugins: Vec<PluginState>,
     /// The last folded seq — the resume cursor.
     pub cursor: u64,
     pub plans: Vec<PlanInFlight>,
@@ -540,6 +585,45 @@ impl StateOfRecord {
         } else {
             0
         };
+
+        self.plugins = snap
+            .plugins
+            .iter()
+            .map(|p| {
+                let skew = pb::plugin_skew(&p.id, &p.version);
+                PluginState {
+                    id: p.id.clone(),
+                    display_name: p.display_name.clone(),
+                    version: p.version.clone(),
+                    state: p.state.clone(),
+                    capabilities: p.capabilities.clone(),
+                    panels: p
+                        .panels
+                        .iter()
+                        .map(|pan| PluginPanel {
+                            id: pan.id.clone(),
+                            title: pan.title.clone(),
+                            capability: pan.capability.clone(),
+                        })
+                        .collect(),
+                    reason: p.reason.clone(),
+                    missing: p.missing.clone(),
+                    expires_at: p.expires_at.clone(),
+                    skew: match skew {
+                        pb::PluginSkew::Aligned => "aligned",
+                        pb::PluginSkew::Minor => "minor",
+                        pb::PluginSkew::Major => "major",
+                        pb::PluginSkew::Unknown => "unknown",
+                    }
+                    .to_string(),
+                    pinned_version: pb::PINNED_PLUGIN_VERSIONS
+                        .iter()
+                        .find(|(id, _)| *id == p.id)
+                        .map(|(_, v)| (*v).to_string())
+                        .unwrap_or_default(),
+                }
+            })
+            .collect();
 
         for p in &snap.plans {
             self.plans.push(PlanInFlight {
@@ -763,6 +847,82 @@ impl StateOfRecord {
 mod tests {
     use super::*;
     use crate::pb::operator_event::Payload;
+
+    // ADR-0089: plugin skew. The pinned table is a property of THIS build, so the
+    // verdict is computed in the state of record and shipped to the webview.
+    fn snapshot_with_plugins(plugins: Vec<pb::PluginInfoOp>) -> pb::SnapshotResponse {
+        pb::SnapshotResponse {
+            contract_version: pb::PINNED_CONTRACT_VERSION.to_string(),
+            plugins,
+            ..Default::default()
+        }
+    }
+
+    fn plugin(id: &str, version: &str) -> pb::PluginInfoOp {
+        pb::PluginInfoOp {
+            id: id.to_string(),
+            version: version.to_string(),
+            state: "active".to_string(),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn plugin_skew_distinguishes_major_from_minor() {
+        // Same version: nothing to say.
+        assert_eq!(pb::plugin_skew("authz", "1.0.0"), pb::PluginSkew::Aligned);
+        // Below the major line: surfaces should still work.
+        assert_eq!(pb::plugin_skew("authz", "1.4.2"), pb::PluginSkew::Minor);
+        // Across the major line: the panels compiled here may be wrong.
+        assert_eq!(pb::plugin_skew("authz", "2.0.0"), pb::PluginSkew::Major);
+        // A plugin this console never pinned — unknown, not assumed compatible.
+        assert_eq!(pb::plugin_skew("telegram", "1.0.0"), pb::PluginSkew::Unknown);
+        // An unreadable version is exactly when NOT to claim compatibility.
+        assert_eq!(pb::plugin_skew("authz", "nightly"), pb::PluginSkew::Unknown);
+        assert_eq!(pb::plugin_skew("authz", ""), pb::PluginSkew::Unknown);
+    }
+
+    #[test]
+    fn snapshot_projects_plugins_with_their_verdict() {
+        let mut st = StateOfRecord::default();
+        st.apply_snapshot(&snapshot_with_plugins(vec![
+            plugin("authz", "2.0.0"),
+            pb::PluginInfoOp {
+                id: "reactive".to_string(),
+                version: "1.0.0".to_string(),
+                state: "not_entitled".to_string(),
+                reason: "licence expired".to_string(),
+                ..Default::default()
+            },
+        ]));
+
+        assert_eq!(st.plugins.len(), 2);
+        assert_eq!(st.plugins[0].skew, "major");
+        assert_eq!(st.plugins[0].pinned_version, "1.0.0");
+        // A plugin that did not register is still projected, with its reason —
+        // silence about a plugin the operator paid for is the failure this closes.
+        assert_eq!(st.plugins[1].state, "not_entitled");
+        assert_eq!(st.plugins[1].reason, "licence expired");
+        assert_eq!(st.plugins[1].skew, "aligned");
+    }
+
+    #[test]
+    fn an_oss_kernel_reports_no_plugins() {
+        let mut st = StateOfRecord::default();
+        st.apply_snapshot(&snapshot_with_plugins(vec![]));
+        assert!(st.plugins.is_empty(), "no plugins is a correct deployment, not a warning");
+        assert_eq!(st.contract_skew, 0);
+    }
+
+    // A resync must not leave a plugin behind from the previous kernel.
+    #[test]
+    fn plugins_are_replaced_wholesale_on_resnapshot() {
+        let mut st = StateOfRecord::default();
+        st.apply_snapshot(&snapshot_with_plugins(vec![plugin("authz", "1.0.0")]));
+        st.apply_snapshot(&snapshot_with_plugins(vec![plugin("reactive", "1.0.0")]));
+        assert_eq!(st.plugins.len(), 1);
+        assert_eq!(st.plugins[0].id, "reactive");
+    }
 
     fn agent_ready(seq: u64, agent_id: &str, trust_score: f64) -> pb::OperatorEvent {
         pb::OperatorEvent {

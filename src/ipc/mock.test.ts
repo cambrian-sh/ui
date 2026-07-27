@@ -32,6 +32,7 @@ describe('mock IPC — subsystem entities (UI-IMPL-21a)', () => {
       contract_version: '0047',
       capabilities: ['audit', 'scope', 'memory_tag', 'hitl_resolve'],
       contract_skew: 0,
+      plugins: [],
       cursor: 0,
       plans: [],
       sessions: [],

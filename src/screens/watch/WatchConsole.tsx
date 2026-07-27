@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearch } from '@tanstack/react-router';
 import { Card, CardContent, EmptyState, ScrollArea } from '@/design-system/components';
+import { PluginSurface } from '@/components/PluginSurface';
 import { useStore } from '@/store/useStore';
 import { projectionStore } from '@/store/projection';
 import { ipc } from '@/ipc';
@@ -8,6 +9,10 @@ import type { WatchConfigSummary } from '@/ipc/types';
 import { WatchFilters, type WatchFiltersState } from './WatchFilters';
 import { WatchListRow } from './WatchListRow';
 import { WatchDetail } from './WatchDetail';
+
+/** The reactive plugin's manifest id and its read capability (ADR-0089). */
+const REACTIVE_PLUGIN_ID = 'reactive';
+const WATCHES_READ_CAPABILITY = 'watches-read';
 
 const INITIAL_FILTERS: WatchFiltersState = {
   statuses: [],
@@ -60,58 +65,64 @@ export function WatchConsole() {
     navigate({ to: '/watch', search: { focus: configId }, replace: true });
   };
 
+  // ADR-0089: this console is the reactive plugin's surface, so it renders inside
+  // PluginSurface — plugin version skew is reported by construction, and the
+  // absent state distinguishes "this kernel has no reactive engine" from "the
+  // reactive engine declined to register", which an empty list cannot.
   return (
-    <div className="flex h-full flex-col">
-      <WatchFilters
-        filters={filters}
-        onChange={setFilters}
-      />
+    <PluginSurface pluginId={REACTIVE_PLUGIN_ID} capability={WATCHES_READ_CAPABILITY}>
+      <div className="flex h-full flex-col">
+        <WatchFilters
+          filters={filters}
+          onChange={setFilters}
+        />
 
-      <div className="flex flex-1 overflow-hidden">
-        <ScrollArea className="flex-1 border-r border-[var(--border-subtle)]">
-          {filtered.length === 0 ? (
-            <EmptyState
-              title={configs.length === 0 ? 'No watch configs' : 'No watch configs match the filters'}
-              body={
-                configs.length === 0
-                  ? 'Watch configs will appear here when the kernel advertises the watch capability.'
-                  : 'Adjust or reset the filters to see more watch configs.'
-              }
-              action={configs.length > 0 && isFiltered ? { label: 'Clear filters', onClick: () => setFilters(INITIAL_FILTERS) } : undefined}
-            />
-          ) : (
-            <ul role="list" aria-label="Watch configs" className="divide-y divide-[var(--border-subtle)]">
-              {filtered.map((c) => (
-                <li key={c.id}>
-                  <WatchListRow
-                    config={c}
-                    selected={c.id === selectedId}
-                    onClick={() => handleSelect(c.id)}
+        <div className="flex flex-1 overflow-hidden">
+          <ScrollArea className="flex-1 border-r border-[var(--border-subtle)]">
+            {filtered.length === 0 ? (
+              <EmptyState
+                title={configs.length === 0 ? 'No watch configs' : 'No watch configs match the filters'}
+                body={
+                  configs.length === 0
+                    ? 'Watch configs will appear here when the kernel advertises the watch capability.'
+                    : 'Adjust or reset the filters to see more watch configs.'
+                }
+                action={configs.length > 0 && isFiltered ? { label: 'Clear filters', onClick: () => setFilters(INITIAL_FILTERS) } : undefined}
+              />
+            ) : (
+              <ul role="list" aria-label="Watch configs" className="divide-y divide-[var(--border-subtle)]">
+                {filtered.map((c) => (
+                  <li key={c.id}>
+                    <WatchListRow
+                      config={c}
+                      selected={c.id === selectedId}
+                      onClick={() => handleSelect(c.id)}
+                    />
+                  </li>
+                ))}
+              </ul>
+            )}
+          </ScrollArea>
+
+          <aside
+            aria-label="Watch detail"
+            className="w-[var(--right-inspector-w,360px)] shrink-0 overflow-hidden"
+          >
+            {selectedId ? (
+              <WatchDetail configId={selectedId} role={role} />
+            ) : (
+              <Card className="m-4">
+                <CardContent className="pt-6">
+                  <EmptyState
+                    title="Select a watch config"
+                    body="Pick a watch config from the list to see its rule, target streams, and last fires."
                   />
-                </li>
-              ))}
-            </ul>
-          )}
-        </ScrollArea>
-
-        <aside
-          aria-label="Watch detail"
-          className="w-[var(--right-inspector-w,360px)] shrink-0 overflow-hidden"
-        >
-          {selectedId ? (
-            <WatchDetail configId={selectedId} role={role} />
-          ) : (
-            <Card className="m-4">
-              <CardContent className="pt-6">
-                <EmptyState
-                  title="Select a watch config"
-                  body="Pick a watch config from the list to see its rule, target streams, and last fires."
-                />
-              </CardContent>
-            </Card>
-          )}
-        </aside>
+                </CardContent>
+              </Card>
+            )}
+          </aside>
+        </div>
       </div>
-    </div>
+    </PluginSurface>
   );
 }

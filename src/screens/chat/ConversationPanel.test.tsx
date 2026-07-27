@@ -23,6 +23,7 @@ function makeState(capabilities: string[]): StateOfRecord {
     contract_version: '0062',
     capabilities,
     contract_skew: 0,
+    plugins: [],
     sessions: [],
     plans: [],
     agents: [],

@@ -17,6 +17,7 @@ import {
 import { useMutation } from '@/lib/useMutation';
 import { ConfirmMutationDialog } from '@/screens/sessions/ConfirmMutationDialog';
 import { ErrorState } from '@/design-system/components/cambrian/error-state';
+import { ToolEffects } from './ToolEffects';
 
 interface ToolDetailProps {
   toolId: string;
@@ -153,6 +154,30 @@ export function ToolDetail({ toolId, role }: ToolDetailProps) {
             </CardHeader>
             <CardContent>
               <p className="text-xs text-[var(--fg-secondary)]">{tool.description}</p>
+            </CardContent>
+          </Card>
+
+          <Card className="mt-3">
+            <CardHeader>
+              <CardTitle>What this tool does</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {(tool.effects?.length ?? 0) > 0 ? (
+                <ToolEffects tool={tool} variant="full" />
+              ) : (
+                <p className="text-xs text-[var(--fg-muted)]">
+                  This kernel does not report effect classes for tools. Upgrade to a kernel
+                  serving contract 0066 to see what an invocation actually does.
+                </p>
+              )}
+              {(tool.classification_tags?.length ?? 0) > 0 && (
+                <div className="border-t border-[var(--border-subtle)] pt-3">
+                  <dt className="text-xs text-[var(--fg-muted)]">Touches</dt>
+                  <dd className="mt-0.5 text-xs text-[var(--fg-secondary)]">
+                    {tool.classification_tags?.join(', ')}
+                  </dd>
+                </div>
+              )}
             </CardContent>
           </Card>
 

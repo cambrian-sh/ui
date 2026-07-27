@@ -1,0 +1,354 @@
+syntax = "proto3";
+
+package cambrian.premium.authz;
+
+option go_package = "github.com/cambrian-sh/cambrian-premium/api/proto/authz;authzpb";
+
+// AccessPolicyAdmin is the PREMIUM-only policy administration plane (PAP),
+// mounted on the kernel gRPC server via the OSS app.Options.ExtraServices seam
+// (ADR-0073). It is authenticated by the same server-level operator auth
+// interceptors as the OSS OperatorConsole plane — an extension of the operator
+// transport plane, not a bypass.
+//
+// It lives here rather than in the pinned OSS operator.proto because groups,
+// policy objects, and links are the premium product. The OSS contract carries
+// only what the KERNEL needs to be explainable: ExplainAccess and the vocabulary
+// listing (ADR-0085 §4.1). Authoring lives with the thing that decides.
+//
+// This proto is owned and versioned by cambrian-premium.
+service AccessPolicyAdmin {
+  // ── Groups: the containers policy is linked to ────────────────────────────
+  rpc ListGroups(ListGroupsRequest) returns (ListGroupsResponse);
+  // SaveGroup creates or replaces a group. Nesting cycles are rejected HERE, at
+  // write time, so an administrator hears about the mistake while they still
+  // remember making it.
+  rpc SaveGroup(SaveGroupRequest) returns (SaveGroupResponse);
+  rpc DeleteGroup(DeleteGroupRequest) returns (AckResponse);
+
+  // ── Policy objects: named, versioned bundles of rules ─────────────────────
+  rpc ListPolicies(ListPoliciesRequest) returns (ListPoliciesResponse);
+  // SavePolicy validates before persisting: a rule that can never match anything
+  // is refused, and so is a tag outside the controlled vocabulary. An
+  // administrator who creates a policy that can never match must be told at save
+  // time, not discover it through an empty result three days later (D14).
+  rpc SavePolicy(SavePolicyRequest) returns (SavePolicyResponse);
+  rpc DeletePolicy(DeletePolicyRequest) returns (AckResponse);
+
+  // ── Links: policy attaches to containers, never to individuals ────────────
+  rpc ListLinks(ListLinksRequest) returns (ListLinksResponse);
+  rpc LinkPolicy(LinkPolicyRequest) returns (AckResponse);
+  rpc UnlinkPolicy(UnlinkPolicyRequest) returns (AckResponse);
+
+  // ── Rollout ───────────────────────────────────────────────────────────────
+  // ResultantPolicy is `gpresult` for a principal: the effective terms, and which
+  // policy — linked where — contributed each one. This is what makes the model
+  // administrable rather than merely correct.
+  rpc ResultantPolicy(ResultantPolicyRequest) returns (ResultantPolicyResponse);
+
+  // SimulatePolicy answers "what would change if I enabled this?" by replaying
+  // recent REAL decisions from the journal through a candidate policy set,
+  // without acting (ADR-0085 D10). Same shape as the reactive engine's backtest,
+  // different subject.
+  rpc SimulatePolicy(SimulatePolicyRequest) returns (SimulatePolicyResponse);
+
+  // ExportDecisions returns the decision journal for audit (D13). Denials are
+  // never sampled.
+  rpc ExportDecisions(ExportDecisionsRequest) returns (ExportDecisionsResponse);
+
+  // ── Vocabulary: the tags, and which of them are CLOSED (ADR-0091) ─────────
+  // Closed-ness is the most consequential property a tag has — it flips the tag to
+  // deny-by-default — so an authoring UI that cannot show it will produce policies
+  // whose effect the author cannot predict.
+  rpc ListTags(ListTagsRequest) returns (ListTagsResponse);
+
+  // ── Ingress registry: which daemons are entry points (ADR-0090 D2) ─────────
+  // Registration MINTS A SURFACE — it decides what an entry point is permitted to
+  // reach — so it lives on this plane, behind the same operator auth, and is
+  // protected as carefully as policy itself.
+  rpc ListIngresses(ListIngressesRequest) returns (ListIngressesResponse);
+  // RegisterIngress declares that a daemon is an entry point and what surface the
+  // kernel stamps on sessions it opens. A registration with no surface would be
+  // inert, and an empty namespace prefix would read as a wildcard, so both are
+  // refused HERE rather than stored and discovered later.
+  rpc RegisterIngress(RegisterIngressRequest) returns (AckResponse);
+  // DeregisterIngress makes a daemon an ordinary agent again. Its existing
+  // conversations stop delivering immediately, because delivery re-checks the
+  // registration rather than trusting the address it bound earlier.
+  rpc DeregisterIngress(DeregisterIngressRequest) returns (AckResponse);
+
+  // ── Authoring assistant: English in, a VALIDATED PROPOSAL out ─────────────
+  // ProposePolicy asks a model to draft a policy from a description and returns it
+  // validated and simulated. It PROPOSES and never enforces: nothing is persisted,
+  // and applying a proposal means the operator calling the ordinary SavePolicy and
+  // LinkPolicy above, so every existing validation and audit record still applies.
+  //
+  // The response carries problems and a blast radius precisely so approval is a
+  // judgement rather than a formality. The model cannot coin a tag, cannot grant an
+  // open tag, and cannot choose to be enforced — a proposal always lands
+  // report-only, and enforcing it is a separate deliberate act.
+  rpc ProposePolicy(ProposePolicyRequest) returns (ProposePolicyResponse);
+}
+
+message AckResponse {
+  bool ok = 1;
+}
+
+// ── shared shapes ───────────────────────────────────────────────────────────
+
+// ScopeRule is the three-set tag term a policy contributes.
+message ScopeRule {
+  repeated string required_tags = 1;  // AND — must carry every one
+  repeated string any_of_tags = 2;    // OR  — must carry at least one
+  repeated string forbidden_tags = 3; // NONE — excluded if it carries any
+  // granted_tags reopen CLOSED tags (ADR-0091). The only term that ADDS access
+  // rather than removing it, and deliberately crippled: it may name nothing but a
+  // tag someone declared closed, and it can never override forbidden_tags. A grant
+  // on an open tag is refused at write time, since it would confer nothing.
+  repeated string granted_tags = 4;
+}
+
+// EffectRule is the verb half: grant broadly, subtract narrowly. Deny always
+// wins, consistent with forbidden tags being absolute.
+message EffectRule {
+  repeated string allow = 1; // empty = every effect (subject to deny)
+  repeated string deny = 2;  // always wins
+}
+
+message GroupSpec {
+  string id = 1;
+  string name = 2;
+  repeated string members = 3;   // principal ids
+  repeated string subgroups = 4; // nested group ids; membership is transitive
+  // block_inheritance stops policy accumulating from containers ABOVE this one —
+  // except forbidden tags, and except links marked enforced.
+  bool block_inheritance = 5;
+}
+
+message PolicySpec {
+  string id = 1;
+  string name = 2;
+  int32 version = 3; // server-assigned; ignored on write
+  ScopeRule rule = 4;
+  EffectRule effects = 5;
+  // mode is "enforced" or "report_only". Report-only evaluates and journals
+  // without enforcing — the safe rollout path.
+  string mode = 6;
+  // expires_at_unix_ms bounds the policy in time (0 = no expiry). Carried from
+  // v1 even though v1 always writes 0: retrofitting time-bounding into a grant
+  // model that assumes permanence is expensive.
+  int64 expires_at_unix_ms = 7;
+  string granted_by = 8;
+  int64 updated_at_unix_ms = 9;
+}
+
+message LinkSpec {
+  string policy_id = 1;
+  // container_kind is "organisation" | "group" | "principal" | "surface", in
+  // application order — broadest first. This IS the precedence order.
+  string container_kind = 2;
+  string target_id = 3;
+  // enforced means a downstream block_inheritance does not apply to this link.
+  bool enforced = 4;
+  int32 order = 5;
+  int64 expires_at_unix_ms = 6;
+  string granted_by = 7;
+}
+
+// ── requests / responses ────────────────────────────────────────────────────
+
+message ListGroupsRequest {}
+message ListGroupsResponse { repeated GroupSpec groups = 1; }
+
+message SaveGroupRequest { GroupSpec group = 1; }
+message SaveGroupResponse {
+  bool ok = 1;
+  // error names the problem in the administrator's terms (e.g. the cycle path).
+  string error = 2;
+}
+
+message DeleteGroupRequest { string id = 1; }
+
+message ListPoliciesRequest {}
+message ListPoliciesResponse { repeated PolicySpec policies = 1; }
+
+message SavePolicyRequest { PolicySpec policy = 1; }
+message SavePolicyResponse {
+  bool ok = 1;
+  string error = 2;
+  int32 version = 3;
+}
+
+message DeletePolicyRequest { string id = 1; }
+
+message ListLinksRequest {}
+message ListLinksResponse { repeated LinkSpec links = 1; }
+
+message LinkPolicyRequest { LinkSpec link = 1; }
+message UnlinkPolicyRequest {
+  string policy_id = 1;
+  string container_kind = 2;
+  string target_id = 3;
+}
+
+message ResultantPolicyRequest {
+  string principal_id = 1;
+  string principal_kind = 2; // default "agent"
+  string surface_kind = 3;
+  string surface_id = 4;
+}
+
+// PolicyTermOp is one contributed term, attributed to its source.
+message PolicyTermOp {
+  string policy_id = 1;
+  string policy_name = 2;
+  string linked_at = 3; // "organisation" | "group:<id>" | "principal:<id>" | "surface:<id>"
+  string term = 4;      // "required" | "any_of" | "forbidden" | "effect"
+  repeated string values = 5;
+  bool enforced = 6;
+}
+
+message ResultantPolicyResponse {
+  // effective is the composed predicate the kernel would apply.
+  ScopeRule effective = 1;
+  // any_of_clauses is the CNF form: each clause is an OR-set, all clauses ANDed.
+  repeated ScopeRule any_of_clauses = 2;
+  // contributions explains which policy, linked where, produced each term.
+  repeated PolicyTermOp contributions = 3;
+  // effects is the composed effect grant.
+  EffectRule effects = 4;
+  string policy_version = 5;
+  // unsatisfiable_reason is set when the effective predicate can never match
+  // anything. It is a SAFE state (zero rows) and therefore the easiest one to
+  // mistake for "there is no data", so it is stated rather than implied.
+  string unsatisfiable_reason = 6;
+  // groups lists the containers the principal resolved into, outermost first.
+  repeated string groups = 7;
+}
+
+message SimulatePolicyRequest {
+  // draft policies replace same-id policies for the duration of the simulation.
+  // Nothing is persisted.
+  repeated PolicySpec draft_policies = 1;
+  repeated LinkSpec draft_links = 2;
+  // limit bounds how many journalled decisions are replayed (0 = a server default).
+  int32 limit = 3;
+}
+
+// SimulatedDecision is one journalled decision replayed through the draft.
+message SimulatedDecision {
+  string principal = 1;
+  string surface = 2;
+  string resource = 3;
+  repeated string tags = 4;
+  bool allowed_now = 5;
+  bool allowed_under_draft = 6;
+  string reason_under_draft = 7;
+  string detail_under_draft = 8;
+  int64 at_unix_ms = 9;
+}
+
+message SimulatePolicyResponse {
+  repeated SimulatedDecision decisions = 1;
+  int32 newly_denied = 2; // allowed today, denied under the draft — the blast radius
+  int32 newly_allowed = 3;
+  int32 unchanged = 4;
+}
+
+message ExportDecisionsRequest {
+  int32 limit = 1;
+  // denials_only narrows the export to the rows anyone actually asks about.
+  bool denials_only = 2;
+}
+
+message DecisionRecord {
+  int64 at_unix_ms = 1;
+  string principal = 2;
+  string surface = 3;
+  string resource = 4;
+  bool allowed = 5;
+  string reason = 6;
+  string detail = 7;
+  string policy_version = 8;
+  bool report_only = 9;
+  bool would_have_denied = 10;
+  repeated PolicyTermOp decided_by = 11;
+}
+
+message ExportDecisionsResponse { repeated DecisionRecord records = 1; }
+
+// ── Ingress registry (ADR-0090 D2) ──────────────────────────────────────────
+
+// IngressSpec is one registered entry point.
+message IngressSpec {
+  // agent_id is the ingress daemon's agent id — the principal the kernel sees on
+  // the connection, and the reason a daemon cannot choose its own registration.
+  string agent_id = 1;
+  // surface_kind / surface_id form the surface stamped on sessions this ingress
+  // opens: the clamp that holds even when identity resolution is wrong.
+  string surface_kind = 2;
+  string surface_id = 3;
+  // namespace bounds which external identities this ingress may speak for, as
+  // prefixes. Empty means unrestricted — honest for a single-ingress deployment,
+  // and load-bearing the moment a second one exists.
+  repeated string namespace = 4;
+}
+
+message ListIngressesRequest {}
+message ListIngressesResponse { repeated IngressSpec ingresses = 1; }
+
+message RegisterIngressRequest { IngressSpec ingress = 1; }
+message DeregisterIngressRequest { string agent_id = 1; }
+
+// ── Vocabulary (ADR-0091) ───────────────────────────────────────────────────
+
+// TagSpec is one classification tag and whether it is deny-by-default.
+message TagSpec {
+  string tag = 1;
+  // closed means nobody reaches this tag unless a policy grants it. A UI must show
+  // this: selecting a closed tag in a Forbidden field is redundant, and selecting
+  // one in a Required field without a matching grant produces a boundary that
+  // matches nothing.
+  bool closed = 2;
+}
+
+message ListTagsRequest {}
+message ListTagsResponse { repeated TagSpec tags = 1; }
+
+// ── Authoring assistant ─────────────────────────────────────────────────────
+
+message ProposePolicyRequest {
+  // request is what the operator wants, in their own words. It is handed to the
+  // model as DATA inside a nonce fence (ADR-0063) and never as instructions.
+  string request = 1;
+  // simulate_limit bounds the journal replay (0 = a server default).
+  int32 simulate_limit = 2;
+}
+
+// ProposalProblem is one reason a proposal is not safe to apply as it stands.
+message ProposalProblem {
+  // severity is "blocking" or "warning". Data rather than prose, so the console
+  // can sort and colour without parsing sentences.
+  string severity = 1;
+  string message = 2;
+}
+
+message ProposePolicyResponse {
+  // rationale is the model's explanation, shown as CONTEXT. It is not the thing
+  // being approved — the policy and the simulation are.
+  string rationale = 1;
+  PolicySpec policy = 2;
+  repeated LinkSpec links = 3;
+  repeated ProposalProblem problems = 4;
+  // simulation reuses the SimulatePolicy shape so a console renders the blast
+  // radius with the code it already has. It is computed with the draft ENFORCED,
+  // because the proposal lands report-only and simulating report-only would
+  // report "no effect" for every proposal ever made.
+  SimulatePolicyResponse simulation = 5;
+  // simulation_basis is how many journalled decisions were replayed. Zero counts
+  // over an empty journal mean "nothing to compare", NOT "no effect", and a
+  // console must say which of the two it is showing.
+  int32 simulation_basis = 6;
+  // blocking is true when at least one problem is blocking. Derived, sent
+  // explicitly so a client cannot disagree with the server about it.
+  bool blocking = 7;
+}

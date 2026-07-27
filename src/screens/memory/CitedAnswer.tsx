@@ -66,6 +66,24 @@ export function CitedAnswer({ answer }: { answer: AnswerMemory }) {
   }, [answer.citations]);
 
   if (answer.status === 'abstention') {
+    // ADR-0085 INV-3: an abstention that ACCESS POLICY caused is a different
+    // statement from one the corpus caused, and a fail-closed model renders them
+    // identically unless the reason travels with it. When the kernel supplies a
+    // note, lead with it — "you are not permitted to see this" is actionable;
+    // "the corpus does not answer" sends the operator looking for missing data.
+    if (answer.policy_note) {
+      return (
+        <div className="flex flex-col gap-1.5">
+          <p className="text-sm text-[var(--status-warn)]">
+            Access policy withheld this, so the corpus was not the limit here.
+          </p>
+          <p className="text-xs text-[var(--fg-secondary)]">{answer.policy_note}</p>
+          <p className="text-xs text-[var(--fg-muted)]">
+            Use Access Policy → Explain to see which policy decides it.
+          </p>
+        </div>
+      );
+    }
     return (
       <p className="text-sm text-[var(--fg-muted)]">
         The corpus does not answer this question.{' '}

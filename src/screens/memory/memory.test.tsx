@@ -44,6 +44,7 @@ function makeState(role: 'operator' | 'viewer' = 'operator'): StateOfRecord {
     contract_version: '0047',
     capabilities: [],
     contract_skew: 0,
+    plugins: [],
     cursor: 0,
     plans: [],
     sessions: [],
