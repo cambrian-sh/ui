@@ -28,7 +28,12 @@ pub const ACCESS_POLICY_CAPABILITY: &str = "access-policy";
 
 /// The contract version this client is pinned to. Compare against
 /// `SnapshotResponse.contract_version` to detect kernel skew (ADR-0047 D14).
-pub const PINNED_CONTRACT_VERSION: &str = "0067";
+///
+/// 0069 (ADR-0097 D8) reshapes the AGENT-plane `GenerateWithTools` request to carry a
+/// message list. As with 0068, the operator surface this console speaks is unchanged —
+/// the bump is tracked only because the skew check is exact equality, and a stale pin
+/// would raise a permanent false banner against a current kernel.
+pub const PINNED_CONTRACT_VERSION: &str = "0069";
 
 /// The plugin versions this console was BUILT against, by plugin id (ADR-0089).
 ///
