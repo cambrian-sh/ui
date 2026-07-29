@@ -42,6 +42,19 @@ afterEach(() => {
   });
 });
 
+// jsdom has no ResizeObserver. Radix measures its indicators with it
+// (`@radix-ui/react-use-size`), so a checkbox that renders CHECKED — the Labels
+// pane's "Unlabelled only", which defaults on — throws on mount. The Tauri webview
+// has the real thing; this is a jsdom gap, not a component defect. A no-op is
+// enough: nothing under test asserts on measured sizes.
+if (typeof globalThis.ResizeObserver === 'undefined') {
+  globalThis.ResizeObserver = class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  } as unknown as typeof ResizeObserver;
+}
+
 // jsdom's Blob/File predate `arrayBuffer()`. The Tauri webview has it, and the
 // ingest pane relies on it to read file bytes, so provide it for tests.
 if (typeof Blob !== 'undefined' && !Blob.prototype.arrayBuffer) {

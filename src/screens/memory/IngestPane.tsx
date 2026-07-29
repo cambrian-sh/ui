@@ -5,6 +5,8 @@ import type { IngestFileParams, IngestMemoryParams } from '@/ipc/types';
 import { errorMessage } from '@/lib/errorMessage';
 import { IngestQueue } from './IngestQueue';
 import type { IngestRow } from './useIngestQueue';
+import { TagPicker } from '@/screens/scope/TagPicker';
+import type { Vocabulary } from '@/screens/scope/useVocabulary';
 import { cn } from '@/design-system/lib/utils';
 
 const DEFAULT_REASON = 'operator upload';
@@ -29,70 +31,24 @@ export interface IngestPaneProps {
   onIngestFile: (label: string, params: IngestFileParams) => void;
   /** False when the kernel does not advertise `memory-ingest-binary`. */
   canUploadFiles: boolean;
+  /**
+   * The controlled classification vocabulary (ADR-0085 D11).
+   *
+   * Labels applied here are the same labels access policy acts on, so this field
+   * offers SELECTION rather than free text. It used to be a draft `<input>`: a typo
+   * coined a label no rule would ever match, and nothing downstream could catch it
+   * because a tag is an opaque string. That is the exact defect the scope console
+   * already solved — a document labelled `internal-only` when the vocabulary says
+   * `internal_only` is not restricted, it is merely mislabelled, and it looks
+   * identical from here.
+   *
+   * When the kernel has no vocabulary the coinage check is off, free entry is honest,
+   * and `TagPicker` falls back to it — an unscoped OSS deployment must still be able
+   * to tag.
+   */
+  vocabulary: Vocabulary;
   disabled: boolean;
   disabledReason?: string;
-}
-
-function TagChips({
-  tags,
-  onChange,
-  disabled,
-}: {
-  tags: string[];
-  onChange: (tags: string[]) => void;
-  disabled: boolean;
-}) {
-  const [draft, setDraft] = useState('');
-
-  const add = () => {
-    const value = draft.trim().replace(/^#/, '');
-    if (!value || tags.includes(value)) {
-      setDraft('');
-      return;
-    }
-    onChange([...tags, value]);
-    setDraft('');
-  };
-
-  return (
-    <div className="flex flex-col gap-1">
-      <div className="flex flex-wrap gap-1">
-        {tags.map((tag) => (
-          <span
-            key={tag}
-            className="flex items-center gap-1 rounded-sm border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-1.5 py-0.5 font-mono text-[10px] text-[var(--fg-secondary)]"
-          >
-            #{tag}
-            <button
-              type="button"
-              onClick={() => onChange(tags.filter((t) => t !== tag))}
-              disabled={disabled}
-              aria-label={`Remove tag ${tag}`}
-              className="text-[var(--fg-muted)] hover:text-[var(--fg-primary)] disabled:cursor-not-allowed"
-            >
-              ×
-            </button>
-          </span>
-        ))}
-      </div>
-      <input
-        type="text"
-        value={draft}
-        onChange={(e) => setDraft(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') {
-            e.preventDefault();
-            add();
-          }
-        }}
-        onBlur={add}
-        disabled={disabled}
-        placeholder="add a tag, ⏎"
-        aria-label="Add scope tag"
-        className="rounded-sm border border-[var(--input-border)] bg-[var(--input-bg)] px-2 py-1 text-[11px] text-[var(--input-fg)] placeholder:text-[var(--input-placeholder)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)] disabled:cursor-not-allowed disabled:opacity-50"
-      />
-    </div>
-  );
 }
 
 export function IngestPane({
@@ -100,6 +56,7 @@ export function IngestPane({
   onIngest,
   onIngestFile,
   canUploadFiles,
+  vocabulary,
   disabled,
   disabledReason,
 }: IngestPaneProps) {
@@ -114,6 +71,13 @@ export function IngestPane({
   const [pickError, setPickError] = useState<string | null>(null);
 
   const effectiveTags = restricted ? tags : [];
+
+  // Closed labels are deny-by-default and there is no operator exemption (ADR-0091).
+  // Applying one at ingest makes the document unreachable for EVERYONE — including
+  // whoever is uploading it, from this console — until a policy grants it. That is
+  // usually the intent, but it is a surprising thing to discover afterwards by
+  // failing to find your own upload, so it is said before the write, not after.
+  const closedSelected = effectiveTags.filter((t) => vocabulary.closed.has(t));
 
   // The OS file dialog returns PATHS, not bytes. The Rust core reads the file, so
   // a 500 MB document never enters the webview's memory or crosses IPC as an
@@ -338,10 +302,28 @@ export function IngestPane({
         </label>
         <p className="text-[10px] text-[var(--fg-muted)]">
           {restricted
-            ? 'Only principals whose scope matches these tags can retrieve it.'
+            ? 'Only principals whose scope matches these labels can retrieve it.'
             : 'Readable by any agent or principal on this kernel.'}
         </p>
-        {restricted && <TagChips tags={tags} onChange={setTags} disabled={disabled} />}
+        {restricted && (
+          <div className="mt-1 flex flex-col gap-1">
+            <TagPicker
+              vocabulary={vocabulary}
+              selected={tags}
+              onChange={setTags}
+              disabled={disabled}
+              label="Labels"
+              hint="What this document is. Rules are written about these, so a document with none is unreachable by any rule."
+            />
+            {closedSelected.length > 0 && (
+              <p role="status" className="text-[10px] text-[var(--color-status-warn)]">
+                {closedSelected.join(', ')} {closedSelected.length === 1 ? 'is' : 'are'} closed.
+                This document will be deny-by-default for everyone — including you, from this
+                console — until a policy grants it.
+              </p>
+            )}
+          </div>
+        )}
       </fieldset>
 
       <div className="flex flex-col gap-1">

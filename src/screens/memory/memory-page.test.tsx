@@ -16,6 +16,11 @@ vi.mock('@/ipc', () => ({
     ingestFile: vi.fn().mockResolvedValue(['doc-1', false]),
     statFile: vi.fn().mockResolvedValue({ name: 'murat.pdf', size: 5_202_359 }),
     queryMemory: vi.fn().mockResolvedValue({ hits: [], policy_note: '' }),
+    listTags: vi.fn().mockResolvedValue([
+      { tag: 'finance', closed: false },
+      { tag: 'confidential', closed: true },
+    ]),
+    listClassificationTags: vi.fn().mockResolvedValue(['finance', 'confidential']),
     answerMemory: vi.fn().mockResolvedValue({ status: 'answer', answer: '', citations: [] }),
     createSession: vi.fn().mockResolvedValue({ session_id: 'ses-1' }),
     sendMessage: vi.fn().mockResolvedValue({ deduped: false }),
@@ -166,20 +171,71 @@ describe('MemoryPage — ingest', () => {
     });
   });
 
-  it('sends tags once scope is restricted', async () => {
+  // Without the access-policy plugin there is no vocabulary, the kernel's coinage
+  // check is off, and free entry is the honest option — an unscoped OSS deployment
+  // must still be able to label what it ingests.
+  it('sends tags once scope is restricted, falling back to free entry with no vocabulary', async () => {
     projectionStore.getState().hydrate(makeState());
     render(<MemoryPage />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Paste text' }));
     fireEvent.click(screen.getByLabelText('Restrict…'));
-    fireEvent.change(screen.getByLabelText('Add scope tag'), { target: { value: 'finance' } });
-    fireEvent.keyDown(screen.getByLabelText('Add scope tag'), { key: 'Enter' });
+    fireEvent.change(screen.getByLabelText('Labels — add a tag'), {
+      target: { value: 'finance' },
+    });
+    fireEvent.keyDown(screen.getByLabelText('Labels — add a tag'), { key: 'Enter' });
     fireEvent.change(screen.getByLabelText('Text'), { target: { value: 'x' } });
     fireEvent.click(screen.getByRole('button', { name: 'Ingest text' }));
 
     await waitFor(() => {
       expect(ipc.ingestMemory).toHaveBeenCalledWith(expect.objectContaining({ tags: ['finance'] }));
     });
+  });
+
+  // The point of the change: a label applied at ingest is SELECTED from the same
+  // controlled vocabulary the scope console writes rules about. The field used to be
+  // a free-text draft input, so `internal-only` for `internal_only` produced a label
+  // no rule would ever match and nothing could report it.
+  it('selects ingest labels from the vocabulary when the kernel has one', async () => {
+    projectionStore
+      .getState()
+      .hydrate(makeState({ capabilities: ['memory-ingest-binary', 'access-policy'] }));
+    render(<MemoryPage />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Paste text' }));
+    fireEvent.click(screen.getByLabelText('Restrict…'));
+
+    // No free-text box: the vocabulary is the only way in.
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /\+ finance/ })).toBeTruthy();
+    });
+    expect(screen.queryByLabelText('Labels — add a tag')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: /\+ finance/ }));
+    fireEvent.change(screen.getByLabelText('Text'), { target: { value: 'x' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Ingest text' }));
+
+    await waitFor(() => {
+      expect(ipc.ingestMemory).toHaveBeenCalledWith(expect.objectContaining({ tags: ['finance'] }));
+    });
+  });
+
+  // A closed label at ingest is deny-by-default for everyone, the operator included.
+  // Said before the write — the alternative is discovering it by failing to find your
+  // own upload.
+  it('warns that a closed label makes the document unreachable until granted', async () => {
+    projectionStore
+      .getState()
+      .hydrate(makeState({ capabilities: ['memory-ingest-binary', 'access-policy'] }));
+    render(<MemoryPage />);
+
+    fireEvent.click(screen.getByLabelText('Restrict…'));
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /\+ confidential/ })).toBeTruthy();
+    });
+    fireEvent.click(screen.getByRole('button', { name: /\+ confidential/ }));
+
+    expect(screen.getByText(/deny-by-default for everyone/)).toBeTruthy();
   });
 
   it('sends a non-empty reason by default', async () => {

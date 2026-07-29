@@ -17,7 +17,14 @@ fn main() {
         .build_server(false)
         .build_client(true)
         .compile_protos(
-            &["../proto/operator.proto", "../proto/authz/access_policy.proto"],
+            &[
+                "../proto/operator.proto",
+                "../proto/authz/access_policy.proto",
+                // ADR-0090: the Telegram ingress's operator plane. Same reasoning as
+                // authz — the client is always compiled, the SERVER is what varies with
+                // which plugins the kernel was built with.
+                "../proto/telegram/telegram_admin.proto",
+            ],
             &["../proto"],
         )
         .expect("failed to compile the operator + access-policy protos");

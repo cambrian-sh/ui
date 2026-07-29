@@ -17,6 +17,7 @@
     "build:design-system": "echo 'design system build (placeholder for codegen)'"
   },
   "dependencies": {
+    "@radix-ui/react-checkbox": "^1.3.11",
     "@radix-ui/react-dialog": "^1.1.17",
     "@radix-ui/react-popover": "^1.1.17",
     "@radix-ui/react-scroll-area": "^1.2.12",

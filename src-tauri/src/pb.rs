@@ -20,6 +20,14 @@ pub mod authz {
     tonic::include_proto!("cambrian.premium.authz");
 }
 
+/// The premium Telegram ingress plane (ADR-0090).
+///
+/// Present in the binary unconditionally; a kernel built without the telegram plugin
+/// answers `Unimplemented`, which the UI surfaces as "not available" rather than an error.
+pub mod telegram {
+    tonic::include_proto!("cambrian.premium.telegram");
+}
+
 /// The capability the kernel advertises when the access-policy plugin is active.
 /// The UI renders the policy console only when the handshake carries it
 /// (ADR-0082 D2: the kernel forwards plugin capabilities without interpreting
@@ -29,11 +37,20 @@ pub const ACCESS_POLICY_CAPABILITY: &str = "access-policy";
 /// The contract version this client is pinned to. Compare against
 /// `SnapshotResponse.contract_version` to detect kernel skew (ADR-0047 D14).
 ///
-/// 0069 (ADR-0097 D8) reshapes the AGENT-plane `GenerateWithTools` request to carry a
-/// message list. As with 0068, the operator surface this console speaks is unchanged —
-/// the bump is tracked only because the skew check is exact equality, and a stale pin
+/// 0070 adds the OSS `ListDocuments` RPC (`ListDocumentsOpRequest` /
+/// `ListDocumentsOpResponse` / `DocumentSummaryOp`) and the `document-listing`
+/// capability. Unlike 0068/0069 this one DOES change the operator surface: it is the
+/// console's only way to enumerate documents by row, which is what makes an unlabelled
+/// document findable at all. Access policy acts on labels and never on a document by
+/// name, so a document with no labels is invisible to the policy model rather than
+/// denied, and semantic search cannot find one — "which of my documents have no
+/// labels?" has no query text.
+///
+/// 0069 (ADR-0097 D8) reshaped the AGENT-plane `GenerateWithTools` request to carry a
+/// message list. As with 0068, the operator surface this console speaks was unchanged —
+/// that bump was tracked only because the skew check is exact equality, and a stale pin
 /// would raise a permanent false banner against a current kernel.
-pub const PINNED_CONTRACT_VERSION: &str = "0069";
+pub const PINNED_CONTRACT_VERSION: &str = "0070";
 
 /// The plugin versions this console was BUILT against, by plugin id (ADR-0089).
 ///

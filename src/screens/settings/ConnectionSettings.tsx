@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { ipc } from '@/ipc';
+import { TelegramPanel } from './TelegramPanel';
 import { projectionStore } from '@/store/projection';
 import { useStore } from '@/store/useStore';
 import { ErrorState } from '@/design-system/components/cambrian/error-state';
@@ -275,6 +276,11 @@ export function ConnectionSettings() {
       {isConnected && error && (
         <ErrorState reason={error} whatToDo="The disconnect did not complete. Retry." />
       )}
+
+      {/* Integrations. Only meaningful against a live kernel — the panel reads its state
+          from the running plugin, so showing it while disconnected would render a
+          confident-looking form backed by nothing. */}
+      {isConnected && <TelegramPanel role={state?.role ?? null} capabilities={state?.capabilities ?? []} />}
     </div>
   );
 }

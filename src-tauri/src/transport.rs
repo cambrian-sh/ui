@@ -52,6 +52,31 @@ pub struct MemoryHit {
     pub tags: Vec<String>,
 }
 
+/// One row of the document listing (contract 0070).
+///
+/// A listing row, not a document: no body, no chunks. Enough to decide what to
+/// label and nothing more, so paging a large corpus stays cheap.
+#[derive(Clone, serde::Serialize, Default)]
+pub struct DocumentSummary {
+    pub id: String,
+    pub title: String,
+    pub source_type: String,
+    pub tags: Vec<String>,
+    pub chunk_count: i32,
+    pub created_at_unix_ms: i64,
+}
+
+/// One page of the document listing, plus the size of the whole matching set.
+///
+/// `total_matching` ignores paging on purpose: "50 shown" does not tell an operator
+/// how much of the corpus no rule can reach, and "422 of 1163" does.
+#[derive(Clone, serde::Serialize, Default)]
+pub struct DocumentPage {
+    pub documents: Vec<DocumentSummary>,
+    pub next_cursor: String,
+    pub total_matching: i32,
+}
+
 /// A ranked recall, plus the kernel's explanation when access policy shaped it.
 ///
 /// The note is the whole point of ADR-0085 INV-3: a fail-closed model turns a
@@ -496,6 +521,76 @@ impl Transport {
                 reason,
                 session_id,
                 instruction,
+            }))
+            .await
+            .map_err(map_status)?
+            .into_inner();
+        Ok(ack.deduped)
+    }
+
+    /// Apply or remove one classification label on a document or memory.
+    ///
+    /// The kernel routes a DOCUMENT id through the transactional retag (ADR-0093), so
+    /// the authoritative row and every one of its chunks move together; anything else
+    /// is tagged in place. Operator-only, idempotent on command_id, audited.
+    /// Enumerate documents by ROW (contract 0070).
+    ///
+    /// The counterpart to `query_memory`, not a variant of it. Search answers "find
+    /// the document that says X"; this answers "which of my documents have no
+    /// labels?" — a question with no query text, because the operator does not yet
+    /// know what those documents say. Policy acts only on labels, so an unlabelled
+    /// document is invisible to the policy model rather than denied.
+    pub async fn list_documents(
+        &self,
+        limit: i32,
+        cursor: String,
+        unlabelled_only: bool,
+        id_prefix: String,
+    ) -> Result<DocumentPage, String> {
+        let mut client = self.client().await?;
+        let resp = client
+            .list_documents(Request::new(pb::ListDocumentsOpRequest {
+                limit,
+                cursor,
+                unlabelled_only,
+                id_prefix,
+            }))
+            .await
+            .map_err(map_status)?
+            .into_inner();
+        Ok(DocumentPage {
+            documents: resp
+                .documents
+                .into_iter()
+                .map(|d| DocumentSummary {
+                    id: d.id,
+                    title: d.title,
+                    source_type: d.source_type,
+                    tags: d.tags,
+                    chunk_count: d.chunk_count,
+                    created_at_unix_ms: d.created_at_unix_ms,
+                })
+                .collect(),
+            next_cursor: resp.next_cursor,
+            total_matching: resp.total_matching,
+        })
+    }
+
+    pub async fn tag_memory(
+        &self,
+        doc_id: String,
+        tag: String,
+        add: bool,
+        reason: String,
+    ) -> Result<bool, String> {
+        let mut client = self.client().await?;
+        let ack = client
+            .tag_memory(Request::new(pb::TagMemoryRequest {
+                command_id: new_command_id(),
+                reason,
+                doc_id,
+                tag,
+                add,
             }))
             .await
             .map_err(map_status)?

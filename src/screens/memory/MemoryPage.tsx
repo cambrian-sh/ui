@@ -5,6 +5,7 @@ import { IngestPane } from './IngestPane';
 import { InspectTab } from './InspectTab';
 import { AskPane } from './AskPane';
 import { useIngestQueue } from './useIngestQueue';
+import { useVocabulary } from '@/screens/scope/useVocabulary';
 import { cn } from '@/design-system/lib/utils';
 
 type LeftTab = 'ingest' | 'inspect';
@@ -45,6 +46,12 @@ export function MemoryPage() {
   const capabilities = state?.capabilities ?? [];
   const canUploadFiles = capabilities.includes('memory-ingest-binary');
   const canAnswer = capabilities.includes('memory-answer');
+  // The vocabulary lives behind the access-policy plugin — it is the same list the
+  // scope console selects from, because a label applied at ingest and a label applied
+  // afterwards must be the same term or the rule written about it reaches only half
+  // the corpus. Absent the plugin this reports "not configured" and the picker
+  // correctly falls back to free entry.
+  const vocabulary = useVocabulary(capabilities.includes('access-policy'));
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -93,6 +100,7 @@ export function MemoryPage() {
                 onIngest={enqueue}
                 onIngestFile={enqueueFile}
                 canUploadFiles={canUploadFiles}
+                vocabulary={vocabulary}
                 disabled={mutationsDisabled}
                 disabledReason={mutationsDisabledReason}
               />

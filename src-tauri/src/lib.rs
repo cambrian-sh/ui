@@ -6,6 +6,7 @@
 
 pub mod pb;
 pub mod policy;
+mod telegram;
 pub mod state;
 pub mod transport;
 
@@ -17,7 +18,7 @@ use policy::{
     SimulationResult,
 };
 use state::{ConversationMessage, ConversationSummary, SkillSummary, StateOfRecord, ToolSummary, WatchConfigSummary};
-use transport::{MemoryQueryResult, Transport};
+use transport::{DocumentPage, MemoryQueryResult, Transport};
 
 // ---- Command response DTOs ----------------------------------------------
 //
@@ -647,6 +648,86 @@ async fn op_propose_policy(
     transport.inner().clone().propose_policy(request, simulate_limit).await
 }
 
+/// Enumerate ingested documents by row (contract 0070).
+///
+/// The read that makes labelling possible at all. Access policy acts on labels and
+/// never on a document by name, so a document with no labels is not denied — it is
+/// invisible to the policy model, and semantic search cannot find one because
+/// "which of my documents have no labels?" has no query text. Gated in the webview
+/// on the `document-listing` capability; an older kernel answers `Unimplemented`.
+#[tauri::command(rename_all = "snake_case")]
+async fn op_list_documents(
+    transport: State<'_, Transport>,
+    limit: Option<i32>,
+    cursor: Option<String>,
+    unlabelled_only: Option<bool>,
+    id_prefix: Option<String>,
+) -> Result<DocumentPage, String> {
+    transport
+        .inner()
+        .clone()
+        .list_documents(
+            limit.unwrap_or(0),
+            cursor.unwrap_or_default(),
+            unlabelled_only.unwrap_or(false),
+            id_prefix.unwrap_or_default(),
+        )
+        .await
+}
+
+/// Apply or remove one label on a document or memory (ADR-0093).
+///
+/// A mandatory reason travels with it: classification changes what people can see, so
+/// the audit row has to say why, not just what.
+#[tauri::command(rename_all = "snake_case")]
+async fn op_tag_memory(
+    transport: State<'_, Transport>,
+    doc_id: String,
+    tag: String,
+    add: bool,
+    reason: String,
+) -> Result<bool, String> {
+    transport.inner().clone().tag_memory(doc_id, tag, add, reason).await
+}
+
+
+// ---- Telegram ingress (ADR-0090) ------------------------------------------
+//
+// The token travels one way. There is no command that returns it, and none of these log
+// their arguments — a console that can echo a credential leaks it to the screen, to a
+// recording, and to whatever captures the log.
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_telegram_status(
+    transport: State<'_, Transport>,
+) -> Result<crate::telegram::TelegramStatus, String> {
+    transport.inner().clone().telegram_status().await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_telegram_set_token(
+    transport: State<'_, Transport>,
+    token: String,
+) -> Result<crate::telegram::TelegramAck, String> {
+    transport.inner().clone().telegram_set_token(token).await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_telegram_clear_token(
+    transport: State<'_, Transport>,
+    reason: String,
+) -> Result<crate::telegram::TelegramAck, String> {
+    transport.inner().clone().telegram_clear_token(reason).await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_telegram_set_enabled(
+    transport: State<'_, Transport>,
+    enabled: bool,
+) -> Result<crate::telegram::TelegramAck, String> {
+    transport.inner().clone().telegram_set_enabled(enabled).await
+}
+
 #[tauri::command(rename_all = "snake_case")]
 async fn op_list_ingresses(transport: State<'_, Transport>) -> Result<Vec<IngressSpec>, String> {
     transport.inner().clone().list_ingresses().await
@@ -817,8 +898,14 @@ pub fn run() {
             op_list_classification_tags,
             op_list_groups,
             op_list_tags,
+            op_list_documents,
+            op_tag_memory,
             op_propose_policy,
             op_list_ingresses,
+            op_telegram_status,
+            op_telegram_set_token,
+            op_telegram_clear_token,
+            op_telegram_set_enabled,
             op_register_ingress,
             op_deregister_ingress,
             op_save_group,

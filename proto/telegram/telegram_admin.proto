@@ -1,0 +1,84 @@
+syntax = "proto3";
+
+package cambrian.premium.telegram;
+
+option go_package = "github.com/cambrian-sh/cambrian-premium/api/proto/telegram;telegrampb";
+
+// TelegramAdmin is the operator surface for the Telegram ingress (ADR-0090).
+//
+// The bot token is WRITE-ONLY across this API. There is no RPC that returns it, and
+// TelegramStatus carries only whether one is configured. An operator console that can
+// display a credential is a console that leaks it to anyone looking at the screen, to a
+// screen recording, and to whatever logs the response — and none of those are recoverable.
+// Rotation is the supported path: set a new one, never read the old one back.
+service TelegramAdmin {
+  // GetStatus reports what an operator needs to decide what to do next, and nothing
+  // that would be dangerous to render.
+  rpc GetStatus(GetStatusRequest) returns (TelegramStatus);
+
+  // SetToken stores a bot token. The value never comes back out.
+  rpc SetToken(SetTokenRequest) returns (AckResponse);
+
+  // ClearToken removes the stored token and stops the ingress. Separate from SetToken
+  // with an empty value, because "I meant to erase this" and "my form submitted blank"
+  // must not be the same request.
+  rpc ClearToken(ClearTokenRequest) returns (AckResponse);
+
+  // SetEnabled starts or stops the ingress. Enabling without a token is refused with a
+  // reason rather than silently doing nothing.
+  rpc SetEnabled(SetEnabledRequest) returns (AckResponse);
+}
+
+message GetStatusRequest {}
+
+message ClearTokenRequest {
+  // reason is MANDATORY for this call. Removing the credential stops the ingress and
+  // disconnects every conversation arriving through it, so the audit trail needs to say
+  // who decided that and why — the same discipline the operator plane applies to any
+  // destructive command.
+  string reason = 1;
+}
+
+message SetTokenRequest {
+  // token is the BotFather credential. Write-only; see the service comment.
+  string token = 1;
+}
+
+message SetEnabledRequest {
+  bool enabled = 1;
+}
+
+// TelegramStatus is deliberately shaped so that everything in it is safe to display.
+message TelegramStatus {
+  // enabled is the operator's intent — whether the ingress should be running.
+  bool enabled = 1;
+  // token_configured is the ONLY thing said about the credential.
+  bool token_configured = 2;
+  // bot_username comes from the Bot API when the token is valid ("@Cambrian1_bot"). It
+  // is public information — it is how users find the bot — so it is safe to render, and
+  // it is the one thing that confirms the token works without revealing it.
+  string bot_username = 3;
+  // running reports whether the ingress daemon is actually polling, which is not the
+  // same as `enabled`: an operator can intend it on while it is crash-looping.
+  bool running = 4;
+  // surface and namespace are the registered ingress identity (ADR-0090 D2). Shown so an
+  // operator can see what policy will apply to traffic arriving here.
+  string surface = 5;
+  repeated string namespace = 6;
+  // state is a coarse machine-readable status for the UI to key off:
+  // "off" | "no_token" | "starting" | "running" | "error".
+  string state = 7;
+  // detail is a human sentence explaining `state` when it is not self-evident — an
+  // invalid token, an unreachable API, a crash loop.
+  string detail = 8;
+  // privacy_mode reports Telegram's own setting: when true the bot only sees messages
+  // that mention it in groups. Surfaced because it silently changes behaviour and can
+  // only be altered in BotFather, not here.
+  bool privacy_mode = 9;
+}
+
+message AckResponse {
+  bool ok = 1;
+  // error is a human sentence. Empty when ok.
+  string error = 2;
+}

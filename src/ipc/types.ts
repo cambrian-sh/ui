@@ -668,6 +668,42 @@ export interface MemoryQueryResult {
   policy_note: string;
 }
 
+/**
+ * One row of the document listing (contract 0070).
+ *
+ * A listing row, not a document: no body, no chunks. Enough to decide what to label
+ * and nothing more, so paging a large corpus stays cheap.
+ */
+export interface DocumentSummary {
+  id: string;
+  title: string;
+  source_type: string;
+  /** Empty means NO RULE CAN REACH THIS DOCUMENT — the state this listing exists to surface. */
+  tags: string[];
+  chunk_count: number;
+  created_at_unix_ms: number;
+}
+
+export interface ListDocumentsParams {
+  limit?: number;
+  /** Keyset cursor: the `next_cursor` of the previous page. Opaque. */
+  cursor?: string;
+  unlabelled_only?: boolean;
+  id_prefix?: string;
+}
+
+/** One page of the listing, plus the size of the whole matching set. */
+export interface DocumentPage {
+  documents: DocumentSummary[];
+  /** Empty when the listing is exhausted. */
+  next_cursor: string;
+  /**
+   * Total matching the filter, ignoring paging. "422 of 1163" is what tells an
+   * operator how much of the corpus no rule can reach; "50 shown" does not.
+   */
+  total_matching: number;
+}
+
 /** A grounded, cited answer (ADR-0081). `status` = answer | abstention | clarification. */
 export interface AnswerMemory {
   status: string;
@@ -800,6 +836,41 @@ export interface IngressSpec {
   surface_id: string;
   /** Prefixes of external ids this ingress may speak for. Empty = unrestricted. */
   namespace: string[];
+}
+
+/**
+ * Everything the console knows about the Telegram ingress.
+ *
+ * There is deliberately no token field. The credential is write-only across the whole
+ * surface: a panel that can display it leaks it to whoever is looking at the screen, to a
+ * screen recording, and to anything that logs the response. `token_configured` and
+ * `bot_username` are what an operator actually needs — one says a credential exists, the
+ * other confirms it works, and neither reveals it.
+ */
+export interface TelegramStatus {
+  /** The operator's intent: should the ingress be running. */
+  enabled: boolean;
+  /** Whether a credential is stored. Never the credential itself. */
+  token_configured: boolean;
+  /** Public bot handle from the Bot API, e.g. "@Cambrian1_bot". Empty until verified. */
+  bot_username: string;
+  /** Whether the daemon is actually polling — not the same as `enabled`. */
+  running: boolean;
+  /** Registered ingress identity, so the applicable policy is visible. */
+  surface: string;
+  namespace: string[];
+  /** 'off' | 'no_token' | 'starting' | 'running' | 'error' */
+  state: string;
+  /** Human sentence explaining `state` when it is not self-evident. */
+  detail: string;
+  /** Telegram's own setting: when true the bot only sees messages that mention it. */
+  privacy_mode: boolean;
+}
+
+/** Result of a write on the Telegram surface. `error` is a sentence for the operator. */
+export interface TelegramAck {
+  ok: boolean;
+  error: string;
 }
 
 export interface EffectRule {

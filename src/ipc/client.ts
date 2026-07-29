@@ -158,6 +158,21 @@ export const ipc = {
     invoke<t.MemoryQueryResult>('op_query_memory', { ...params }),
 
   /**
+   * Enumerate documents by ROW (contract 0070).
+   *
+   * The counterpart to `queryMemory`, not a variant of it. Search answers "find the
+   * document that says X"; this answers "which of my documents have no labels?" — a
+   * question with no query text, because the operator does not yet know what those
+   * documents say. Access policy acts only on labels, so an unlabelled document is
+   * invisible to the policy model rather than denied.
+   *
+   * Requires the kernel `document-listing` capability; an older kernel answers
+   * Unimplemented.
+   */
+  listDocuments: (params: t.ListDocumentsParams = {}): Promise<t.DocumentPage> =>
+    invoke<t.DocumentPage>('op_list_documents', { ...params }),
+
+  /**
    * ADR-0081: a grounded, [n]-cited answer + the evidence each marker resolves to.
    * Requires the kernel `memory-answer` capability; an older kernel rejects it.
    */
@@ -196,6 +211,26 @@ export const ipc = {
   listTags: (): Promise<t.TagSpec[]> => invoke<t.TagSpec[]>('op_list_tags'),
 
   listIngresses: (): Promise<t.IngressSpec[]> => invoke<t.IngressSpec[]>('op_list_ingresses'),
+
+  // ── Telegram ingress (ADR-0090) ───────────────────────────────────────────
+  telegramStatus: (): Promise<t.TelegramStatus> => invoke<t.TelegramStatus>('op_telegram_status'),
+  /** Store a bot token. Write-only — nothing returns it, by design. */
+  telegramSetToken: (token: string): Promise<t.TelegramAck> =>
+    invoke<t.TelegramAck>('op_telegram_set_token', { token }),
+  /** Destructive: stops the ingress and disconnects its conversations. Reason is mandatory. */
+  telegramClearToken: (reason: string): Promise<t.TelegramAck> =>
+    invoke<t.TelegramAck>('op_telegram_clear_token', { reason }),
+  telegramSetEnabled: (enabled: boolean): Promise<t.TelegramAck> =>
+    invoke<t.TelegramAck>('op_telegram_set_enabled', { enabled }),
+
+  /**
+   * Apply or remove one label on a document or memory.
+   *
+   * For a document this is authoritative and atomic: the kernel moves the document row
+   * and every one of its chunks together, so a document can never end up half-labelled.
+   */
+  tagMemory: (doc_id: string, tag: string, add: boolean, reason: string): Promise<boolean> =>
+    invoke<boolean>('op_tag_memory', { doc_id, tag, add, reason }),
 
   /**
    * Draft a policy from a description in English. Read-only: it returns a

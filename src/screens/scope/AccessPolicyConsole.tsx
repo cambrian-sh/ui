@@ -24,6 +24,7 @@ import { GroupsPane } from './GroupsPane';
 import { RolloutPane } from './RolloutPane';
 import { IngressPane } from './IngressPane';
 import { ProposePane } from './ProposePane';
+import { LabelsPane } from './LabelsPane';
 import { useVocabulary } from './useVocabulary';
 
 /**
@@ -38,6 +39,13 @@ import { useVocabulary } from './useVocabulary';
 const ACCESS_POLICY_CAPABILITY = 'access-policy';
 /** The plugin's manifest id, used to look up its version for skew (ADR-0089). */
 const ACCESS_POLICY_PLUGIN_ID = 'authz';
+/**
+ * ListDocuments (contract 0070). An OSS capability, not a premium one — documents
+ * belong to the store with or without the policy plugin. Gated separately so a
+ * kernel that predates 0070 shows the Labels pane's search without a Browse tab
+ * that would only ever return Unimplemented.
+ */
+const DOCUMENT_LISTING_CAPABILITY = 'document-listing';
 
 const INITIAL_FILTERS: ScopeFiltersState = { search: '' };
 
@@ -145,6 +153,7 @@ export function AccessPolicyConsole() {
           <TabsTrigger value="policies">Policies</TabsTrigger>
           <TabsTrigger value="groups">Groups</TabsTrigger>
           <TabsTrigger value="ingress">Ingress</TabsTrigger>
+          <TabsTrigger value="labels">Labels</TabsTrigger>
           <TabsTrigger value="propose">Assistant</TabsTrigger>
           <TabsTrigger value="rollout">Rollout</TabsTrigger>
         </TabsList>
@@ -272,6 +281,14 @@ export function AccessPolicyConsole() {
         >
           <IngressPane role={role} />
         </PluginSurface>
+      </TabsContent>
+
+      <TabsContent value="labels" className="min-h-0 flex-1">
+        <LabelsPane
+          vocabulary={vocabulary}
+          role={role}
+          canBrowse={capabilities.includes(DOCUMENT_LISTING_CAPABILITY)}
+        />
       </TabsContent>
 
       <TabsContent value="propose" className="min-h-0 flex-1">
