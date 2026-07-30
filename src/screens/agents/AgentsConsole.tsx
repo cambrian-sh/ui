@@ -54,6 +54,20 @@ export function AgentsConsole() {
   const agents = projection.state?.agents ?? [];
   const role = projection.state?.role ?? null;
 
+  // An agent under surveillance is being verified on every task, and the cause
+  // is worth reading. The verifier pool knows it; the agent list is where an
+  // operator looks — so join them rather than making that two navigations.
+  const surveillanceByAgent = useMemo(
+    () =>
+      new Map(
+        (projection.state?.verifier_pool.surveillance_triggers ?? []).map((t) => [
+          t.agent_id,
+          t,
+        ]),
+      ),
+    [projection.state?.verifier_pool.surveillance_triggers],
+  );
+
   const filtered = useMemo(() => filterAgents(agents, filters), [agents, filters]);
 
   const isFiltered =
@@ -98,6 +112,7 @@ export function AgentsConsole() {
                 <li key={a.id}>
                   <AgentListRow
                     agent={a}
+                    surveillance={surveillanceByAgent.get(a.id) ?? null}
                     selected={a.id === selectedId}
                     onClick={() => handleSelect(a.id)}
                   />

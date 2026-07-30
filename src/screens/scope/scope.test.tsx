@@ -59,17 +59,38 @@ describe('AccessPolicyConsole — principals', () => {
   beforeEach(() => {
     projectionStore.getState().reset();
     searchState.focus = undefined;
-    searchState.tab = undefined;
+    // The console now lands on Overview — coverage is the first question, not
+    // the principal list. These cases exercise the principals pane, so they
+    // select it explicitly rather than relying on it being the default.
+    searchState.tab = 'principals';
     navigateMock.mockClear();
   });
 
-  it('renders empty state when no scope data', () => {
+  it('hides the premium authoring panes on a kernel without the access-policy plane', () => {
+    // ADR-0082 D2 / the console's own non-negotiable: a premium surface is
+    // capability-gated, never probed. These RPCs answer Unimplemented without
+    // the plane, so a rendered tab leads to a dead pane — worse than an absent
+    // one. makeState() advertises no capabilities.
     projectionStore.getState().hydrate(makeState());
     render(<AccessPolicyConsole />);
-    expect(screen.getByText('No principals')).toBeInTheDocument();
-    expect(
-      screen.getByText('Principals appear here when agents are registered.'),
-    ).toBeInTheDocument();
+
+    expect(screen.queryByRole('tab', { name: 'Policies' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('tab', { name: 'Groups' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('tab', { name: 'Assistant' })).not.toBeInTheDocument();
+    // The OSS panes ride the pinned contract and must stay.
+    expect(screen.getByRole('tab', { name: 'Principals' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Explain' })).toBeInTheDocument();
+    // And the screen says what the deployment IS rather than looking broken.
+    expect(screen.getByText(/absent rather than broken/)).toBeInTheDocument();
+  });
+
+  it('renders empty state when no scope data, without claiming agents are the only principals', () => {
+    projectionStore.getState().hydrate(makeState());
+    render(<AccessPolicyConsole />);
+    expect(screen.getByText('No scoped agents')).toBeInTheDocument();
+    // The old copy said principals appear "when agents are registered", which is
+    // what made a person bound to an entry point look like they did not exist.
+    expect(screen.getByText(/People bound to an entry point are listed below/)).toBeInTheDocument();
   });
 
   it('renders agents and filters by search', () => {

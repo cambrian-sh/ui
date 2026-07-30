@@ -72,7 +72,7 @@ export function MCPServersConsole() {
               action={servers.length > 0 && isFiltered ? { label: 'Clear filters', onClick: () => setFilters(INITIAL_FILTERS) } : undefined}
             />
           ) : (
-            <ul role="list" aria-label="MCP servers" className="divide-y divide-[var(--border-subtle)]">
+            <ul role="list" aria-label="MCP servers" className="flex flex-col gap-2 p-[14px_18px]">
               {filtered.map((s) => (
                 <li key={s.id}>
                   <MCPListRow

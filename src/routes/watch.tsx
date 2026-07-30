@@ -1,12 +1,11 @@
 import { createFileRoute } from '@tanstack/react-router';
-import { z } from 'zod';
-import { WatchConsole } from '@/screens/watch/WatchConsole';
+import { PipelinesConsole } from '@/screens/reactive/PipelinesConsole';
 
-const watchSearchSchema = z.object({
-  focus: z.string().optional(),
-});
-
+// The reactive plane. Replaces the old watch list, which could only show a
+// watch's id and error count — the pipeline console shows the source, the
+// throttle, the gate and what each one actually did.
 export const Route = createFileRoute('/watch')({
-  validateSearch: watchSearchSchema,
-  component: WatchConsole,
+  component: PipelinesConsole,
+  validateSearch: (search: Record<string, unknown>): { focus?: string } =>
+    typeof search.focus === 'string' ? { focus: search.focus } : {},
 });

@@ -40,6 +40,34 @@ pub struct TelegramStatus {
     pub detail: String,
     /// Telegram's own setting: when true the bot only sees messages that mention it.
     pub privacy_mode: bool,
+    /// Which bot this status is for (contract 0081).
+    pub bot_id: String,
+    pub label: String,
+    /// The principal this bot's daemon runs as — the id the ingress registry maps
+    /// to this bot's surface.
+    pub agent_id: String,
+    /// Whether an ingress registration exists for this bot's surface.
+    ///
+    /// False means traffic arrives with NO POLICY attached to the door it came
+    /// through. The bot still polls, receives and answers, which is exactly why
+    /// the console has to say so rather than render it as healthy.
+    pub surface_registered: bool,
+}
+
+/// One configured bot.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TelegramBot {
+    pub id: String,
+    pub label: String,
+    pub surface: String,
+    pub agent_id: String,
+    pub token_configured: bool,
+    pub enabled: bool,
+    pub running: bool,
+    pub bot_username: String,
+    pub state: String,
+    pub detail: String,
+    pub surface_registered: bool,
 }
 
 /// The outcome of a write. A refusal is a normal authoring result carried in `error`,
@@ -58,14 +86,20 @@ impl Transport {
             .max_encoding_message_size(MAX_MESSAGE_BYTES))
     }
 
-    pub async fn telegram_status(&self) -> Result<TelegramStatus, String> {
+    /// Status for one bot. An EMPTY `bot_id` means the default, so the call is
+    /// unchanged for a deployment that has never configured a second one.
+    pub async fn telegram_status(&self, bot_id: String) -> Result<TelegramStatus, String> {
         let mut client = self.telegram_client().await?;
         let s = client
-            .get_status(Request::new(pb::telegram::GetStatusRequest {}))
+            .get_status(Request::new(pb::telegram::GetStatusRequest { bot_id }))
             .await
             .map_err(map_status)?
             .into_inner();
         Ok(TelegramStatus {
+            bot_id: s.bot_id,
+            label: s.label,
+            agent_id: s.agent_id,
+            surface_registered: s.surface_registered,
             enabled: s.enabled,
             token_configured: s.token_configured,
             bot_username: s.bot_username,
@@ -80,34 +114,113 @@ impl Transport {
 
     /// Store a bot token. The value is passed straight through and never retained,
     /// echoed, or logged on this side.
-    pub async fn telegram_set_token(&self, token: String) -> Result<TelegramAck, String> {
+    pub async fn telegram_set_token(&self, bot_id: String, token: String) -> Result<TelegramAck, String> {
         let mut client = self.telegram_client().await?;
         let ack = client
-            .set_token(Request::new(pb::telegram::SetTokenRequest { token }))
+            .set_token(Request::new(pb::telegram::SetTokenRequest { token, bot_id }))
             .await
             .map_err(map_status)?
             .into_inner();
-        Ok(TelegramAck { ok: ack.ok, error: ack.error })
+        Ok(TelegramAck {
+            ok: ack.ok,
+            error: ack.error,
+        })
     }
 
     /// Remove the credential. `reason` is mandatory — the kernel refuses without one.
-    pub async fn telegram_clear_token(&self, reason: String) -> Result<TelegramAck, String> {
+    pub async fn telegram_clear_token(&self, bot_id: String, reason: String) -> Result<TelegramAck, String> {
         let mut client = self.telegram_client().await?;
         let ack = client
-            .clear_token(Request::new(pb::telegram::ClearTokenRequest { reason }))
+            .clear_token(Request::new(pb::telegram::ClearTokenRequest { reason, bot_id }))
             .await
             .map_err(map_status)?
             .into_inner();
-        Ok(TelegramAck { ok: ack.ok, error: ack.error })
+        Ok(TelegramAck {
+            ok: ack.ok,
+            error: ack.error,
+        })
     }
 
-    pub async fn telegram_set_enabled(&self, enabled: bool) -> Result<TelegramAck, String> {
+    pub async fn telegram_set_enabled(&self, bot_id: String, enabled: bool) -> Result<TelegramAck, String> {
         let mut client = self.telegram_client().await?;
         let ack = client
-            .set_enabled(Request::new(pb::telegram::SetEnabledRequest { enabled }))
+            .set_enabled(Request::new(pb::telegram::SetEnabledRequest { enabled, bot_id }))
             .await
             .map_err(map_status)?
             .into_inner();
-        Ok(TelegramAck { ok: ack.ok, error: ack.error })
+        Ok(TelegramAck {
+            ok: ack.ok,
+            error: ack.error,
+        })
+    }
+
+    /// Every configured bot, with the state of each.
+    pub async fn telegram_list_bots(&self) -> Result<Vec<TelegramBot>, String> {
+        let mut client = self.telegram_client().await?;
+        let resp = client
+            .list_bots(Request::new(pb::telegram::ListBotsRequest {}))
+            .await
+            .map_err(map_status)?
+            .into_inner();
+        Ok(resp
+            .bots
+            .into_iter()
+            .map(|b| TelegramBot {
+                id: b.id,
+                label: b.label,
+                surface: b.surface,
+                agent_id: b.agent_id,
+                token_configured: b.token_configured,
+                enabled: b.enabled,
+                running: b.running,
+                bot_username: b.bot_username,
+                state: b.state,
+                detail: b.detail,
+                surface_registered: b.surface_registered,
+            })
+            .collect())
+    }
+
+    /// Record a new bot. A rejected id is an authoring outcome the form renders
+    /// inline, not a transport failure that blanks the page.
+    pub async fn telegram_add_bot(
+        &self,
+        id: String,
+        label: String,
+        token: String,
+    ) -> Result<TelegramAck, String> {
+        let mut client = self.telegram_client().await?;
+        match client
+            .add_bot(Request::new(pb::telegram::AddBotRequest { id, label, token }))
+            .await
+        {
+            Ok(_) => Ok(TelegramAck { ok: true, error: String::new() }),
+            Err(st)
+                if st.code() == tonic::Code::InvalidArgument
+                    || st.code() == tonic::Code::AlreadyExists =>
+            {
+                Ok(TelegramAck { ok: false, error: st.message().to_string() })
+            }
+            Err(st) => Err(map_status(st)),
+        }
+    }
+
+    /// Stop a bot and forget its credential. `reason` is mandatory.
+    pub async fn telegram_remove_bot(
+        &self,
+        id: String,
+        reason: String,
+    ) -> Result<TelegramAck, String> {
+        let mut client = self.telegram_client().await?;
+        match client
+            .remove_bot(Request::new(pb::telegram::RemoveBotRequest { id, reason }))
+            .await
+        {
+            Ok(_) => Ok(TelegramAck { ok: true, error: String::new() }),
+            Err(st) if st.code() == tonic::Code::InvalidArgument => {
+                Ok(TelegramAck { ok: false, error: st.message().to_string() })
+            }
+            Err(st) => Err(map_status(st)),
+        }
     }
 }

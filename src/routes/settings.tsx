@@ -1,7 +1,7 @@
 
 import { createFileRoute } from '@tanstack/react-router';
-import { ConnectionSettings } from '@/screens/settings/ConnectionSettings';
+import { SettingsPage } from '@/screens/settings/SettingsPage';
 
 export const Route = createFileRoute('/settings')({
-  component: ConnectionSettings,
+  component: SettingsPage,
 });

@@ -16,9 +16,92 @@ use tonic::{Request, Status};
 use crate::pb;
 use crate::pb::operator_console_client::OperatorConsoleClient;
 use crate::state::{
-    ConnectionStatus, ConversationMessage, ConversationSummary, SkillSummary, StateOfRecord, ToolSummary,
-    WatchConfigSummary,
+    AuthoredStep, ClassifiedInput, ConfigSchema, ConnectionStatus, ConversationMessage,
+    ConversationSummary, GeneratorSpec, GeneratorTestResult, InterviewOption, InterviewQuestion,
+    PlanProposal, PlanProposalResponse, PlanValidationIssue, PreviewCandidate, PreviewRanked,
+    PreviewRouteResult, RoleAssignment, SkillSummary, StateOfRecord, SubmitPlanResult, ToolSummary,
+    WatchAction, WatchBacktestVerdict, WatchConfigFull, WatchConfigSummary, WatchDeadLetter,
+    WatchMetrics,
 };
+
+/// `WatchConfigOp` → the projection form, unabridged.
+fn watch_full_from_op(c: pb::WatchConfigOp) -> WatchConfigFull {
+    let action = c.action.unwrap_or_default();
+    WatchConfigFull {
+        id: c.id,
+        name: c.name,
+        description: c.description,
+        source_type: c.source_type,
+        source_stream_id: c.source_stream_id,
+        condition: c.condition,
+        condition_type: c.condition_type,
+        daemon_params: c.daemon_params,
+        action: WatchAction {
+            r#type: action.r#type,
+            target_type: action.target_type,
+            target: action.target,
+            payload: action.payload,
+        },
+        active: c.active,
+        response_mode: c.response_mode,
+        max_concurrent_plans: c.max_concurrent_plans,
+        debounce_seconds: c.debounce_seconds,
+        condition_payload_keys: c.condition_payload_keys,
+        approved: c.approved,
+        dry_run: c.dry_run,
+        source_cron: c.source_cron,
+        source_timezone: c.source_timezone,
+        missed_fire_policy: c.missed_fire_policy,
+    }
+}
+
+/// The projection form → `WatchConfigOp`, for register and backtest.
+fn watch_op_from_full(c: &WatchConfigFull) -> pb::WatchConfigOp {
+    pb::WatchConfigOp {
+        id: c.id.clone(),
+        name: c.name.clone(),
+        description: c.description.clone(),
+        source_type: c.source_type.clone(),
+        source_stream_id: c.source_stream_id.clone(),
+        condition: c.condition.clone(),
+        condition_type: c.condition_type.clone(),
+        daemon_params: Default::default(),
+        action: Some(pb::WatchActionOp {
+            r#type: c.action.r#type.clone(),
+            target_type: c.action.target_type.clone(),
+            target: c.action.target.clone(),
+            payload: c.action.payload.clone(),
+        }),
+        active: c.active,
+        response_mode: c.response_mode.clone(),
+        max_concurrent_plans: c.max_concurrent_plans,
+        debounce_seconds: c.debounce_seconds,
+        condition_payload_keys: c.condition_payload_keys.clone(),
+        approved: c.approved,
+        dry_run: c.dry_run,
+        source_cron: c.source_cron.clone(),
+        source_timezone: c.source_timezone.clone(),
+        missed_fire_policy: c.missed_fire_policy.clone(),
+
+        // Contract 0074/0076 additions. These are OUTBOUND-EMPTY on purpose.
+        //
+        // `source_stream_state`, `source_stream_refcount` and `last_fires` are
+        // computed BY the kernel — they describe whether the feeding daemon is
+        // alive and what this watch has actually done. Sending a value for them
+        // would be the client asserting liveness it cannot observe, and on a
+        // register/backtest round-trip that assertion would overwrite the real
+        // one. Defaulted so the kernel keeps ownership of the answer.
+        source_stream_state: String::new(),
+        source_stream_refcount: 0,
+        last_fires: Vec::new(),
+
+        // Arms 2..N. The console models a single action today, so it sends none —
+        // and an empty `actions` is exactly "no extra arms" rather than "clear the
+        // ones you have", because the kernel keeps `action` as the first arm and
+        // reads the two together (domain.WatchConfig.EffectiveActions).
+        actions: Vec::new(),
+    }
+}
 
 /// Tauri event names emitted to the webview.
 const EV_STATE: &str = "kernel://state";
@@ -240,9 +323,7 @@ impl Transport {
     /// connection would be a second thing to authenticate, reconnect, and reason
     /// about — and it would make the premium plane look like a side door rather
     /// than an extension of the plane we already trust.
-    pub(crate) async fn authed_channel(
-        &self,
-    ) -> Result<(Channel, AuthInterceptor), String> {
+    pub(crate) async fn authed_channel(&self) -> Result<(Channel, AuthInterceptor), String> {
         let mut guard = self.channel.lock().await;
         if guard.is_none() {
             let ep = self
@@ -295,15 +376,23 @@ impl Transport {
         // operator should learn it from the log, not from re-typing a password every launch.
         match keyring::Entry::new("cambrian-ui", "saved-connection") {
             Ok(entry) => {
-                let blob = format!("{endpoint}
+                let blob = format!(
+                    "{endpoint}
 {username}
-{password}");
+{password}"
+                );
                 if let Err(err) = entry.set_password(&blob) {
-                    tracing::warn!(?err, "keychain write failed; this instance will not be remembered");
+                    tracing::warn!(
+                        ?err,
+                        "keychain write failed; this instance will not be remembered"
+                    );
                 }
             }
             Err(err) => {
-                tracing::warn!(?err, "keychain unavailable; this instance will not be remembered");
+                tracing::warn!(
+                    ?err,
+                    "keychain unavailable; this instance will not be remembered"
+                );
             }
         }
     }
@@ -649,17 +738,18 @@ impl Transport {
         Ok(resp.reply.map(ConversationMessage::from))
     }
 
-    pub async fn list_conversations(
-        &self,
-        limit: i32,
-    ) -> Result<Vec<ConversationSummary>, String> {
+    pub async fn list_conversations(&self, limit: i32) -> Result<Vec<ConversationSummary>, String> {
         let mut client = self.client().await?;
         let resp = client
             .list_conversations(Request::new(pb::ListConversationsOpRequest { limit }))
             .await
             .map_err(map_status)?
             .into_inner();
-        Ok(resp.conversations.into_iter().map(ConversationSummary::from).collect())
+        Ok(resp
+            .conversations
+            .into_iter()
+            .map(ConversationSummary::from)
+            .collect())
     }
 
     pub async fn list_conversation_messages(
@@ -678,7 +768,11 @@ impl Transport {
             .await
             .map_err(map_status)?
             .into_inner();
-        Ok(resp.messages.into_iter().map(ConversationMessage::from).collect())
+        Ok(resp
+            .messages
+            .into_iter()
+            .map(ConversationMessage::from)
+            .collect())
     }
 
     pub async fn close_conversation(
@@ -855,6 +949,39 @@ impl Transport {
         Ok(ack.deduped)
     }
 
+    /// Hot-apply numeric runtime tunables without a restart (ADR-0054).
+    ///
+    /// The RPC has been on the pinned contract since 0047 but was never wired
+    /// here, so the console had no way to change a tunable at all. Two
+    /// properties of the kernel side shape how the caller must behave:
+    ///
+    /// - **Partial sets merge** over the current live values, so sending only
+    ///   the fields the operator touched is correct and does not clear the rest.
+    /// - **Unknown keys are ignored** (reported kernel-side), which is exactly
+    ///   the UI-015 "skip and warn" behaviour a stale schema needs — a retired
+    ///   axis cannot be written back in by accident.
+    ///
+    /// Edits are ephemeral: they live in memory and `config.json` stays the boot
+    /// default. That is a property worth surfacing, not hiding — a tunable that
+    /// silently reverts on restart is a very expensive surprise.
+    pub async fn set_runtime_config(
+        &self,
+        params: std::collections::HashMap<String, f64>,
+        reason: String,
+    ) -> Result<bool, String> {
+        let mut client = self.client().await?;
+        let ack = client
+            .set_runtime_config(Request::new(pb::SetRuntimeConfigRequest {
+                command_id: new_command_id(),
+                reason,
+                params,
+            }))
+            .await
+            .map_err(map_status)?
+            .into_inner();
+        Ok(ack.deduped)
+    }
+
     pub async fn trigger_consolidation(
         &self,
         scope: String,
@@ -937,6 +1064,214 @@ impl Transport {
         }
         self.emit_state(app).await;
         Ok(skills)
+    }
+
+    // ── Reactive: the six watch RPCs that were on the contract but unwired ───
+    //
+    // All of these have existed on the pinned contract since the REACT-0x work
+    // landed; the console simply never picked them up, so the whole pipeline
+    // surface was unreachable. Wiring them needs no kernel change.
+
+    /// Every watch config, unabridged.
+    ///
+    /// Distinct from `list_watches`, which maps down to the lossy
+    /// `WatchConfigSummary` the old list screen wanted. The pipeline builder
+    /// needs the condition, the action, the debounce window and the cron
+    /// fields, so this returns the config as the kernel holds it.
+    pub async fn list_watch_configs(&self) -> Result<Vec<WatchConfigFull>, String> {
+        let mut client = self.client().await?;
+        let resp = client
+            .list_watches(Request::new(pb::ListWatchesOpRequest {
+                page: 0,
+                page_size: 0,
+                active_only: false,
+            }))
+            .await
+            .map_err(map_status)?
+            .into_inner();
+        Ok(resp.configs.into_iter().map(watch_full_from_op).collect())
+    }
+
+    pub async fn register_watch(
+        &self,
+        config: WatchConfigFull,
+        reason: String,
+    ) -> Result<bool, String> {
+        let mut client = self.client().await?;
+        let ack = client
+            .register_watch(Request::new(pb::RegisterWatchOpRequest {
+                command_id: new_command_id(),
+                reason,
+                config: Some(watch_op_from_full(&config)),
+            }))
+            .await
+            .map_err(map_status)?
+            .into_inner();
+        Ok(ack.deduped)
+    }
+
+    pub async fn delete_watch(&self, watch_id: String, reason: String) -> Result<bool, String> {
+        let mut client = self.client().await?;
+        let ack = client
+            .delete_watch(Request::new(pb::DeleteWatchOpRequest {
+                command_id: new_command_id(),
+                reason,
+                watch_id,
+            }))
+            .await
+            .map_err(map_status)?
+            .into_inner();
+        Ok(ack.deduped)
+    }
+
+    pub async fn set_watch_active(
+        &self,
+        watch_id: String,
+        active: bool,
+        reason: String,
+    ) -> Result<bool, String> {
+        let mut client = self.client().await?;
+        let ack = client
+            .set_watch_active(Request::new(pb::SetWatchActiveOpRequest {
+                command_id: new_command_id(),
+                reason,
+                watch_id,
+                active,
+            }))
+            .await
+            .map_err(map_status)?
+            .into_inner();
+        Ok(ack.deduped)
+    }
+
+    pub async fn list_watch_dead_letters(
+        &self,
+        limit: i32,
+    ) -> Result<Vec<WatchDeadLetter>, String> {
+        let mut client = self.client().await?;
+        let resp = client
+            .list_watch_dead_letters(Request::new(pb::ListWatchDeadLettersOpRequest { limit }))
+            .await
+            .map_err(map_status)?
+            .into_inner();
+        Ok(resp
+            .entries
+            .into_iter()
+            .map(|e| WatchDeadLetter {
+                id: e.id,
+                watch_id: e.watch_id,
+                action_type: e.action_type,
+                key: e.key,
+                reason: e.reason,
+                signal_stream_id: e.signal_stream_id,
+                signal_raw_text: e.signal_raw_text,
+                failed_at_unix_ms: e.failed_at_unix_ms,
+            })
+            .collect())
+    }
+
+    pub async fn get_watch_metrics(&self) -> Result<Vec<WatchMetrics>, String> {
+        let mut client = self.client().await?;
+        let resp = client
+            .get_watch_metrics(Request::new(pb::GetWatchMetricsOpRequest {}))
+            .await
+            .map_err(map_status)?
+            .into_inner();
+        Ok(resp
+            .metrics
+            .into_iter()
+            .map(|m| WatchMetrics {
+                watch_id: m.watch_id,
+                signals_seen: m.signals_seen,
+                condition_fired: m.condition_fired,
+                condition_suppressed: m.condition_suppressed,
+                dry_run_would_fire: m.dry_run_would_fire,
+                action_failed: m.action_failed,
+                dead_lettered: m.dead_lettered,
+                mean_condition_latency_ms: m.mean_condition_latency_ms,
+            })
+            .collect())
+    }
+
+    /// Replay the signal journal through a candidate config. **Never acts.**
+    pub async fn backtest_watch(
+        &self,
+        config: WatchConfigFull,
+        after_seq: u64,
+    ) -> Result<Vec<WatchBacktestVerdict>, String> {
+        let mut client = self.client().await?;
+        let resp = client
+            .backtest_watch(Request::new(pb::BacktestWatchOpRequest {
+                config: Some(watch_op_from_full(&config)),
+                after_seq,
+            }))
+            .await
+            .map_err(map_status)?
+            .into_inner();
+        Ok(resp
+            .verdicts
+            .into_iter()
+            .map(|v| WatchBacktestVerdict {
+                seq: v.seq,
+                stream_id: v.stream_id,
+                raw_text: v.raw_text,
+                would_fire: v.would_fire,
+                eval_error: v.eval_error,
+            })
+            .collect())
+    }
+
+    /// Score a step's capability contract over caller-supplied candidates.
+    ///
+    /// The RPC takes inline profiles by design (deterministic, no live fleet),
+    /// which is exactly why the DAG builder cannot yet answer "who would take
+    /// this step" against the real registry — see report.md §4.12.
+    pub async fn preview_route(
+        &self,
+        task_desc: String,
+        required_capabilities: Vec<String>,
+        candidates: Vec<PreviewCandidate>,
+    ) -> Result<PreviewRouteResult, String> {
+        let mut client = self.client().await?;
+        let resp = client
+            .preview_route(Request::new(pb::PreviewRouteOpRequest {
+                task_desc,
+                required_capabilities,
+                candidates: candidates
+                    .into_iter()
+                    .map(|c| pb::PreviewCandidateOp {
+                        agent_id: c.agent_id,
+                        r#trait: c.trait_name,
+                        success_rate: c.success_rate,
+                        trust_score: c.trust_score,
+                        network_latency_ms: c.network_latency_ms,
+                        computation_latency_ms: c.computation_latency_ms,
+                        context_growth_bytes: c.context_growth_bytes,
+                        provisional: c.provisional,
+                        avg_cost_per_task: c.avg_cost_per_task,
+                        capability_stats: Default::default(),
+                    })
+                    .collect(),
+            }))
+            .await
+            .map_err(map_status)?
+            .into_inner();
+        Ok(PreviewRouteResult {
+            ranked: resp
+                .ranked
+                .into_iter()
+                .map(|r| PreviewRanked {
+                    agent_id: r.agent_id,
+                    score: r.score,
+                    success_rate: r.success_rate,
+                    trust_score: r.trust_score,
+                    latency_term: r.latency_term,
+                    cost_term: r.cost_term,
+                    provisional: r.provisional,
+                })
+                .collect(),
+            arm: resp.arm,
+        })
     }
 
     pub async fn list_watches(&self, app: &AppHandle) -> Result<Vec<WatchConfigSummary>, String> {
@@ -1262,4 +1597,265 @@ fn new_command_id() -> String {
 
 pub(crate) fn map_status(e: Status) -> String {
     format!("{}: {}", e.code(), e.message())
+}
+
+// -- Contract 0072-0076: generator, config, classification and plan lanes -----
+//
+// Each is a straight projection of the kernel's answer. Where the kernel does not
+// serve a field the TS type declares, the value here is chosen to read as "not
+// reported" -- never as a measurement the kernel did not take.
+impl Transport {
+    pub async fn list_generators(&self) -> Result<Vec<GeneratorSpec>, String> {
+        let mut client = self.client().await?;
+        let resp = client
+            .list_generators(Request::new(pb::ListGeneratorsOpRequest {}))
+            .await
+            .map_err(map_status)?
+            .into_inner();
+        Ok(resp
+            .generators
+            .into_iter()
+            .map(|g| GeneratorSpec {
+                id: g.id,
+                protocol: g.provider,
+                endpoint: g.endpoint,
+                model: g.model,
+                timeout_ms: g.timeout_ms,
+                // Not on the operator contract: these live in providers.json and
+                // are not projected. Empty/false rather than invented values.
+                capability_tags: Vec::new(),
+                native_tools: false,
+                disable_thinking: false,
+                breaker: g.breaker_state,
+                recent_failures: g.recent_failures,
+                // The kernel tracks breaker state, not latency percentiles.
+                // -1, because 0 ms would claim an instantaneous endpoint.
+                p50_latency_ms: -1,
+                p99_latency_ms: -1,
+                // -1 = not tracked (contract 0072). The kernel has no per-generator
+                // daily accounting; 0 would make a busy generator look idle.
+                tokens_today: if g.tokens_in_today < 0 || g.tokens_out_today < 0 {
+                    -1
+                } else {
+                    g.tokens_in_today + g.tokens_out_today
+                },
+                calls_today: g.calls_today,
+                latency_samples: Vec::new(),
+                key_configured: g.key_configured,
+                key_last_four: g.key_last_four,
+                key_source: g.key_source,
+                is_default: g.is_default,
+            })
+            .collect())
+    }
+
+    pub async fn list_role_assignments(&self) -> Result<Vec<RoleAssignment>, String> {
+        let mut client = self.client().await?;
+        let resp = client
+            .list_role_assignments(Request::new(pb::ListRoleAssignmentsOpRequest {}))
+            .await
+            .map_err(map_status)?
+            .into_inner();
+        Ok(resp
+            .assignments
+            .into_iter()
+            .map(|r| RoleAssignment {
+                role: r.role,
+                generator_id: r.generator_id.clone(),
+                // resolved == false means the role points at a generator that does
+                // not exist, so it silently falls back to the default. That is the
+                // whole reason this field is here.
+                falling_back_to: if r.resolved {
+                    None
+                } else {
+                    Some(r.generator_id)
+                },
+            })
+            .collect())
+    }
+
+    pub async fn test_generator(&self, id: String) -> Result<GeneratorTestResult, String> {
+        let mut client = self.client().await?;
+        let resp = client
+            .test_generator(Request::new(pb::TestGeneratorOpRequest {
+                generator_id: id.clone(),
+            }))
+            .await
+            .map_err(map_status)?
+            .into_inner();
+        // model_matches compares what was ASKED against what the endpoint ECHOED.
+        // An endpoint answering happily with a different build is the most common
+        // misconfiguration in this space and nothing else reveals it.
+        let model_matches = !resp.model_served.is_empty() && resp.model_served == id;
+        Ok(GeneratorTestResult {
+            reachable: resp.ok,
+            round_trip_ms: resp.latency_ms,
+            // A probe that came back at all authenticated; a credential failure
+            // surfaces as ok=false with the endpoint's own words in error.
+            authenticated: resp.ok,
+            model_served: resp.model_served,
+            model_matches,
+            // The probe does not exercise native tool-calling, so this is not a
+            // claim either way -- false rather than a fabricated pass.
+            native_tools_ok: false,
+            tokens_in: -1,
+            tokens_out: -1,
+            tokens_cached: -1,
+            error: resp.error,
+        })
+    }
+
+    pub async fn get_config_schema(&self) -> Result<ConfigSchema, String> {
+        let mut client = self.client().await?;
+        let resp = client
+            .get_config_schema(Request::new(pb::GetConfigSchemaOpRequest {}))
+            .await
+            .map_err(map_status)?
+            .into_inner();
+        Ok(ConfigSchema {
+            schema_version: resp.schema_version,
+            schema_json: resp.schema_json,
+            schema_hash: resp.schema_hash,
+            editable_keys: resp.editable_keys,
+            kernel_only_keys: resp.kernel_only_keys,
+            current_values: resp.current_values,
+            value_source: resp.value_source,
+        })
+    }
+
+    pub async fn classify_input(&self, text: String) -> Result<ClassifiedInput, String> {
+        let mut client = self.client().await?;
+        let resp = client
+            .classify_input(Request::new(pb::ClassifyInputOpRequest {
+                text,
+                surface: String::new(),
+            }))
+            .await
+            .map_err(map_status)?
+            .into_inner();
+        Ok(ClassifiedInput {
+            // Passed through VERBATIM. All five values, never narrowed.
+            classification: resp.classification,
+            why: resp.why,
+            confidence: resp.confidence,
+            clarification_question: resp.clarification_question,
+            clarification_options: resp.clarification_options,
+        })
+    }
+
+    pub async fn propose_plan(
+        &self,
+        goal: String,
+        answers: Vec<String>,
+    ) -> Result<PlanProposalResponse, String> {
+        let mut client = self.client().await?;
+        let resp = client
+            .propose_plan(Request::new(pb::ProposePlanOpRequest { goal, answers }))
+            .await
+            .map_err(map_status)?
+            .into_inner();
+        Ok(PlanProposalResponse {
+            questions: resp
+                .questions
+                .into_iter()
+                .map(|q| InterviewQuestion {
+                    question: q.question,
+                    kind: q.kind,
+                    why_it_changes_the_answer: q.why_it_changes_the_answer,
+                    options: q
+                        .options
+                        .into_iter()
+                        .map(|o| InterviewOption {
+                            label: o.label,
+                            detail: o.detail,
+                            document_count: o.document_count,
+                        })
+                        .collect(),
+                })
+                .collect(),
+            proposal: resp.proposal.map(|p| PlanProposal {
+                steps: p.steps.into_iter().map(authored_step_from_pb).collect(),
+                estimated_tokens: p.estimated_tokens,
+                estimated_wall_ms: p.estimated_wall_ms,
+                max_parallel: p.max_parallel,
+                access_note: p.access_note,
+            }),
+            access_consequence: resp.access_consequence,
+        })
+    }
+
+    pub async fn submit_plan(
+        &self,
+        steps: Vec<AuthoredStep>,
+        reason: String,
+        dry_run: bool,
+    ) -> Result<SubmitPlanResult, String> {
+        let mut client = self.client().await?;
+        let resp = client
+            .submit_plan(Request::new(pb::SubmitPlanOpRequest {
+                command_id: new_command_id(),
+                reason,
+                session_id: String::new(),
+                dry_run,
+                subject: String::new(),
+                steps: steps.into_iter().map(authored_step_to_pb).collect(),
+            }))
+            .await
+            .map_err(map_status)?
+            .into_inner();
+        Ok(SubmitPlanResult {
+            command_id: resp.command_id,
+            deduped: resp.deduped,
+            accepted: resp.accepted,
+            session_id: resp.session_id,
+            plan_id: resp.plan_id,
+            issues: resp
+                .issues
+                .into_iter()
+                .map(|i| PlanValidationIssue {
+                    step_index: i.step_index,
+                    code: i.code,
+                    message: i.message,
+                    fatal: i.fatal,
+                })
+                .collect(),
+            execution_order: resp.execution_order,
+        })
+    }
+}
+
+fn authored_step_from_pb(s: pb::AuthoredStepOp) -> AuthoredStep {
+    AuthoredStep {
+        query: s.query,
+        required_capabilities: s.required_capabilities,
+        depends_on: s.depends_on,
+        max_energy: s.max_energy,
+        recommended_model: s.recommended_model,
+        checkpoint_after: s.checkpoint_after,
+        checkpoint_query: s.checkpoint_query,
+        is_thought: s.is_thought,
+        preferred_agent: s.preferred_agent,
+        agent_pin: s.agent_pin,
+        fan_out_over: s.fan_out_over,
+        fan_out_var: s.fan_out_var,
+    }
+}
+
+fn authored_step_to_pb(s: AuthoredStep) -> pb::AuthoredStepOp {
+    pb::AuthoredStepOp {
+        query: s.query,
+        required_capabilities: s.required_capabilities,
+        depends_on: s.depends_on,
+        max_energy: s.max_energy,
+        recommended_model: s.recommended_model,
+        checkpoint_after: s.checkpoint_after,
+        checkpoint_query: s.checkpoint_query,
+        is_thought: s.is_thought,
+        preferred_agent: s.preferred_agent,
+        agent_pin: s.agent_pin,
+        // -1 is the absent sentinel and must survive the round trip: emitting 0
+        // would turn every ordinary step into a fan-out over step 0.
+        fan_out_over: s.fan_out_over,
+        fan_out_var: s.fan_out_var,
+    }
 }

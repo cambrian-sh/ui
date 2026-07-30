@@ -191,7 +191,12 @@ describe('ConnectionSettings', () => {
     projectionStore.getState().hydrate(makeState({ contract_skew: 1 }));
     render(<ConnectionSettings />);
 
-    expect(screen.getByRole('alert')).toHaveTextContent('Contract skew');
+    const alert = screen.getByRole('alert');
+    expect(alert).toHaveTextContent('CONTRACT SKEW');
+    // The copy has to separate what still works from what does not: a skew
+    // leaves reads fine, so nothing looks broken until a command is rejected.
+    expect(alert).toHaveTextContent('Reads are fine');
+    expect(alert).toHaveTextContent(/may be rejected/);
   });
 
   it('has no a11y violations', async () => {

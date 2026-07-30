@@ -101,19 +101,7 @@ export function ToolEffects({ tool, variant = 'chip', className }: ToolEffectsPr
   );
 }
 
-/**
- * A one-line summary of how much of the catalog is still guessed. Rendered above
- * the tool list so the migration has a visible finish line rather than being a
- * per-tool detail nobody adds up.
- */
-export function EffectMigrationBanner({ tools }: { tools: ToolSummary[] }) {
-  const inferred = tools.filter((t) => t.effects_inferred);
-  if (inferred.length === 0) return null;
-  return (
-    <div className="border-b border-[var(--border-subtle)] bg-[var(--bg-surface)] px-4 py-2 text-xs text-[var(--color-status-warn)]">
-      {inferred.length} of {tools.length} tools have <strong>inferred</strong> effect classes.
-      Policy still applies to them, but the classes are a guess from each manifest — declare
-      them to turn on strict registration.
-    </div>
-  );
-}
+// The migration summary moved to `EffectDeclarationBanner`, which draws the
+// declared/inferred split rather than stating it, and stays visible when the
+// count reaches zero so the finish line is legible as *reached* rather than as
+// a banner that silently disappeared.

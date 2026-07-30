@@ -1,3 +1,4 @@
+import { formatTokens } from '@/lib/format';
 import { useState } from 'react';
 import { ipc } from '@/ipc';
 import type { Role } from '@/ipc/types';
@@ -15,7 +16,7 @@ import {
   TabsTrigger,
 } from '@/design-system/components';
 import { useMutation } from '@/lib/useMutation';
-import { ConfirmMutationDialog } from '@/screens/sessions/ConfirmMutationDialog';
+import { ConfirmMutationDialog } from '@/screens/tasks/ConfirmMutationDialog';
 import { ErrorState } from '@/design-system/components/cambrian/error-state';
 import { relativeTime } from '@/lib/relativeTime';
 import { MCPConnectionPill } from './MCPConnectionPill';
@@ -109,7 +110,7 @@ export function MCPDetail({ serverId, role }: MCPDetailProps) {
           <div>
             <dt className="text-[var(--fg-muted)]">Default price</dt>
             <dd className="tabular-nums text-[var(--fg-secondary)]">
-              ${entity.default_price.toFixed(2)}
+              {formatTokens(entity.default_price)} tok
             </dd>
           </div>
           <div>

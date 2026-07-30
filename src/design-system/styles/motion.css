@@ -76,6 +76,81 @@
   border-radius: var(--radius-sm);
 }
 
+/* -----------------------------------------------------------------------------
+ * Ambient motion (UX refactor).
+ *
+ * Five loops, all CSS, all disabled under `prefers-reduced-motion`. They exist
+ * because this console renders a system that is moving: a static screen and a
+ * dead kernel look identical, and the operator has no refresh button to prove
+ * otherwise. Each one is bound to a specific fact, never to decoration.
+ *
+ * These replace spinners. There is no spinner in this UI: a spinner says
+ * "waiting", these say *what* is live.
+ * --------------------------------------------------------------------------- */
+
+@keyframes cambrian-live-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%      { opacity: 0.35; transform: scale(0.82); }
+}
+
+@keyframes cambrian-halo {
+  0%   { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent-bg) 50%, transparent); }
+  100% { box-shadow: 0 0 0 7px color-mix(in srgb, var(--accent-bg) 0%, transparent); }
+}
+
+@keyframes cambrian-caret {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0; }
+}
+
+@keyframes cambrian-stepin {
+  from { opacity: 0; transform: translateY(5px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes cambrian-tick {
+  0%, 100% { transform: scaleY(0.35); }
+  50%      { transform: scaleY(1); }
+}
+
+/* A live dot: connection, a running plan, a streaming step. */
+.cambrian-live-pulse {
+  animation: cambrian-live-pulse 2.4s var(--ease-in-out) infinite;
+}
+
+/* The one currently-running step. Expanding ring, not a spinner. */
+.cambrian-halo {
+  animation: cambrian-halo 2s var(--ease-out) infinite;
+}
+
+/* Streaming text. A 2×15px block, blinking on a step curve so it reads as a
+   terminal caret rather than a fade. */
+.cambrian-caret {
+  display: inline-block;
+  width: 2px;
+  height: 15px;
+  vertical-align: text-bottom;
+  background: var(--accent-bg);
+  animation: cambrian-caret 1s step-end infinite;
+}
+
+/* A step arriving in a plan. Fires once, on mount. */
+.cambrian-stepin {
+  animation: cambrian-stepin 350ms var(--ease-out);
+}
+
+/* Feed sparkline bars. Stagger with an inline animation-delay per bar. */
+.cambrian-tick {
+  transform-origin: bottom;
+  animation: cambrian-tick 1.9s var(--ease-in-out) infinite;
+}
+
+/* Progress rails animate their width, and only when the value actually moved —
+   never on a re-render that changed nothing. */
+.cambrian-rail-fill {
+  transition: width var(--duration-slow) var(--ease-out);
+}
+
 /* Honour the user's motion preference. Status pills + text remain (LD-2). */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {

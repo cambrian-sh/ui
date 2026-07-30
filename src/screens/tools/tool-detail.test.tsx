@@ -61,7 +61,7 @@ describe('ToolDetail', () => {
       danger: true,
       granted_agent_count: 3,
       recent_invocation_count: 12,
-      last_cost: 0.45,
+      last_cost: 45000,
     });
     projectionStore.setState({
       state: makeState([tool], 'operator'),
@@ -74,7 +74,7 @@ describe('ToolDetail', () => {
     expect(screen.getByText('Danger')).toBeInTheDocument();
     expect(screen.getByText('3')).toBeInTheDocument();
     expect(screen.getByText('12')).toBeInTheDocument();
-    expect(screen.getByText('$0.45')).toBeInTheDocument();
+    expect(screen.getByText('45k tok')).toBeInTheDocument();
   });
 
   it('shows empty state when tool not found', () => {

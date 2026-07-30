@@ -1,7 +1,7 @@
 import * as React from "react";
 import { cn } from "@/design-system/lib/utils";
 import type { AuditEntry } from "@/ipc/types";
-import { AuditEntryRow } from "./audit-entry";
+import { AUDIT_GRID, AuditEntryRow } from "./audit-entry";
 
 export interface AuditListProps {
   entries: AuditEntry[];
@@ -61,6 +61,25 @@ export function AuditList({
       aria-label={`Audit list, ${entries.length} ${entries.length === 1 ? "entry" : "entries"}`}
       className={cn("flex flex-col", className)}
     >
+      {/* The header uses the same template as every row, so the columns are
+          actually columns. */}
+      <div
+        role="row"
+        className={cn(
+          "sticky top-0 z-10 grid items-center gap-3 bg-[var(--bg-surface)] px-[18px] py-2",
+          AUDIT_GRID,
+          "shadow-[inset_0_-1px_0_var(--border-subtle)]",
+          "font-mono text-[9.5px] uppercase tracking-[0.14em] text-[var(--fg-muted)]",
+        )}
+      >
+        <span role="columnheader">Time</span>
+        <span role="columnheader">Actor</span>
+        <span role="columnheader">Target</span>
+        <span role="columnheader">Action &amp; reason</span>
+        <span role="columnheader" className="justify-self-end">
+          Status
+        </span>
+      </div>
       {entries.map((entry) => (
         <AuditEntryRow
           key={entry.entry_id}

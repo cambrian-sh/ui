@@ -79,9 +79,11 @@ export const tokens = {
     rowPaddingX: "var(--list-row-padding-x)",
   },
   layout: {
+    headerH: "var(--header-h)",
     navRailW: "var(--nav-rail-w)",
+    navRailCollapsedW: "var(--nav-rail-collapsed-w)",
     inspectorW: "var(--inspector-w)",
-    statusStripH: "var(--status-strip-h)",
+    mobileTabBarH: "var(--mobile-tab-bar-h)",
   },
   elevation: {
     1: "var(--elevation-1)",

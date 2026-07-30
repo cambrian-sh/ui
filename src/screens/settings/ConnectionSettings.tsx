@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react';
 import { ipc } from '@/ipc';
-import { TelegramPanel } from './TelegramPanel';
 import { projectionStore } from '@/store/projection';
 import { useStore } from '@/store/useStore';
 import { ErrorState } from '@/design-system/components/cambrian/error-state';
 import { errorMessage } from '@/lib/errorMessage';
 import { autoConnectOnce } from '@/lib/autoConnect';
+import { describeCapabilities, missingCapabilities } from '@/lib/capabilities';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/design-system/components';
 import { cn } from '@/design-system/lib/utils';
 
@@ -19,6 +19,60 @@ import { cn } from '@/design-system/lib/utils';
  */
 
 const STORAGE_KEY = 'cambrian:connection:last';
+
+/**
+ * Every advertised capability, next to the surface it turns on — and every
+ * surface this build has that the kernel did not advertise.
+ *
+ * Both halves matter. The first answers "what does this deployment have"; the
+ * second answers "I know this console has that panel, where is it", which is
+ * the question a *missing* capability actually provokes and which a list of
+ * present ones can never answer.
+ */
+function CapabilityMap({ capabilities }: { capabilities: string[] }) {
+  const present = describeCapabilities(capabilities);
+  const absent = missingCapabilities(capabilities);
+
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="font-mono text-[9.5px] uppercase tracking-[0.14em] text-[var(--fg-muted)]">
+        Capabilities — {capabilities.length} advertised
+      </div>
+
+      {present.length === 0 ? (
+        <p className="text-[11px] text-[var(--fg-muted)]">
+          None advertised. An unscoped OSS kernel is a correct deployment, not a broken one.
+        </p>
+      ) : (
+        <ul className="flex flex-col gap-1">
+          {present.map((c) => (
+            <li key={c.capability} className="flex flex-wrap items-baseline gap-x-2 text-[11px]">
+              <code className="text-[var(--color-accent-400)]">{c.capability}</code>
+              <span className="text-[var(--fg-muted)]" aria-hidden="true">→</span>
+              <span className="text-[var(--fg-primary)]">{c.surface}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {absent.length > 0 && (
+        <details className="text-[11px] text-[var(--fg-muted)]">
+          <summary className="cursor-pointer select-none hover:text-[var(--fg-secondary)]">
+            {absent.length} surface{absent.length === 1 ? '' : 's'} this build has that this
+            kernel does not advertise
+          </summary>
+          <ul className="mt-1.5 flex flex-col gap-1">
+            {absent.map((c) => (
+              <li key={c.capability}>
+                <code>{c.capability}</code> — without it you lose {c.consequence}.
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+    </div>
+  );
+}
 
 interface RememberedInstance {
   endpoint: string;
@@ -179,22 +233,49 @@ export function ConnectionSettings() {
               {state?.kernel_version || '—'} · contract {state?.contract_version || '—'}
             </dd>
 
-            <dt className="text-[var(--fg-muted)]">Capabilities</dt>
-            <dd className="font-mono">{state?.capabilities?.length ?? 0} advertised</dd>
+            <dt className="text-[var(--fg-muted)]">Cursor</dt>
+            <dd className="font-mono">{(state?.cursor ?? 0).toLocaleString()}</dd>
+
+            <dt className="text-[var(--fg-muted)]">Plugins</dt>
+            <dd className="font-mono">{state?.plugins?.length ?? 0} registered</dd>
+
+            <dt className="text-[var(--fg-muted)]">Token</dt>
+            <dd>kept in the OS keychain, never in this webview</dd>
           </dl>
+
+          {/* A count answers nothing. The question an operator arrives with is
+              "why is that panel missing", and only a mapping answers it. */}
+          <CapabilityMap capabilities={state?.capabilities ?? []} />
 
           {connection?.reason && (
             <p className="text-[11px] text-[var(--fg-muted)]">{connection.reason}</p>
           )}
 
+          {/* A skew is the failure that quietly breaks commands: reads keep
+              working, so nothing looks wrong until a mutation is rejected. The
+              copy therefore says which half still works and which does not. */}
           {(state?.contract_skew ?? 0) !== 0 && (
-            <p
+            <div
               role="alert"
-              className="rounded-sm border border-[var(--status-warn)] px-2 py-1 text-[11px] text-[var(--status-warn)]"
+              className="flex flex-col gap-1 rounded-md p-2.5 tint-wash tint-ring"
+              style={{ '--tint': 'var(--status-warn)' } as React.CSSProperties}
             >
-              Contract skew: this console was built against a different operator
-              contract than the kernel advertises. Some surfaces may be missing or wrong.
-            </p>
+              <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-[var(--status-warn)]">
+                CONTRACT SKEW
+              </span>
+              <span className="text-[12px] leading-[1.55] text-[var(--fg-primary)]">
+                This kernel speaks contract {state?.contract_version || 'unknown'}; this build was
+                pinned to a different one. Reads are fine. Commands the kernel now expects in a
+                different shape may be rejected — update the app before relying on them.
+              </span>
+              {/* A warning triangle teaches nothing. Name the concrete case. */}
+              <span className="text-[11.5px] leading-[1.5] text-[var(--fg-muted)]">
+                The concrete case right now is ADR-0100: a kernel that has retired
+                <code className="mx-1">AuctionEventOp</code> and
+                <code className="mx-1">GatekeeperFunnelOp</code> sends no dispatch events, so an
+                older build&rsquo;s dispatch panels render empty rather than wrong.
+              </span>
+            </div>
           )}
 
           {isConnected && (
@@ -276,11 +357,6 @@ export function ConnectionSettings() {
       {isConnected && error && (
         <ErrorState reason={error} whatToDo="The disconnect did not complete. Retry." />
       )}
-
-      {/* Integrations. Only meaningful against a live kernel — the panel reads its state
-          from the running plugin, so showing it while disconnected would render a
-          confident-looking form backed by nothing. */}
-      {isConnected && <TelegramPanel role={state?.role ?? null} capabilities={state?.capabilities ?? []} />}
     </div>
   );
 }

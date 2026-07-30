@@ -11,12 +11,19 @@ import { expect, afterEach } from 'vitest';
 import { cleanup } from '@testing-library/react';
 import { toHaveNoViolations } from 'vitest-axe/matchers';
 import { ipc } from '@/ipc/mock';
+import { queryClient } from '@/lib/queryClient';
 
 // @ts-expect-error vitest-axe 0.1.0's .d.ts marks toHaveNoViolations as export type; the runtime value exists.
 expect.extend({ toHaveNoViolations });
 
 afterEach(() => {
   cleanup();
+  // The query client is a module-level singleton with `staleTime: Infinity` —
+  // correct in the app, where a pane should not refetch the policy set on every
+  // mount, but it means one test's fixtures are served to the next from cache.
+  // A test that changes what an ipc mock returns would silently assert against
+  // the previous test's data.
+  queryClient.clear();
   ipc.__seed({
     connection: { status: 'live', endpoint: 'mock://test', last_known_state_at: new Date().toISOString(), reason: null },
     role: 'operator',

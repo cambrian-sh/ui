@@ -24,6 +24,12 @@ fn main() {
                 // authz — the client is always compiled, the SERVER is what varies with
                 // which plugins the kernel was built with.
                 "../proto/telegram/telegram_admin.proto",
+                // Contract 0078: the telemetry (Langfuse) administration plane. Premium
+                // owns it for the same reason authz does — ADR-0057 D5 keeps Langfuse out
+                // of the OSS config schema, so it could not live on operator.proto. The
+                // client compiles unconditionally; an OSS kernel simply never advertises
+                // the "telemetry-admin" capability and the surface stays hidden.
+                "../proto/telemetry/telemetry_admin.proto",
             ],
             &["../proto"],
         )
@@ -31,6 +37,8 @@ fn main() {
 
     println!("cargo:rerun-if-changed=../proto/operator.proto");
     println!("cargo:rerun-if-changed=../proto/authz/access_policy.proto");
+    println!("cargo:rerun-if-changed=../proto/telegram/telegram_admin.proto");
+    println!("cargo:rerun-if-changed=../proto/telemetry/telemetry_admin.proto");
 
     tauri_build::build();
 }

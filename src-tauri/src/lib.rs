@@ -6,18 +6,23 @@
 
 pub mod pb;
 pub mod policy;
-mod telegram;
 pub mod state;
+mod telegram;
 pub mod transport;
 
 use tauri::{AppHandle, State};
 
 use policy::{
-    IngressSpec, PolicyProposal, TagSpec,
-    AccessDecision, DecisionRecord, GroupSpec, LinkSpec, PolicySpec, ResultantPolicy, SaveOutcome,
+    AccessDecision, DecisionRecord, GroupSpec, IdentityBinding, IngressActivityPage, IngressSpec,
+    LinkSpec, PolicyProposal, PolicySpec, PrincipalSpec, ResultantPolicy, SaveOutcome,
     SimulationResult,
+    StrangerPolicy, TagSpec, UnboundSender,
 };
-use state::{ConversationMessage, ConversationSummary, SkillSummary, StateOfRecord, ToolSummary, WatchConfigSummary};
+use state::{
+    AuthoredStep, ClassifiedInput, ConfigSchema, ConversationMessage, ConversationSummary,
+    GeneratorSpec, GeneratorTestResult, PlanProposalResponse, RoleAssignment, SkillSummary,
+    StateOfRecord, SubmitPlanResult, ToolSummary, WatchConfigSummary,
+};
 use transport::{DocumentPage, MemoryQueryResult, Transport};
 
 // ---- Command response DTOs ----------------------------------------------
@@ -363,11 +368,6 @@ async fn op_blast_radius_preview(
     )
 }
 
-#[tauri::command(rename_all = "snake_case")]
-async fn op_get_config_schema() -> Result<serde_json::Value, String> {
-    Err("not implemented: no GetConfigSchema RPC on the operator contract yet".into())
-}
-
 #[derive(serde::Serialize)]
 pub struct FileStat {
     pub name: String,
@@ -383,7 +383,10 @@ async fn op_stat_file(path: String) -> Result<FileStat, String> {
         .file_name()
         .map(|s| s.to_string_lossy().into_owned())
         .unwrap_or_else(|| path.clone());
-    Ok(FileStat { name, size: meta.len() })
+    Ok(FileStat {
+        name,
+        size: meta.len(),
+    })
 }
 
 /// Ingest a document the Rust core reads FROM A LOCAL PATH.
@@ -551,6 +554,124 @@ async fn op_trigger_consolidation(
     Ok(CommandAck { deduped })
 }
 
+/// Hot-apply numeric runtime tunables (ADR-0054). Operator-only, audited,
+/// mandatory reason. See `Transport::set_runtime_config` for why partial sets
+/// and unknown keys behave the way they do.
+#[tauri::command(rename_all = "snake_case")]
+async fn op_set_runtime_config(
+    transport: State<'_, Transport>,
+    params: std::collections::HashMap<String, f64>,
+    reason: String,
+) -> Result<CommandAck, String> {
+    let deduped = transport
+        .inner()
+        .clone()
+        .set_runtime_config(params, reason)
+        .await?;
+    Ok(CommandAck { deduped })
+}
+
+// ── Reactive: the six watch RPCs the console never picked up ──────────────
+// All on the pinned contract since the REACT-0x work; wiring needs no kernel
+// change. See report.md §2b.
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_list_watch_configs(
+    transport: State<'_, Transport>,
+) -> Result<Vec<crate::state::WatchConfigFull>, String> {
+    transport.inner().clone().list_watch_configs().await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_register_watch(
+    transport: State<'_, Transport>,
+    config: crate::state::WatchConfigFull,
+    reason: String,
+) -> Result<CommandAck, String> {
+    let deduped = transport
+        .inner()
+        .clone()
+        .register_watch(config, reason)
+        .await?;
+    Ok(CommandAck { deduped })
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_delete_watch(
+    transport: State<'_, Transport>,
+    watch_id: String,
+    reason: String,
+) -> Result<CommandAck, String> {
+    let deduped = transport
+        .inner()
+        .clone()
+        .delete_watch(watch_id, reason)
+        .await?;
+    Ok(CommandAck { deduped })
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_set_watch_active(
+    transport: State<'_, Transport>,
+    watch_id: String,
+    active: bool,
+    reason: String,
+) -> Result<CommandAck, String> {
+    let deduped = transport
+        .inner()
+        .clone()
+        .set_watch_active(watch_id, active, reason)
+        .await?;
+    Ok(CommandAck { deduped })
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_list_watch_dead_letters(
+    transport: State<'_, Transport>,
+    limit: i32,
+) -> Result<Vec<crate::state::WatchDeadLetter>, String> {
+    transport
+        .inner()
+        .clone()
+        .list_watch_dead_letters(limit)
+        .await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_get_watch_metrics(
+    transport: State<'_, Transport>,
+) -> Result<Vec<crate::state::WatchMetrics>, String> {
+    transport.inner().clone().get_watch_metrics().await
+}
+
+/// Replay the journal through a candidate config. Never executes an arm.
+#[tauri::command(rename_all = "snake_case")]
+async fn op_backtest_watch(
+    transport: State<'_, Transport>,
+    config: crate::state::WatchConfigFull,
+    after_seq: u64,
+) -> Result<Vec<crate::state::WatchBacktestVerdict>, String> {
+    transport
+        .inner()
+        .clone()
+        .backtest_watch(config, after_seq)
+        .await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_preview_route(
+    transport: State<'_, Transport>,
+    task_desc: String,
+    required_capabilities: Vec<String>,
+    candidates: Vec<crate::state::PreviewCandidate>,
+) -> Result<crate::state::PreviewRouteResult, String> {
+    transport
+        .inner()
+        .clone()
+        .preview_route(task_desc, required_capabilities, candidates)
+        .await
+}
+
 #[tauri::command(rename_all = "snake_case")]
 async fn op_list_tools(
     transport: State<'_, Transport>,
@@ -645,7 +766,11 @@ async fn op_propose_policy(
     request: String,
     simulate_limit: i32,
 ) -> Result<PolicyProposal, String> {
-    transport.inner().clone().propose_policy(request, simulate_limit).await
+    transport
+        .inner()
+        .clone()
+        .propose_policy(request, simulate_limit)
+        .await
 }
 
 /// Enumerate ingested documents by row (contract 0070).
@@ -687,9 +812,12 @@ async fn op_tag_memory(
     add: bool,
     reason: String,
 ) -> Result<bool, String> {
-    transport.inner().clone().tag_memory(doc_id, tag, add, reason).await
+    transport
+        .inner()
+        .clone()
+        .tag_memory(doc_id, tag, add, reason)
+        .await
 }
-
 
 // ---- Telegram ingress (ADR-0090) ------------------------------------------
 //
@@ -700,32 +828,78 @@ async fn op_tag_memory(
 #[tauri::command(rename_all = "snake_case")]
 async fn op_telegram_status(
     transport: State<'_, Transport>,
+    bot_id: Option<String>,
 ) -> Result<crate::telegram::TelegramStatus, String> {
-    transport.inner().clone().telegram_status().await
+    transport
+        .inner()
+        .clone()
+        .telegram_status(bot_id.unwrap_or_default())
+        .await
 }
 
 #[tauri::command(rename_all = "snake_case")]
 async fn op_telegram_set_token(
     transport: State<'_, Transport>,
     token: String,
+    bot_id: Option<String>,
 ) -> Result<crate::telegram::TelegramAck, String> {
-    transport.inner().clone().telegram_set_token(token).await
+    transport
+        .inner()
+        .clone()
+        .telegram_set_token(bot_id.unwrap_or_default(), token)
+        .await
 }
 
 #[tauri::command(rename_all = "snake_case")]
 async fn op_telegram_clear_token(
     transport: State<'_, Transport>,
     reason: String,
+    bot_id: Option<String>,
 ) -> Result<crate::telegram::TelegramAck, String> {
-    transport.inner().clone().telegram_clear_token(reason).await
+    transport
+        .inner()
+        .clone()
+        .telegram_clear_token(bot_id.unwrap_or_default(), reason)
+        .await
 }
 
 #[tauri::command(rename_all = "snake_case")]
 async fn op_telegram_set_enabled(
     transport: State<'_, Transport>,
     enabled: bool,
+    bot_id: Option<String>,
 ) -> Result<crate::telegram::TelegramAck, String> {
-    transport.inner().clone().telegram_set_enabled(enabled).await
+    transport
+        .inner()
+        .clone()
+        .telegram_set_enabled(bot_id.unwrap_or_default(), enabled)
+        .await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_telegram_list_bots(
+    transport: State<'_, Transport>,
+) -> Result<Vec<crate::telegram::TelegramBot>, String> {
+    transport.inner().clone().telegram_list_bots().await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_telegram_add_bot(
+    transport: State<'_, Transport>,
+    id: String,
+    label: String,
+    token: String,
+) -> Result<crate::telegram::TelegramAck, String> {
+    transport.inner().clone().telegram_add_bot(id, label, token).await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_telegram_remove_bot(
+    transport: State<'_, Transport>,
+    id: String,
+    reason: String,
+) -> Result<crate::telegram::TelegramAck, String> {
+    transport.inner().clone().telegram_remove_bot(id, reason).await
 }
 
 #[tauri::command(rename_all = "snake_case")]
@@ -747,6 +921,99 @@ async fn op_deregister_ingress(
     agent_id: String,
 ) -> Result<(), String> {
     transport.inner().clone().deregister_ingress(agent_id).await
+}
+
+// ── Identity bindings + ingress activity (contract 0077) ────────────────────
+//
+// These were declared on the webview client but never bridged, so every panel
+// built on them rendered its "this kernel does not report that" branch against a
+// kernel that does. The RPCs have been served since 0077.
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_list_principals(
+    transport: State<'_, Transport>,
+) -> Result<Vec<PrincipalSpec>, String> {
+    transport.inner().clone().list_principals().await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_list_identity_bindings(
+    transport: State<'_, Transport>,
+    surface: String,
+) -> Result<Vec<IdentityBinding>, String> {
+    transport.inner().clone().list_identity_bindings(surface).await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_bind_identity(
+    transport: State<'_, Transport>,
+    binding: IdentityBinding,
+    reason: String,
+) -> Result<SaveOutcome, String> {
+    transport.inner().clone().bind_identity(binding, reason).await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_unbind_identity(
+    transport: State<'_, Transport>,
+    surface: String,
+    external_id: String,
+    reason: String,
+) -> Result<(), String> {
+    transport
+        .inner()
+        .clone()
+        .unbind_identity(surface, external_id, reason)
+        .await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_list_unbound_senders(
+    transport: State<'_, Transport>,
+    surface: String,
+) -> Result<Vec<UnboundSender>, String> {
+    transport.inner().clone().list_unbound_senders(surface).await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_block_sender(
+    transport: State<'_, Transport>,
+    surface: String,
+    external_id: String,
+    blocked: bool,
+    reason: String,
+) -> Result<(), String> {
+    transport
+        .inner()
+        .clone()
+        .block_sender(surface, external_id, blocked, reason)
+        .await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_get_stranger_policy(
+    transport: State<'_, Transport>,
+    surface: String,
+) -> Result<StrangerPolicy, String> {
+    transport.inner().clone().get_stranger_policy(surface).await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_set_stranger_policy(
+    transport: State<'_, Transport>,
+    policy: StrangerPolicy,
+    reason: String,
+) -> Result<SaveOutcome, String> {
+    transport.inner().clone().set_stranger_policy(policy, reason).await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_list_ingress_activity(
+    transport: State<'_, Transport>,
+    surface: String,
+    limit: i32,
+) -> Result<IngressActivityPage, String> {
+    transport.inner().clone().list_ingress_activity(surface, limit).await
 }
 
 #[tauri::command(rename_all = "snake_case")]
@@ -855,6 +1122,96 @@ async fn op_export_decisions(
         .await
 }
 
+// ---- Contract 0072-0076: the surfaces the console could not reach -----------
+//
+// The webview never speaks gRPC: every call crosses this boundary as a Tauri
+// command into `transport.rs`. Vendoring the proto gives the Rust core the
+// TYPES; without a command here the TS client's `invoke` fails with "command not
+// found" and the screen renders its honest-degradation copy -- which reads as
+// "the kernel does not serve this" even when the kernel serves it perfectly.
+//
+// None of these is capability-gated here. The kernel answers `Unimplemented`
+// when a source is not wired, and the webview gates on the handshake, so the
+// operator gets an empty state that names what to enable rather than an error.
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_list_generators(transport: State<'_, Transport>) -> Result<Vec<GeneratorSpec>, String> {
+    transport.inner().clone().list_generators().await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_list_role_assignments(
+    transport: State<'_, Transport>,
+) -> Result<Vec<RoleAssignment>, String> {
+    transport.inner().clone().list_role_assignments().await
+}
+
+/// One real call against the live endpoint.
+///
+/// A failed probe is a SUCCESSFUL command carrying `reachable: false` -- the
+/// operator asked "does this work?" and got an answer. Surfacing it as an error
+/// would make a working diagnostic look like a broken console.
+#[tauri::command(rename_all = "snake_case")]
+async fn op_test_generator(
+    transport: State<'_, Transport>,
+    id: String,
+) -> Result<GeneratorTestResult, String> {
+    transport.inner().clone().test_generator(id).await
+}
+
+/// The read half of the runtime-config surface.
+///
+/// `value_source` is what it exists for: it names the layer supplying each key,
+/// so a field pinned by an environment variable renders read-only NAMING the pin
+/// instead of accepting a write that silently does nothing.
+#[tauri::command(rename_all = "snake_case")]
+async fn op_get_config_schema(transport: State<'_, Transport>) -> Result<ConfigSchema, String> {
+    transport.inner().clone().get_config_schema().await
+}
+
+/// Classify a typed sentence WITHOUT acting on it.
+///
+/// The classification is one of FIVE values (chat | plan | ingest | watch |
+/// clarification) and is passed through verbatim. `ingest` in particular must
+/// not be collapsed into another: it WRITES to memory, so rendering it as a read
+/// makes an operator approve a write believing they approved a question.
+#[tauri::command(rename_all = "snake_case")]
+async fn op_classify_input(
+    transport: State<'_, Transport>,
+    text: String,
+) -> Result<ClassifiedInput, String> {
+    transport.inner().clone().classify_input(text).await
+}
+
+/// Propose a plan without committing to one: no session, no plan, no spend.
+#[tauri::command(rename_all = "snake_case")]
+async fn op_propose_plan(
+    transport: State<'_, Transport>,
+    goal: String,
+    answers: Option<Vec<String>>,
+) -> Result<PlanProposalResponse, String> {
+    transport
+        .inner()
+        .clone()
+        .propose_plan(goal, answers.unwrap_or_default())
+        .await
+}
+
+/// Run an operator-authored plan, or validate one with `dry_run`.
+#[tauri::command(rename_all = "snake_case")]
+async fn op_submit_plan(
+    transport: State<'_, Transport>,
+    steps: Vec<AuthoredStep>,
+    reason: String,
+    dry_run: Option<bool>,
+) -> Result<SubmitPlanResult, String> {
+    transport
+        .inner()
+        .clone()
+        .submit_plan(steps, reason, dry_run.unwrap_or(false))
+        .await
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -883,6 +1240,15 @@ pub fn run() {
             op_register_mcp,
             op_register_skill,
             op_trigger_consolidation,
+            op_set_runtime_config,
+            op_list_watch_configs,
+            op_register_watch,
+            op_delete_watch,
+            op_set_watch_active,
+            op_list_watch_dead_letters,
+            op_get_watch_metrics,
+            op_backtest_watch,
+            op_preview_route,
             op_list_tools,
             op_list_skills,
             op_list_watches,
@@ -894,6 +1260,12 @@ pub fn run() {
             op_complete_session,
             op_blast_radius_preview,
             op_get_config_schema,
+            op_list_generators,
+            op_list_role_assignments,
+            op_test_generator,
+            op_classify_input,
+            op_propose_plan,
+            op_submit_plan,
             op_explain_access,
             op_list_classification_tags,
             op_list_groups,
@@ -906,8 +1278,20 @@ pub fn run() {
             op_telegram_set_token,
             op_telegram_clear_token,
             op_telegram_set_enabled,
+            op_telegram_list_bots,
+            op_telegram_add_bot,
+            op_telegram_remove_bot,
             op_register_ingress,
             op_deregister_ingress,
+            op_list_principals,
+            op_list_identity_bindings,
+            op_bind_identity,
+            op_unbind_identity,
+            op_list_unbound_senders,
+            op_block_sender,
+            op_get_stranger_policy,
+            op_set_stranger_policy,
+            op_list_ingress_activity,
             op_save_group,
             op_delete_group,
             op_list_policies,

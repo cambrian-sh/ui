@@ -24,6 +24,7 @@ This is a **Tauri 2** desktop app: a **Rust core** + a **React 19 / TypeScript**
 - **gRPC lives in the Rust core only.** Put `tonic`/`prost` and all kernel I/O in `src-tauri`. The webview gets typed data via Tauri commands/events. Do NOT add gRPC-Web, Envoy, `protobuf.js`, or browser sockets — they are unnecessary and forbidden by the architecture (the kernel speaks native HTTP/2 gRPC, which the Rust core handles).
 - **The vendored proto is pinned and read-only.** Do not hand-edit `proto/operator.proto`. Re-vendor from the kernel repo (`api/proto/operator.proto`) when the contract bumps, and update the pinned-version header + `CONTEXT.md`.
 - **Use the kernel's vocabulary verbatim** (Substrate, ExecutionPlan, Gatekeeper, Auctioneer, TrustScore, HITL, Inject, Plans in Flight, …). Never invent synonyms. See `CONTEXT.md §10`.
+  - **One deliberate exception: a kernel `session` is called a TASK in the UI.** Every ask an operator makes is registered as a session, and "task" is what that is to a human. The rename is presentation-only — the wire keeps `session_id`, `SessionSummary`, `op_*_session`, and the route is `/tasks`. Do not "correct" the visible copy back to Session, and do not rename the wire to Task.
 - **Realtime by default.** No "click to refresh" anywhere. State updates by folding the `StreamEvents` feed. The status of the connection (live / reconnecting / down) and what is stale must always be honest and visible.
 
 ## Transport rules (implement in the Rust core)

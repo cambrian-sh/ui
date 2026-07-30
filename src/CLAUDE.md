@@ -14,6 +14,7 @@ The **React 19 + TypeScript** webview: the presentation layer and a **projection
 - **Every screen traces to a PRD user story** (`../docs/web-ui-prd.md`). No screen without a story; surface a story with no screen as a gap.
 - **The plan is the centre of gravity** — keep the plan view visible while a plan runs.
 - **Use the kernel's vocabulary verbatim** (Substrate, ExecutionPlan, Gatekeeper, TrustScore, HITL, Inject, Plans in Flight, …). No synonyms. Externalize strings (i18n is a follow-on, but no hardcoded user-facing copy scattered inline).
+  - **Exception: a kernel `session` is a TASK in the UI.** Presentation only — the wire keeps `session_id` / `SessionSummary` / `op_*_session`, and the route is `/tasks`. Do not revert the visible copy to Session, and do not rename the wire to Task.
 - **Reflect role + capabilities** from the core: hide/disable mutating controls for Viewers; hide unsupported surfaces; show a version-skew banner. The kernel enforces; the UI reflects.
 - **Accessible + dark-mode-first by construction** (keyboard, focus order, WCAG AA contrast, screen reader). Not a polish step.
 - **One design system, one visual language.** No second framework, no bespoke per-screen styles. Match the stack: React 19 + TS + Vite + Bun.

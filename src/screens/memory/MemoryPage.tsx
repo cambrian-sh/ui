@@ -7,6 +7,8 @@ import { AskPane } from './AskPane';
 import { useIngestQueue } from './useIngestQueue';
 import { useVocabulary } from '@/screens/scope/useVocabulary';
 import { cn } from '@/design-system/lib/utils';
+import { useBreakpoint } from '@/lib/useBreakpoint';
+import { MobileCapture } from './MobileCapture';
 
 type LeftTab = 'ingest' | 'inspect';
 
@@ -26,6 +28,10 @@ export function MemoryPage() {
   const projection = useStore(projectionStore);
   const state = projection.state;
   const [tab, setTab] = useState<LeftTab>('ingest');
+  const isMobile = useBreakpoint() === 'mobile';
+  // On a phone the two-pane console does not fit and does not make sense: Ask is
+  // what the tab bar points at, and Capture is a separate, much smaller job.
+  const [mobileTab, setMobileTab] = useState<'ask' | 'capture'>('ask');
 
   const memoryWritten = state?.memory_written ?? [];
   const { rows, enqueue, enqueueFile } = useIngestQueue(memoryWritten);
@@ -68,6 +74,48 @@ export function MemoryPage() {
         </div>
       </header>
 
+      {isMobile ? (
+        <div className="flex min-h-0 flex-1 flex-col">
+          <div
+            role="tablist"
+            aria-label="Memory"
+            className="flex flex-none items-center gap-1 px-3 py-2 shadow-[inset_0_-1px_0_var(--border-subtle)]"
+          >
+            {(['ask', 'capture'] as const).map((t) => (
+              <button
+                key={t}
+                type="button"
+                role="tab"
+                aria-selected={mobileTab === t}
+                onClick={() => setMobileTab(t)}
+                className={cn(
+                  'min-h-[36px] rounded-md px-3 text-[13px] capitalize',
+                  mobileTab === t
+                    ? 'bg-[color-mix(in_srgb,var(--accent-bg)_13%,transparent)] font-medium text-[var(--fg-primary)]'
+                    : 'text-[var(--fg-muted)]',
+                )}
+              >
+                {t}
+              </button>
+            ))}
+          </div>
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            {mobileTab === 'ask' ? (
+              <AskPane
+                disabled={mutationsDisabled}
+                disabledReason={mutationsDisabledReason}
+                canAnswer={canAnswer}
+              />
+            ) : (
+              <MobileCapture
+                vocabulary={vocabulary}
+                disabled={mutationsDisabled}
+                disabledReason={mutationsDisabledReason}
+              />
+            )}
+          </div>
+        </div>
+      ) : (
       <div className="grid flex-1 min-h-0 grid-cols-1 lg:grid-cols-[380px_1fr]">
         <aside className="flex min-h-0 flex-col border-r border-[var(--border-subtle)]">
           <div
@@ -118,6 +166,7 @@ export function MemoryPage() {
           />
         </main>
       </div>
+      )}
     </div>
   );
 }

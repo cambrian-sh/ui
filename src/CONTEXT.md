@@ -34,6 +34,16 @@
 | `store/` | A **projection store** (e.g. Zustand) hydrated from the core's events. A **cache**, not the state of record. On mount / after a reload, re-request the current projection from the core. |
 | `screens/` | One screen per PRD surface; **each screen traces to a user story** in `../docs/web-ui-prd.md`. The plan view is the centre of gravity when a plan is running. |
 | `design/` | The design system: tokens (color/type/spacing/motion/elevation/focus), components, iconography — derived from Cambrian brand assets. **Dark-mode-first, dense, keyboard-friendly, accessible by construction.** |
+| `lib/queryClient.ts` | The TanStack Query client, for the **imperative edges only**: mutations, and the request/response reads that are not on the feed. Every automatic refetch is disabled on purpose. **Nothing that arrives on `kernel://state` may be cached here** — that is `store/`'s job, and putting it in Query would reintroduce polling and let the console disagree with the kernel. Mutations never invalidate: the effect arrives on the feed. |
+
+### Shell composition
+
+The shell is a header, a grouped nav rail, the routed main pane, and **an inspector that is mounted only while a screen is inspecting something** (`components/InspectorSlot.tsx`: `useInspectorHost` on the shell side, `<Inspector>` on the screen side). Two rules follow from that:
+
+- **No screen renders its own permanent aside.** Two stacked 360px inspectors is what this replaced — it left the list 480px of a 1440px window with both panels saying "select something".
+- Outside a shell (a screen rendered standalone, or in a test) `<Inspector>` renders **in place**; inside a shell with no inspector offered (mobile) it renders **nothing**, and the screen navigates to a full-screen detail instead.
+
+There is **no bottom status strip**. Connection and cursor are the header pill, in-flight plan counts are on the rail, spend is in the header, and circuit breakers live on Cost & Energy — surfacing in the header only when one is not `ok`.
 
 ---
 

@@ -2,6 +2,106 @@ import { useStore } from '@/store/useStore';
 import { projectionStore } from '@/store/projection';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, EmptyState, ScrollArea } from '@/design-system/components';
 import { formatRelativeTime } from '@/lib/format';
+import { cn } from '@/design-system/lib/utils';
+import type { VerifierRound, SurveillanceTrigger } from '@/ipc/types';
+
+/**
+ * The sampling rule, drawn rather than described.
+ *
+ * "~10% hashed + 100% under surveillance" is a sentence an operator has to hold
+ * in their head while reading a list. One cell per round, coloured by *why* the
+ * round happened, makes the mix visible at a glance.
+ *
+ * A deliberate honesty note: the console only receives rounds that HAPPENED. The
+ * tasks that were never sampled are not on the feed, so this shows the shape of
+ * the checks, not coverage of the whole workload — and it says so, rather than
+ * drawing faint cells for a denominator nobody sent.
+ */
+function VerificationStrip({
+  rounds,
+  surveilled,
+}: {
+  rounds: VerifierRound[];
+  surveilled: Set<string>;
+}) {
+  const cells = rounds.slice(0, 20);
+  const forced = cells.filter((r) => surveilled.has(r.target_agent)).length;
+  const sampled = cells.length - forced;
+
+  if (cells.length === 0) {
+    return (
+      <p className="text-[12.5px] text-[var(--fg-muted)]">
+        No rounds in this window. That means nothing was sampled — not that everything passed.
+      </p>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-2">
+      <div
+        className="flex items-center gap-1"
+        role="img"
+        aria-label={`${cells.length} recent rounds: ${sampled} sampled by hash, ${forced} forced by surveillance`}
+      >
+        {cells.map((round, i) => {
+          const isForced = surveilled.has(round.target_agent);
+          return (
+            <span
+              key={`${round.task_id}-${i}`}
+              className={cn('h-4 flex-1 rounded-[2px]')}
+              style={{
+                background: isForced ? 'var(--status-warn)' : 'var(--accent-bg)',
+              }}
+            />
+          );
+        })}
+      </div>
+      <div className="flex flex-wrap items-center gap-4 text-[11.5px] text-[var(--fg-muted)]">
+        <LegendItem colour="var(--accent-bg)" label={`${sampled} sampled by hash`} />
+        <LegendItem colour="var(--status-warn)" label={`${forced} forced by surveillance`} />
+        <span>
+          Rounds that did not happen are not on the feed — this is the shape of the checks,
+          not coverage.
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function LegendItem({ colour, label }: { colour: string; label: string }) {
+  return (
+    <span className="flex items-center gap-1.5">
+      <span
+        aria-hidden="true"
+        className="size-2 rounded-[2px]"
+        style={{ background: colour }}
+      />
+      {label}
+    </span>
+  );
+}
+
+/** Names the agent, the cause, and how it stops — a state with no exit is a trap. */
+function SurveillanceCallout({ triggers }: { triggers: SurveillanceTrigger[] }) {
+  if (triggers.length === 0) return null;
+  const t = triggers[0];
+  return (
+    <div
+      className="flex flex-col gap-1 rounded-[var(--radius-lg)] p-3 tint-wash tint-ring"
+      style={{ '--tint': 'var(--status-warn)' } as React.CSSProperties}
+    >
+      <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-[var(--status-warn)]">
+        UNDER SURVEILLANCE
+      </span>
+      <p className="text-[13px] leading-[1.55] text-[var(--fg-primary)]">
+        <span className="font-mono">{t.agent_id}</span> is being verified on every task
+        because {t.reason || 'its recent outcomes fell below threshold'}. It leaves
+        surveillance once its verified outcomes recover — not on a timer.
+        {triggers.length > 1 && ` ${triggers.length - 1} other agent${triggers.length === 2 ? ' is' : 's are'} also under surveillance.`}
+      </p>
+    </div>
+  );
+}
 
 export function VerifierPoolConsole() {
   const projection = useStore(projectionStore);
@@ -18,15 +118,25 @@ export function VerifierPoolConsole() {
   const poolAgents = verifierPool.pool_agents;
   const recentRounds = verifierPool.recent_rounds;
   const surveillanceTriggers = verifierPool.surveillance_triggers;
+  const surveilled = new Set(surveillanceTriggers.map((t) => t.agent_id));
 
   return (
     <div className="flex h-full flex-col gap-6 p-6 overflow-y-auto bg-[var(--bg-surface)]">
       <header className="flex flex-col gap-1 shrink-0">
-        <h1 className="text-xl font-semibold tracking-tight text-[var(--fg-primary)]">Verifier Pool</h1>
-        <p className="text-sm text-[var(--fg-muted)]">
-          High-Merit agents who independently score task completions. The sampling decision is FNV-1a hashed (~10% baseline) + 100% under surveillance. 5% cross-verification rate.
+        <h1 className="text-[19px] font-medium leading-[1.25] tracking-[-0.01em] text-[var(--fg-primary)]">Verifier Pool</h1>
+        <p className="text-[12.5px] text-[var(--fg-muted)]">
+          High-Merit agents who independently score task completions. Sampling is FNV-1a hashed
+          (~10% baseline), plus 100% for any agent under surveillance.
         </p>
       </header>
+
+      <div className="shrink-0">
+        <VerificationStrip rounds={recentRounds} surveilled={surveilled} />
+      </div>
+
+      <div className="shrink-0">
+        <SurveillanceCallout triggers={surveillanceTriggers} />
+      </div>
 
       <h2 className="cambrian-sr-only">Verifier pool overview</h2>
       <div className="grid grid-cols-3 gap-4 shrink-0">
@@ -63,7 +173,10 @@ export function VerifierPoolConsole() {
         <Card className="flex flex-col overflow-hidden">
           <CardHeader className="shrink-0">
             <CardTitle>Pool Composition</CardTitle>
-            <CardDescription>Agents currently eligible for verification duties</CardDescription>
+            <CardDescription>
+              Merit, not TrustScore — eligibility to judge is a different thing from being
+              trusted to act.
+            </CardDescription>
           </CardHeader>
           <CardContent className="flex-1 overflow-hidden p-0">
             <ScrollArea className="h-full">

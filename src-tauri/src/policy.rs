@@ -353,9 +353,11 @@ impl Transport {
     /// bearer token as the operator console.
     async fn policy_client(&self) -> Result<PolicyClient, String> {
         let (channel, interceptor) = self.authed_channel().await?;
-        Ok(AccessPolicyAdminClient::with_interceptor(channel, interceptor)
-            .max_decoding_message_size(MAX_MESSAGE_BYTES)
-            .max_encoding_message_size(MAX_MESSAGE_BYTES))
+        Ok(
+            AccessPolicyAdminClient::with_interceptor(channel, interceptor)
+                .max_decoding_message_size(MAX_MESSAGE_BYTES)
+                .max_encoding_message_size(MAX_MESSAGE_BYTES),
+        )
     }
 
     // ---- OSS contract: explain + vocabulary --------------------------------
@@ -675,6 +677,140 @@ pub struct TagSpec {
     pub closed: bool,
 }
 
+/// One principal this deployment actually has.
+///
+/// DERIVED, never registered: there is no principal table, so the set is assembled
+/// from the agent registry, group membership, policy links and identity bindings.
+/// `sources` says which of those each row came from, because a derived list that
+/// cannot say where a row came from is one an operator has to take on faith.
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, Default)]
+pub struct PrincipalSpec {
+    pub id: String,
+    /// "agent" | "user" | "daemon" | "system" | "unknown".
+    pub kind: String,
+    pub display_name: String,
+    pub sources: Vec<String>,
+    pub group_ids: Vec<String>,
+    pub has_direct_policy: bool,
+    /// A policy or group REFERS to this principal but nothing registers it, so
+    /// that policy applies to nobody — indistinguishable from a working boundary
+    /// anywhere else in the console.
+    pub orphaned: bool,
+}
+
+/// One bound external identity (contract 0077).
+///
+/// Bound on the STABLE NUMERIC id — never the username, never the phone number.
+/// A username changes, so binding on one binds on something the person can alter
+/// at will: an impersonation vector rather than an identity. A phone number
+/// arrives only if someone deliberately shares a contact card, so binding on it
+/// makes identity depend on an unrelated act.
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, Default)]
+pub struct IdentityBinding {
+    pub surface: String,
+    pub external_id: String,
+    /// A LABEL so the console can show a recognisable name. Never matched on.
+    pub username: String,
+    pub display_name: String,
+    /// "principal" | "group" | "room_group".
+    ///
+    /// The third is a DELEGATION and is its own kind on purpose: anyone an admin
+    /// adds to that room inherits the group the moment they mention the bot, so
+    /// an audit must be able to tell a delegated room from a named person.
+    pub bound_to_kind: String,
+    pub bound_to_id: String,
+    pub bound_at_unix_ms: i64,
+    /// Set when the username changed — so a console can say the binding HELD,
+    /// because it is on the id, rather than leaving an operator wondering whether
+    /// a renamed account is still the same person.
+    pub username_changed_from: String,
+    pub blocked: bool,
+}
+
+impl From<crate::pb::authz::IdentityBindingSpec> for IdentityBinding {
+    fn from(b: crate::pb::authz::IdentityBindingSpec) -> Self {
+        Self {
+            surface: b.surface,
+            external_id: b.external_id,
+            username: b.username,
+            display_name: b.display_name,
+            bound_to_kind: b.bound_to_kind,
+            bound_to_id: b.bound_to_id,
+            bound_at_unix_ms: b.bound_at_unix_ms,
+            username_changed_from: b.username_changed_from,
+            blocked: b.blocked,
+        }
+    }
+}
+
+/// Someone who has spoken through an entry point and is not yet anybody.
+///
+/// This is the actual worklist. Note what is NOT here: what they asked about,
+/// and how often policy denied them. The kernel journals access decisions, not
+/// request bodies, so neither is on the wire — and inventing them in the console
+/// would be fabricating the evidence an operator uses to decide who gets reach.
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, Default)]
+pub struct UnboundSender {
+    pub surface: String,
+    pub external_id: String,
+    /// Labels relayed from the platform, never matched on. EMPTY when more than
+    /// one person speaks through this external id — see `speaker_ids`.
+    pub username: String,
+    pub display_name: String,
+    pub message_count: i32,
+    pub first_seen_unix_ms: i64,
+    pub last_seen_unix_ms: i64,
+    /// The distinct people observed speaking through this external id.
+    ///
+    /// More than one means this row is a ROOM, not a person: binding it hands
+    /// whatever it is bound to to everyone in it.
+    pub speaker_ids: Vec<String>,
+}
+
+/// What a person the operator has never heard of gets.
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, Default)]
+pub struct StrangerPolicy {
+    pub surface: String,
+    /// "surface_default" | "guest_principal" | "refuse_until_bound".
+    pub mode: String,
+    pub guest_principal_id: String,
+    /// THE reach: how many documents an unbound sender can read right now.
+    /// -1 when it could not be computed — which must read as "unknown", never 0.
+    pub readable_documents: i64,
+}
+
+/// One access decision made for traffic that arrived through an entry point.
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, Default)]
+pub struct IngressActivity {
+    pub surface: String,
+    /// The identity the decision was made for — the sender resolved through the
+    /// entry point, or the ingress DAEMON itself when no binding exists, which is
+    /// exactly the state that makes every sender interchangeable.
+    pub principal: String,
+    pub resource: String,
+    /// "answered" | "no_reply" | "policy_denied" | "would_have_denied" | "blocked".
+    pub outcome: String,
+    pub reason: String,
+    pub at_unix_ms: i64,
+    /// The sender's address on the far side, as the ingress knows it.
+    pub external_id: String,
+    /// The most recent thing they said. Empty when this deployment does not
+    /// record message bodies.
+    pub text: String,
+    /// What the PERSON sent, not the whole exchange.
+    pub message_count: i32,
+    pub conversation_id: String,
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, Default)]
+pub struct IngressActivityPage {
+    pub activity: Vec<IngressActivity>,
+    /// Whether this deployment records WHAT WAS ASKED. It does not — so the
+    /// console says "not recorded" instead of rendering an empty column that
+    /// reads as "they asked nothing".
+    pub request_text_available: bool,
+}
+
 /// One registered ingress — a point where the outside world enters.
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
 pub struct IngressSpec {
@@ -696,7 +832,10 @@ impl Transport {
         Ok(resp
             .tags
             .into_iter()
-            .map(|t| TagSpec { tag: t.tag, closed: t.closed })
+            .map(|t| TagSpec {
+                tag: t.tag,
+                closed: t.closed,
+            })
             .collect())
     }
 
@@ -730,7 +869,10 @@ impl Transport {
             problems: resp
                 .problems
                 .into_iter()
-                .map(|p| ProposalProblem { severity: p.severity, message: p.message })
+                .map(|p| ProposalProblem {
+                    severity: p.severity,
+                    message: p.message,
+                })
                 .collect(),
             simulation: SimulationResult {
                 decisions: sim
@@ -792,10 +934,16 @@ impl Transport {
             }))
             .await
         {
-            Ok(_) => Ok(SaveOutcome { ok: true, error: String::new(), version: 0 }),
-            Err(st) if st.code() == tonic::Code::InvalidArgument => {
-                Ok(SaveOutcome { ok: false, error: st.message().to_string(), version: 0 })
-            }
+            Ok(_) => Ok(SaveOutcome {
+                ok: true,
+                error: String::new(),
+                version: 0,
+            }),
+            Err(st) if st.code() == tonic::Code::InvalidArgument => Ok(SaveOutcome {
+                ok: false,
+                error: st.message().to_string(),
+                version: 0,
+            }),
             Err(st) => Err(map_status(st)),
         }
     }
@@ -803,9 +951,245 @@ impl Transport {
     pub async fn deregister_ingress(&self, agent_id: String) -> Result<(), String> {
         let mut client = self.policy_client().await?;
         client
-            .deregister_ingress(Request::new(pb::authz::DeregisterIngressRequest { agent_id }))
+            .deregister_ingress(Request::new(pb::authz::DeregisterIngressRequest {
+                agent_id,
+            }))
             .await
             .map_err(map_status)?;
         Ok(())
+    }
+
+    /// Every principal this deployment has, with where each was observed.
+    pub async fn list_principals(&self) -> Result<Vec<PrincipalSpec>, String> {
+        let mut client = self.policy_client().await?;
+        let resp = client
+            .list_principals(Request::new(pb::authz::ListPrincipalsRequest {}))
+            .await
+            .map_err(map_status)?
+            .into_inner();
+        Ok(resp
+            .principals
+            .into_iter()
+            .map(|p| PrincipalSpec {
+                id: p.id,
+                kind: p.kind,
+                display_name: p.display_name,
+                sources: p.sources,
+                group_ids: p.group_ids,
+                has_direct_policy: p.has_direct_policy,
+                orphaned: p.orphaned,
+            })
+            .collect())
+    }
+
+    // ── Identity bindings (contract 0077) ───────────────────────────────────
+    //
+    // Without these the SURFACE IS THE IDENTITY: policy links to
+    // "chat:telegram", so every sender who finds the bot has identical reach and
+    // an unknown number is governed by the same rule as a named colleague — not
+    // because they are different people, but because nobody is.
+
+    pub async fn list_identity_bindings(
+        &self,
+        surface: String,
+    ) -> Result<Vec<IdentityBinding>, String> {
+        let mut client = self.policy_client().await?;
+        let resp = client
+            .list_identity_bindings(Request::new(pb::authz::ListIdentityBindingsRequest {
+                surface,
+            }))
+            .await
+            .map_err(map_status)?
+            .into_inner();
+        Ok(resp.bindings.into_iter().map(IdentityBinding::from).collect())
+    }
+
+    /// Bind an external id to a principal or group. `reason` is mandatory and
+    /// audited — a binding grants reach, so who widened it and why is the
+    /// question asked after something goes wrong.
+    pub async fn bind_identity(
+        &self,
+        binding: IdentityBinding,
+        reason: String,
+    ) -> Result<SaveOutcome, String> {
+        let mut client = self.policy_client().await?;
+        match client
+            .bind_identity(Request::new(pb::authz::BindIdentityRequest {
+                binding: Some(pb::authz::IdentityBindingSpec {
+                    surface: binding.surface,
+                    external_id: binding.external_id,
+                    username: binding.username,
+                    display_name: binding.display_name,
+                    bound_to_kind: binding.bound_to_kind,
+                    bound_to_id: binding.bound_to_id,
+                    bound_at_unix_ms: 0,
+                    username_changed_from: String::new(),
+                    blocked: false,
+                }),
+                reason,
+            }))
+            .await
+        {
+            Ok(_) => Ok(SaveOutcome { ok: true, error: String::new(), version: 0 }),
+            // A rejected binding is an authoring outcome the form renders inline,
+            // not a transport failure that blanks the panel.
+            Err(st) if st.code() == tonic::Code::InvalidArgument => Ok(SaveOutcome {
+                ok: false,
+                error: st.message().to_string(),
+                version: 0,
+            }),
+            Err(st) => Err(map_status(st)),
+        }
+    }
+
+    pub async fn unbind_identity(
+        &self,
+        surface: String,
+        external_id: String,
+        reason: String,
+    ) -> Result<(), String> {
+        let mut client = self.policy_client().await?;
+        client
+            .unbind_identity(Request::new(pb::authz::UnbindIdentityRequest {
+                surface,
+                external_id,
+                reason,
+            }))
+            .await
+            .map_err(map_status)?;
+        Ok(())
+    }
+
+    pub async fn list_unbound_senders(
+        &self,
+        surface: String,
+    ) -> Result<Vec<UnboundSender>, String> {
+        let mut client = self.policy_client().await?;
+        let resp = client
+            .list_unbound_senders(Request::new(pb::authz::ListUnboundSendersRequest { surface }))
+            .await
+            .map_err(map_status)?
+            .into_inner();
+        Ok(resp
+            .senders
+            .into_iter()
+            .map(|u| UnboundSender {
+                surface: u.surface,
+                external_id: u.external_id,
+                username: u.username,
+                display_name: u.display_name,
+                message_count: u.message_count,
+                first_seen_unix_ms: u.first_seen_unix_ms,
+                last_seen_unix_ms: u.last_seen_unix_ms,
+                speaker_ids: u.speaker_ids,
+            })
+            .collect())
+    }
+
+    /// Block or unblock at the ingress. Stronger than "every policy denies them":
+    /// it does not depend on the policy set being right.
+    pub async fn block_sender(
+        &self,
+        surface: String,
+        external_id: String,
+        blocked: bool,
+        reason: String,
+    ) -> Result<(), String> {
+        let mut client = self.policy_client().await?;
+        client
+            .block_sender(Request::new(pb::authz::BlockSenderRequest {
+                surface,
+                external_id,
+                blocked,
+                reason,
+            }))
+            .await
+            .map_err(map_status)?;
+        Ok(())
+    }
+
+    pub async fn get_stranger_policy(&self, surface: String) -> Result<StrangerPolicy, String> {
+        let mut client = self.policy_client().await?;
+        let p = client
+            .get_stranger_policy(Request::new(pb::authz::GetStrangerPolicyRequest { surface }))
+            .await
+            .map_err(map_status)?
+            .into_inner();
+        Ok(StrangerPolicy {
+            surface: p.surface,
+            mode: p.mode,
+            guest_principal_id: p.guest_principal_id,
+            readable_documents: p.readable_documents,
+        })
+    }
+
+    pub async fn set_stranger_policy(
+        &self,
+        policy: StrangerPolicy,
+        reason: String,
+    ) -> Result<SaveOutcome, String> {
+        let mut client = self.policy_client().await?;
+        match client
+            .set_stranger_policy(Request::new(pb::authz::SetStrangerPolicyRequest {
+                policy: Some(pb::authz::StrangerPolicySpec {
+                    surface: policy.surface,
+                    mode: policy.mode,
+                    guest_principal_id: policy.guest_principal_id,
+                    // Read-only: the kernel computes reach, a console cannot. Sending
+                    // ours back would be echoing a number we did not derive.
+                    readable_documents: 0,
+                }),
+                reason,
+            }))
+            .await
+        {
+            Ok(_) => Ok(SaveOutcome { ok: true, error: String::new(), version: 0 }),
+            Err(st) if st.code() == tonic::Code::InvalidArgument => Ok(SaveOutcome {
+                ok: false,
+                error: st.message().to_string(),
+                version: 0,
+            }),
+            Err(st) => Err(map_status(st)),
+        }
+    }
+
+    /// Who came through an entry point and what happened to them.
+    ///
+    /// `request_text_available` rides along because this deployment journals
+    /// access DECISIONS, not request bodies: a console must say "not recorded"
+    /// rather than render an empty column that reads as "they asked nothing".
+    pub async fn list_ingress_activity(
+        &self,
+        surface: String,
+        limit: i32,
+    ) -> Result<IngressActivityPage, String> {
+        let mut client = self.policy_client().await?;
+        let resp = client
+            .list_ingress_activity(Request::new(pb::authz::ListIngressActivityRequest {
+                surface,
+                limit,
+            }))
+            .await
+            .map_err(map_status)?
+            .into_inner();
+        Ok(IngressActivityPage {
+            request_text_available: resp.request_text_available,
+            activity: resp
+                .activity
+                .into_iter()
+                .map(|a| IngressActivity {
+                    surface: a.surface,
+                    principal: a.principal,
+                    resource: a.resource,
+                    outcome: a.outcome,
+                    reason: a.reason,
+                    at_unix_ms: a.at_unix_ms,
+                    external_id: a.external_id,
+                    text: a.text,
+                    message_count: a.message_count,
+                    conversation_id: a.conversation_id,
+                })
+                .collect(),
+        })
     }
 }

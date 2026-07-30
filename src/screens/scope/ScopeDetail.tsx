@@ -19,7 +19,7 @@ import {
 } from '@/design-system/components';
 import { ScopeTagList } from './ScopeTagList';
 import { useMutation } from '@/lib/useMutation';
-import { ConfirmMutationDialog } from '@/screens/sessions/ConfirmMutationDialog';
+import { ConfirmMutationDialog } from '@/screens/tasks/ConfirmMutationDialog';
 import { ErrorState } from '@/design-system/components/cambrian/error-state';
 import { useStore } from '@/store/useStore';
 import { projectionStore } from '@/store/projection';

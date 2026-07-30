@@ -35,7 +35,7 @@ function makeState(costDashboardOverrides: Partial<StateOfRecord['cost_dashboard
     cost_dashboard: {
       spend_rate_usd: 0,
       circuit_breakers: [],
-      max_energy_per_step: 0.5,
+      max_energy_per_step: 8000,
       price_ledger: [],
       recent_acquires: [],
       ...costDashboardOverrides,
@@ -53,8 +53,8 @@ describe('CostConsole', () => {
     render(<CostConsole />);
     
     expect(screen.getByText('Cost & Energy')).toBeInTheDocument();
-    expect(screen.getByText('$0.00/hr')).toBeInTheDocument();
-    expect(screen.getByText('$0.50')).toBeInTheDocument();
+    expect(screen.getByText('0 tok/hr')).toBeInTheDocument();
+    expect(screen.getByText('8.0k')).toBeInTheDocument();
     expect(screen.getByText('No circuit breakers')).toBeInTheDocument();
     expect(screen.getByText('No price ledger entries')).toBeInTheDocument();
     expect(screen.getByText('No acquire outcomes')).toBeInTheDocument();
@@ -62,13 +62,13 @@ describe('CostConsole', () => {
 
   it('shows spend rate and max energy', () => {
     projectionStore.getState().hydrate(makeState({
-      spend_rate_usd: 12.34,
-      max_energy_per_step: 1.5,
+      spend_rate_usd: 1400000,
+      max_energy_per_step: 12000,
     }));
     render(<CostConsole />);
     
-    expect(screen.getByText('$12.34/hr')).toBeInTheDocument();
-    expect(screen.getByText('$1.50')).toBeInTheDocument();
+    expect(screen.getByText('1.4M tok/hr')).toBeInTheDocument();
+    expect(screen.getByText('12k')).toBeInTheDocument();
   });
 
   it('shows circuit breakers', () => {
@@ -137,13 +137,13 @@ describe('CostConsole', () => {
     render(<CostConsole />);
 
     expect(screen.getByText('Cost & Energy')).toBeInTheDocument();
-    expect(screen.getByText('$0.00/hr')).toBeInTheDocument();
+    expect(screen.getByText('0 tok/hr')).toBeInTheDocument();
   });
 
   it('has no a11y violations', async () => {
     projectionStore.getState().hydrate(makeState({
-      spend_rate_usd: 12.34,
-      max_energy_per_step: 1.5,
+      spend_rate_usd: 1400000,
+      max_energy_per_step: 12000,
       circuit_breakers: [
         { model_id: 'gpt-4', state: 'ok', reason: '' },
         { model_id: 'claude-3', state: 'warn', reason: 'High latency' },

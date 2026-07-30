@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Button } from '@/design-system/components';
 import { ipc } from '@/ipc';
 import { useMutation } from '@/lib/useMutation';
-import { ConfirmMutationDialog } from '@/screens/sessions/ConfirmMutationDialog';
+import { ConfirmMutationDialog } from '@/screens/tasks/ConfirmMutationDialog';
 import { ErrorState } from '@/design-system/components/cambrian/error-state';
 
 export function TriggerConsolidation({ isOperator }: { isOperator: boolean }) {

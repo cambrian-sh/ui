@@ -1,23 +1,42 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
 import { Outlet } from "@tanstack/react-router";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
-import { NavRail, StatusStrip } from "@/design-system/components";
-import { PlanWorkSurface } from "@/screens/plan/PlanWorkSurface";
+import { HeaderBar } from "@/components/HeaderBar";
+import { MobileTabBar } from "@/components/MobileTabBar";
+import { useInspectorHost } from "@/components/InspectorSlot";
+import { NavRail } from "@/design-system/components";
 import { CommandPalette, ShortcutPalette } from "@/screens/palette/CommandPalette";
 import { projectionStore } from "@/store/projection";
 import { shellStore } from "@/store/shell";
 import { useStore } from "@/store/useStore";
 import { ipc, onKernelState } from "@/ipc";
 import { autoConnectOnce } from "@/lib/autoConnect";
+import { useBreakpoint } from "@/lib/useBreakpoint";
 
-const RIGHT_INSPECTOR_DEFAULT_PX = 360;
-
+/**
+ * One frame for both surfaces.
+ *
+ * Three things changed here and they are the reason the rest of the redesign
+ * works:
+ *
+ *  1. The permanent right inspector is gone. It is now a slot (`InspectorSlot`)
+ *     that screens fill when something is selected, so the aside is absent from
+ *     the DOM the rest of the time and the main pane gets the width.
+ *  2. The bottom status strip is gone. Its contents moved to where they are
+ *     read — connection and cursor into the header pill, plans onto the rail,
+ *     spend into the header, breakers into Cost & Energy (and back into the
+ *     header only when one is tripping).
+ *  3. The rail is grouped and carries the "Needs you" inbox, so the operator's
+ *     one blocking question is visible from every screen.
+ */
 export function Shell() {
   const projection = useStore(projectionStore);
   const shell = useStore(shellStore);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [shortcutOpen, setShortcutOpen] = useState(false);
+  const breakpoint = useBreakpoint();
+  const inspector = useInspectorHost();
 
   useEffect(() => {
     let cancelled = false;
@@ -62,61 +81,104 @@ export function Shell() {
     shellStore.getState().toggleRightInspector();
   });
 
-  const connection = projection.state?.connection.status ?? "down";
-  const inFlightPlans = projection.state?.plans.length ?? 0;
-  const role = projection.state?.role ?? null;
+  const state = projection.state;
+  const connection = state?.connection.status ?? "down";
+  const role = state?.role ?? null;
   const isHydrating = projection.isHydrating;
-  const rightInspectorWidth = shell.rightInspectorWidth || RIGHT_INSPECTOR_DEFAULT_PX;
 
-  return (
+  const plans = state?.plans ?? [];
+  const needsYouCount = state?.pending_hitl.length ?? 0;
+  const runningPlans = useMemo(
+    () => plans.filter((p) => p.status === 'running' || p.status === 'forming').length,
+    [plans],
+  );
+  const degradedBreakers = useMemo(
+    () =>
+      (state?.cost_dashboard.circuit_breakers ?? []).filter((b) => b.state !== 'ok')
+        .length,
+    [state?.cost_dashboard.circuit_breakers],
+  );
+
+  const navCounts = useMemo(
+    () => ({
+      sessions: state?.sessions.length ?? 0,
+      plans: plans.length,
+      agents: state?.agents.length ?? 0,
+      watches: state?.watch_configs.length ?? 0,
+    }),
+    [state?.sessions.length, plans.length, state?.agents.length, state?.watch_configs.length],
+  );
+
+  const isMobile = breakpoint === 'mobile';
+  // At the middle width the rail is icons-only whatever the operator's stored
+  // preference is: 216px of rail plus a 332px inspector does not leave a usable
+  // main pane at 1024px.
+  const railCollapsed = breakpoint === 'compact' || shell.leftRailCollapsed;
+
+  const main = (
+    <main
+      id="main"
+      tabIndex={-1}
+      className="flex min-w-0 flex-1 flex-col overflow-hidden focus-visible:outline-none"
+    >
+      {isHydrating ? (
+        <div className="flex h-full items-center justify-center">
+          <span className="text-sm text-[var(--fg-muted)]">Connecting to kernel…</span>
+        </div>
+      ) : (
+        <ErrorBoundary>
+          <Outlet />
+        </ErrorBoundary>
+      )}
+    </main>
+  );
+
+  return inspector.provider(
     <div className="flex h-full flex-col bg-[var(--bg-canvas)] text-[var(--fg-primary)]">
       <a href="#main" className="cambrian-skip-link">Skip to main content</a>
-      <div className="flex flex-1 min-h-0">
-        <NavRail
-          width={shell.leftRailWidth}
-          collapsed={shell.leftRailCollapsed}
-          onToggle={() => shellStore.getState().toggleLeftRail()}
-          role={role}
-          theme={shell.theme}
-          density={shell.density}
-          onThemeChange={(t) => shellStore.getState().setTheme(t)}
-          onDensityChange={(d) => shellStore.getState().setDensity(d)}
-        />
-        <main id="main" tabIndex={-1} className="flex-1 min-w-0 overflow-hidden focus-visible:outline-none">
-          {isHydrating ? (
-            <div className="flex h-full items-center justify-center">
-              <span className="text-sm text-[var(--fg-muted)]">
-                Connecting to kernel…
-              </span>
-            </div>
-          ) : (
-            <ErrorBoundary>
-              <Outlet />
-            </ErrorBoundary>
-          )}
-        </main>
-        {!shell.rightInspectorCollapsed && (
+
+      <HeaderBar
+        connection={connection}
+        cursor={state?.cursor ?? 0}
+        kernelVersion={state?.kernel_version ?? ''}
+        contractVersion={state?.contract_version ?? ''}
+        contractSkew={state?.contract_skew ?? 0}
+        spendRateTokens={state?.cost_dashboard.spend_rate_usd ?? 0}
+        needsYouCount={needsYouCount}
+        degradedBreakers={degradedBreakers}
+        role={role}
+        compact={isMobile}
+      />
+
+      <div className="flex min-h-0 flex-1">
+        {!isMobile && (
+          <NavRail
+            collapsed={railCollapsed}
+            onToggle={() => shellStore.getState().toggleLeftRail()}
+            needsYouCount={needsYouCount}
+            counts={navCounts}
+            liveCounts={{ plans: runningPlans > 0 }}
+            capabilities={state?.capabilities ?? []}
+            onOpenPalette={() => setPaletteOpen(true)}
+          />
+        )}
+
+        {main}
+
+        {/* Mounted only when a screen is inspecting something. */}
+        {!isMobile && inspector.active && (
           <aside
-            className="border-l border-[var(--border-subtle)] bg-[var(--bg-surface)] overflow-y-auto"
-            style={{ width: rightInspectorWidth }}
-          >
-            <PlanWorkSurface />
-          </aside>
+            ref={inspector.ref}
+            className="flex-none bg-[var(--bg-surface)] shadow-[inset_1px_0_0_var(--border-subtle)]"
+            style={{ width: 'var(--inspector-w)' }}
+          />
         )}
       </div>
-      <StatusStrip
-        connection={connection}
-        kernelUp={connection === "live"}
-        ltmUp={true}
-        inFlightPlans={inFlightPlans}
-        queueDepth={0}
-        circuitBreaker="ok"
-        spendRate={0}
-        eventBacklog={0}
-        threshold={100}
-      />
+
+      {isMobile && <MobileTabBar needsYouCount={needsYouCount} />}
+
       {paletteOpen && <CommandPalette onClose={() => setPaletteOpen(false)} />}
       {shortcutOpen && <ShortcutPalette onClose={() => setShortcutOpen(false)} />}
-    </div>
+    </div>,
   );
 }

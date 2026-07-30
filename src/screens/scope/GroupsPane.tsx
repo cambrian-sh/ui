@@ -3,7 +3,7 @@ import { ipc } from '@/ipc';
 import type { GroupSpec } from '@/ipc/types';
 import { Button, EmptyState, Input, ScrollArea } from '@/design-system/components';
 import { ErrorState } from '@/design-system/components/cambrian/error-state';
-import { cn } from '@/design-system/lib/utils';
+import { GroupTree } from './GroupTree';
 
 const BLANK: GroupSpec = {
   id: '',
@@ -104,48 +104,10 @@ export function GroupsPane({ groups, principals, onChanged }: GroupsPaneProps) {
             New
           </Button>
         </div>
+        {/* Real nesting, not a flat list: policy linked high up reaches
+            everyone beneath, so the shape IS the thing being administered. */}
         <ScrollArea className="flex-1">
-          {groups.length === 0 ? (
-            <p className="p-4 text-xs text-[var(--fg-muted)]">
-              No groups yet. A group is a named set of principals that policy can be linked to —
-              administering twelve of these beats administering five hundred people.
-            </p>
-          ) : (
-            <ul role="list" aria-label="Groups" className="divide-y divide-[var(--border-subtle)]">
-              {groups.map((g) => (
-                <li key={g.id}>
-                  <button
-                    type="button"
-                    onClick={() => select(g)}
-                    aria-pressed={selectedId === g.id}
-                    className={cn(
-                      'w-full px-3 py-2 text-left transition-colors hover:bg-[var(--list-row-bg-hover)]',
-                      'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--focus-ring)]',
-                      selectedId === g.id && 'bg-[var(--list-row-bg-selected)]',
-                    )}
-                  >
-                    <div className="flex items-baseline gap-2">
-                      <span className="truncate text-sm text-[var(--fg-primary)]">
-                        {g.name || g.id}
-                      </span>
-                      {g.block_inheritance && (
-                        <span
-                          className="shrink-0 text-xs text-[var(--color-status-warn)]"
-                          title="Stops policy accumulating from above"
-                        >
-                          blocks
-                        </span>
-                      )}
-                    </div>
-                    <div className="mt-0.5 text-xs text-[var(--fg-muted)]">
-                      {g.members.length} member{g.members.length === 1 ? '' : 's'}
-                      {g.subgroups.length > 0 && <> · {g.subgroups.length} nested</>}
-                    </div>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
+          <GroupTree groups={groups} selectedId={selectedId} onSelect={select} />
         </ScrollArea>
       </div>
 

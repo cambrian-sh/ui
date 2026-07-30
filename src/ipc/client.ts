@@ -91,6 +91,22 @@ export const ipc = {
   getConfigSchema: (): Promise<t.ConfigSchema> =>
     invoke<t.ConfigSchema>('op_get_config_schema'),
 
+  /**
+   * Hot-apply numeric runtime tunables without a kernel restart (ADR-0054).
+   *
+   * Partial sets merge over the live values, so send only what the operator
+   * changed. Unknown keys are ignored kernel-side, which is what makes a stale
+   * schema safe: a retired axis cannot be written back in.
+   *
+   * **Edits are ephemeral** — they live in memory and `config.json` stays the
+   * boot default. Any surface calling this has to say so.
+   */
+  setRuntimeConfig: (
+    params: Record<string, number>,
+    reason: string,
+  ): Promise<t.CommandAck> =>
+    invoke<t.CommandAck>('op_set_runtime_config', { params, reason }),
+
   setScope: (params: t.SetScopeParams): Promise<t.CommandAck> =>
     invoke<t.CommandAck>('op_set_scope', {
       agent_id: params.agent_id,
@@ -129,6 +145,53 @@ export const ipc = {
 
   listSkills: (): Promise<t.SkillSummary[]> =>
     invoke<t.SkillSummary[]>('op_list_skills'),
+
+  // ── Reactive: six RPCs that were on the contract but unwired ────────────
+  // No kernel change was needed for any of these; see report.md §2b.
+
+  /** Every watch config, unabridged — what the pipeline builder edits. */
+  listWatchConfigs: (): Promise<t.WatchConfigFull[]> =>
+    invoke<t.WatchConfigFull[]>('op_list_watch_configs'),
+
+  registerWatch: (config: t.WatchConfigFull, reason: string): Promise<t.CommandAck> =>
+    invoke<t.CommandAck>('op_register_watch', { config, reason }),
+
+  deleteWatch: (watchId: string, reason: string): Promise<t.CommandAck> =>
+    invoke<t.CommandAck>('op_delete_watch', { watch_id: watchId, reason }),
+
+  setWatchActive: (
+    watchId: string,
+    active: boolean,
+    reason: string,
+  ): Promise<t.CommandAck> =>
+    invoke<t.CommandAck>('op_set_watch_active', { watch_id: watchId, active, reason }),
+
+  listWatchDeadLetters: (limit = 0): Promise<t.WatchDeadLetter[]> =>
+    invoke<t.WatchDeadLetter[]>('op_list_watch_dead_letters', { limit }),
+
+  getWatchMetrics: (): Promise<t.WatchMetrics[]> =>
+    invoke<t.WatchMetrics[]>('op_get_watch_metrics'),
+
+  /** Replay the journal through a candidate config. Never executes an arm. */
+  backtestWatch: (
+    config: t.WatchConfigFull,
+    afterSeq = 0,
+  ): Promise<t.WatchBacktestVerdict[]> =>
+    invoke<t.WatchBacktestVerdict[]>('op_backtest_watch', {
+      config,
+      after_seq: afterSeq,
+    }),
+
+  previewRoute: (
+    taskDesc: string,
+    requiredCapabilities: string[],
+    candidates: t.PreviewCandidate[],
+  ): Promise<t.PreviewRouteResult> =>
+    invoke<t.PreviewRouteResult>('op_preview_route', {
+      task_desc: taskDesc,
+      required_capabilities: requiredCapabilities,
+      candidates,
+    }),
 
   listWatches: (): Promise<t.WatchConfigSummary[]> =>
     invoke<t.WatchConfigSummary[]>('op_list_watches'),
@@ -213,15 +276,28 @@ export const ipc = {
   listIngresses: (): Promise<t.IngressSpec[]> => invoke<t.IngressSpec[]>('op_list_ingresses'),
 
   // ── Telegram ingress (ADR-0090) ───────────────────────────────────────────
-  telegramStatus: (): Promise<t.TelegramStatus> => invoke<t.TelegramStatus>('op_telegram_status'),
+  /** An empty `botId` means the default bot, so callers that predate multiple
+   *  bots keep working unchanged. */
+  telegramStatus: (botId = ''): Promise<t.TelegramStatus> =>
+    invoke<t.TelegramStatus>('op_telegram_status', { bot_id: botId }),
   /** Store a bot token. Write-only — nothing returns it, by design. */
-  telegramSetToken: (token: string): Promise<t.TelegramAck> =>
-    invoke<t.TelegramAck>('op_telegram_set_token', { token }),
+  telegramSetToken: (token: string, botId = ''): Promise<t.TelegramAck> =>
+    invoke<t.TelegramAck>('op_telegram_set_token', { token, bot_id: botId }),
   /** Destructive: stops the ingress and disconnects its conversations. Reason is mandatory. */
-  telegramClearToken: (reason: string): Promise<t.TelegramAck> =>
-    invoke<t.TelegramAck>('op_telegram_clear_token', { reason }),
-  telegramSetEnabled: (enabled: boolean): Promise<t.TelegramAck> =>
-    invoke<t.TelegramAck>('op_telegram_set_enabled', { enabled }),
+  telegramClearToken: (reason: string, botId = ''): Promise<t.TelegramAck> =>
+    invoke<t.TelegramAck>('op_telegram_clear_token', { reason, bot_id: botId }),
+  telegramSetEnabled: (enabled: boolean, botId = ''): Promise<t.TelegramAck> =>
+    invoke<t.TelegramAck>('op_telegram_set_enabled', { enabled, bot_id: botId }),
+
+  /** Every configured bot, with the state of each (contract 0081). */
+  telegramListBots: (): Promise<t.TelegramBot[]> =>
+    invoke<t.TelegramBot[]>('op_telegram_list_bots'),
+  /** Record a new bot. Its daemon starts on the next kernel start. */
+  telegramAddBot: (id: string, label: string, token = ''): Promise<t.TelegramAck> =>
+    invoke<t.TelegramAck>('op_telegram_add_bot', { id, label, token }),
+  /** Stop a bot and forget its credential. Reason is mandatory. */
+  telegramRemoveBot: (id: string, reason: string): Promise<t.TelegramAck> =>
+    invoke<t.TelegramAck>('op_telegram_remove_bot', { id, reason }),
 
   /**
    * Apply or remove one label on a document or memory.
@@ -307,6 +383,120 @@ export const ipc = {
     denials_only?: boolean;
   }): Promise<t.DecisionRecord[]> =>
     invoke<t.DecisionRecord[]>('op_export_decisions', { ...params }),
+
+  // ── Models & providers ────────────────────────────────────────────────────
+  // PROPOSED CONTRACT — no kernel serves these yet, so every call here rejects
+  // today and the panes render "not reported by this kernel" rather than an
+  // empty form. They exist so the surface is reviewable and the kernel team has
+  // a concrete target. See operator_ui_refactor/report.md.
+
+  listGenerators: (): Promise<t.GeneratorSpec[]> =>
+    invoke<t.GeneratorSpec[]>('op_list_generators'),
+
+  saveGenerator: (generator: t.GeneratorSpec, reason: string): Promise<t.SaveOutcome> =>
+    invoke<t.SaveOutcome>('op_save_generator', { generator, reason }),
+
+  removeGenerator: (id: string, reason: string): Promise<t.SaveOutcome> =>
+    invoke<t.SaveOutcome>('op_remove_generator', { id, reason }),
+
+  /** One real call against the live endpoint. Billed like any other. */
+  testGenerator: (id: string): Promise<t.GeneratorTestResult> =>
+    invoke<t.GeneratorTestResult>('op_test_generator', { id }),
+
+  /**
+   * Write-only, exactly like the Telegram bot token: the key goes in and only
+   * its last four ever come back. There is deliberately no `getGeneratorKey`.
+   */
+  setGeneratorKey: (id: string, key: string): Promise<t.SaveOutcome> =>
+    invoke<t.SaveOutcome>('op_set_generator_key', { id, key }),
+
+  clearGeneratorKey: (id: string, reason: string): Promise<t.SaveOutcome> =>
+    invoke<t.SaveOutcome>('op_clear_generator_key', { id, reason }),
+
+  // ── Part 3 PROPOSED CONTRACT ───────────────────────────────────────────
+  // No kernel serves these yet; every call rejects and the panes say so rather
+  // than rendering an empty form. See report.md §4.8–§4.15.
+
+  getTelemetryConfig: (): Promise<t.TelemetryConfig> =>
+    invoke<t.TelemetryConfig>('op_get_telemetry_config'),
+
+  setTelemetryConfig: (config: t.TelemetryConfig, reason: string): Promise<t.CommandAck> =>
+    invoke<t.CommandAck>('op_set_telemetry_config', { config, reason }),
+
+  setTelemetrySecretKey: (key: string): Promise<t.SaveOutcome> =>
+    invoke<t.SaveOutcome>('op_set_telemetry_secret_key', { key }),
+
+  /** The tracer DROPS what it cannot send, so this is the only way to know. */
+  sendTestTrace: (): Promise<t.TestTraceResult> =>
+    invoke<t.TestTraceResult>('op_send_test_trace'),
+
+  /** Every principal this deployment has — agents, group members, policy-link
+   *  targets and bound people. The console cannot derive this itself: only the
+   *  kernel sees all four sources. */
+  listPrincipals: (): Promise<t.PrincipalSpec[]> =>
+    invoke<t.PrincipalSpec[]>('op_list_principals'),
+
+  listIdentityBindings: (surface: string): Promise<t.IdentityBinding[]> =>
+    invoke<t.IdentityBinding[]>('op_list_identity_bindings', { surface }),
+
+  /** The whole binding travels, because the label fields are what make a row
+   *  recognisable later — the id alone is not a person to anybody. */
+  bindIdentity: (binding: t.IdentityBinding, reason: string): Promise<t.SaveOutcome> =>
+    invoke<t.SaveOutcome>('op_bind_identity', { binding, reason }),
+
+  unbindIdentity: (surface: string, externalId: string, reason: string): Promise<void> =>
+    invoke<void>('op_unbind_identity', { surface, external_id: externalId, reason }),
+
+  listUnboundSenders: (surface: string): Promise<t.UnboundSender[]> =>
+    invoke<t.UnboundSender[]>('op_list_unbound_senders', { surface }),
+
+  /** Drops at the ingress — never reaches a policy or a plan.
+   *  `blocked: false` lifts the block, so the call is reversible without a second one. */
+  blockSender: (
+    surface: string,
+    externalId: string,
+    blocked: boolean,
+    reason: string,
+  ): Promise<void> =>
+    invoke<void>('op_block_sender', { surface, external_id: externalId, blocked, reason }),
+
+  getStrangerPolicy: (surface: string): Promise<t.StrangerPolicy> =>
+    invoke<t.StrangerPolicy>('op_get_stranger_policy', { surface }),
+
+  setStrangerPolicy: (policy: t.StrangerPolicy, reason: string): Promise<t.SaveOutcome> =>
+    invoke<t.SaveOutcome>('op_set_stranger_policy', { policy, reason }),
+
+  listIngressActivity: (surface: string, limit = 20): Promise<t.IngressActivityPage> =>
+    invoke<t.IngressActivityPage>('op_list_ingress_activity', { surface, limit }),
+
+  /** Classify without acting — the decision shown before it happens. */
+  classifyInput: (text: string): Promise<t.ClassifiedInput> =>
+    invoke<t.ClassifiedInput>('op_classify_input', { text }),
+
+  /** Propose a plan WITHOUT starting a session. Nothing is committed. */
+  proposePlan: (goal: string, answers: string[] = []): Promise<t.PlanProposalResponse> =>
+    invoke<t.PlanProposalResponse>('op_propose_plan', { goal, answers }),
+
+  submitPlan: (
+    steps: t.AuthoredStep[],
+    reason: string,
+    dryRun = false,
+  ): Promise<t.SubmitPlanResult> =>
+    invoke<t.SubmitPlanResult>('op_submit_plan', { steps, reason, dry_run: dryRun }),
+
+  listRoleAssignments: (): Promise<t.RoleAssignment[]> =>
+    invoke<t.RoleAssignment[]>('op_list_role_assignments'),
+
+  setRoleAssignment: (
+    role: t.GeneratorRole,
+    generatorId: string,
+    reason: string,
+  ): Promise<t.SaveOutcome> =>
+    invoke<t.SaveOutcome>('op_set_role_assignment', {
+      role,
+      generator_id: generatorId,
+      reason,
+    }),
 } as const;
 
 

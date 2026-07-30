@@ -3,46 +3,17 @@ import { useState, useMemo, lazy, Suspense } from 'react';
 import { ipc } from '@/ipc';
 import { projectionStore } from '@/store/projection';
 import { useStore } from '@/store/useStore';
-import type { PlanInFlight, PlanStatus } from '@/ipc/types';
+import type { PlanStatus } from '@/ipc/types';
 import { useFocusedPlan } from '@/lib/useFocusedPlan';
-import { PlanStepList, type PlanStep } from './PlanStepList';
+import { stepsOf } from '@/lib/planSteps';
+import { PlanStepList } from './PlanStepList';
 import { useMutation } from '@/lib/useMutation';
-import { ConfirmMutationDialog } from '@/screens/sessions/ConfirmMutationDialog';
+import { ConfirmMutationDialog } from '@/screens/tasks/ConfirmMutationDialog';
 import { ErrorState } from '@/design-system/components/cambrian/error-state';
 
 const PlanGraph = lazy(() => import('./PlanGraph').then((m) => ({ default: m.PlanGraph })));
 
 type Mode = 'dag' | 'list';
-
-// Map the real DAG nodes projected from the PlanState feed to the view's PlanStep shape,
-// preserving the dependency edges so the graph draws the true DAG (not a linear chain).
-function realSteps(plan: PlanInFlight): PlanStep[] {
-  return (plan.steps ?? []).map((n) => ({
-    step_id: `${plan.plan_id}-step-${n.index}`,
-    index: n.index,
-    query: n.label,
-    status: n.status,
-    bids_count: 0,
-    depends_on: n.depends_on,
-    is_thought: n.is_thought,
-  }));
-}
-
-// Fallback for a plan seen via Snapshot before its first PlanState event (no DAG yet):
-// a flat, count-based placeholder so the surface isn't empty.
-function placeholderSteps(plan: PlanInFlight): PlanStep[] {
-  const total = plan.step_count;
-  return Array.from({ length: total }, (_, i) => {
-    const isActive = plan.active_agent !== null && i === Math.max(0, total - 1);
-    return {
-      step_id: `${plan.plan_id}-step-${i}`,
-      index: i,
-      query: `Step ${i + 1} of ${total} — subject: ${plan.subject}`,
-      status: isActive ? 'running' : i < total - 1 ? 'done' : 'pending',
-      bids_count: 0,
-    };
-  });
-}
 
 const STATUS_LABEL: Record<PlanStatus, string> = {
   forming: 'forming',
@@ -61,10 +32,7 @@ export function PlanWorkSurface() {
   const [pending, setPending] = useState<'pause' | 'resume' | null>(null);
 
   const plan = useFocusedPlan(plans);
-  const steps = useMemo(() => {
-    if (!plan) return [];
-    return (plan.steps?.length ?? 0) > 0 ? realSteps(plan) : placeholderSteps(plan);
-  }, [plan]);
+  const steps = useMemo(() => (plan ? stepsOf(plan) : []), [plan]);
 
   const role = state?.role;
   const isOperator = role === 'operator';

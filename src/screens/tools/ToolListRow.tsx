@@ -1,3 +1,4 @@
+import { formatTokens } from '@/lib/format';
 import { cn } from '@/design-system/lib/utils';
 import { ToolEffects } from './ToolEffects';
 import type { ToolSummary } from '@/ipc/types';
@@ -49,7 +50,7 @@ export function ToolListRow({ tool, selected, onClick }: ToolListRowProps) {
         </div>
         <div>
           <div className="tabular-nums text-sm text-[var(--fg-secondary)]">
-            ${tool.last_cost.toFixed(2)}
+            {formatTokens(tool.last_cost)} tok
           </div>
           <div>cost</div>
         </div>

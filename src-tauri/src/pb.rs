@@ -50,7 +50,40 @@ pub const ACCESS_POLICY_CAPABILITY: &str = "access-policy";
 /// message list. As with 0068, the operator surface this console speaks was unchanged —
 /// that bump was tracked only because the skew check is exact equality, and a stale pin
 /// would raise a permanent false banner against a current kernel.
-pub const PINNED_CONTRACT_VERSION: &str = "0070";
+/// 0072–0076 are the operator-console kernel work (`operator_ui_refactor/
+/// KERNEL-REQUIREMENTS.md`), re-vendored together:
+///
+/// - **0072** Wave 1 reads — `ListSessionCheckpoints` (run-keyed: checkpoints are
+///   stored per RUN, so `step_index` is meaningless without `run_id`),
+///   `ListMCPServers` (with `configured`, separating "no servers" from "no MCP
+///   subsystem"), `GetEmbeddingConfig`, `ClassifyInput` (the FIVE-value router
+///   vocabulary — `ingest` must not be collapsed, it WRITES to memory),
+///   `ListGenerators`/`ListRoleAssignments`/`TestGenerator`,
+///   `RetryWatchDeadLetter`, `PlanStepOp.required_capabilities`, and
+///   `PluginInfoOp.last_check_unix_ms` + the `licence_unverifiable` state.
+/// - **0073** the durable config WRITE path — `SetConfig` / `DeleteConfig` /
+///   `SetGeneratorKey` / `ClearGeneratorKey`, with per-key `ConfigWriteOutcomeOp`.
+///   `effect == "shadowed"` means STORED BUT INERT and names the environment
+///   variable winning over it; rendering that as a plain success reproduces the
+///   exact "I changed it and nothing happened" bug the surface exists to close.
+/// - **0074** `SubmitPlan` (operator-authored DAGs, fatal vs advisory issues),
+///   watch stream liveness + fire history + `GetReactiveBudget`, and the detail
+///   fields contract 0057 removed.
+/// - **0075** `GetTokenSeries` (contiguous hours, zero points for idle ones — the
+///   gap is the information) and `ProposePlan` (questions INSTEAD of a proposal).
+/// - **0076** `ExplainAccessBatch` (lets the reachability matrix stop
+///   re-implementing access-control logic), multi-action watches, and
+///   `GetBlastRadiusPreview`.
+///
+/// Counters added across these use **-1 for "not tracked"**, which is distinct
+/// from 0: reporting zero for an absent counter makes a busy system look idle.
+/// - **0079** ADR-0098 progress on the OPERATOR feed
+///   (`ConversationProgressOp`). The progress channel only ever delivered to an
+///   ingress-bound conversation, so Telegram saw "step 2 of 4" and the console
+///   saw nothing — a console conversation has no delivery address, so the
+///   snapshot was computed and dropped. Live-only, like `TokenChunkOp`: seq is 0
+///   and it is never replayed, because a status line is not history.
+pub const PINNED_CONTRACT_VERSION: &str = "0079";
 
 /// The plugin versions this console was BUILT against, by plugin id (ADR-0089).
 ///
@@ -91,7 +124,10 @@ pub enum PluginSkew {
 /// rather than `Aligned`: a version this console cannot read is precisely the
 /// case where it should not claim compatibility.
 pub fn plugin_skew(plugin_id: &str, kernel_version: &str) -> PluginSkew {
-    let Some((_, pinned)) = PINNED_PLUGIN_VERSIONS.iter().find(|(id, _)| *id == plugin_id) else {
+    let Some((_, pinned)) = PINNED_PLUGIN_VERSIONS
+        .iter()
+        .find(|(id, _)| *id == plugin_id)
+    else {
         return PluginSkew::Unknown;
     };
     if kernel_version.is_empty() {

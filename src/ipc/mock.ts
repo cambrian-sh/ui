@@ -392,7 +392,13 @@ class MockIPC {
       schema_hash: 'mock-hash',
       editable_keys: [],
       kernel_only_keys: [],
+      current_values: {},
+      value_source: {},
     };
+  }
+
+  async setRuntimeConfig(): Promise<t.CommandAck> {
+    return { deduped: false };
   }
 
   // --------------------------------------------------------------------------

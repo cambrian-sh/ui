@@ -1,0 +1,130 @@
+syntax = "proto3";
+
+package cambrian.premium.telemetry;
+
+option go_package = "github.com/cambrian-sh/cambrian-premium/api/proto/telemetry;telemetrypb";
+
+// TelemetryAdmin is the PREMIUM-only LLM-tracing administration plane, mounted on
+// the kernel gRPC server through the OSS app.Options.ExtraServices seam
+// (ADR-0073), beside AccessPolicyAdmin and TelegramAdmin.
+//
+// It is deliberately NOT on the OSS OperatorConsole contract. ADR-0057 removed
+// Langfuse from the OSS config schema on purpose — the OSS module names no
+// premium feature (D5) — so putting telemetry config on operator.proto would
+// re-add to the open-source contract exactly what was taken out of it, and would
+// make an OSS kernel advertise a surface it cannot serve.
+service TelemetryAdmin {
+  // GetTelemetryConfig returns the connection and the disclosure switches. It
+  // NEVER returns a key: the response carries only *_configured and the last
+  // four characters, so it is safe to read, log and diff.
+  rpc GetTelemetryConfig(GetTelemetryConfigRequest) returns (TelemetryConfig);
+
+  // SetTelemetryConfig updates everything EXCEPT the secret key.
+  rpc SetTelemetryConfig(SetTelemetryConfigRequest) returns (TelemetryAck);
+
+  // SetTelemetrySecretKey is deliberately its own RPC rather than a field on
+  // SetTelemetryConfig.
+  //
+  // Folding it in would mean the config round-trip carries a credential and the
+  // console resends the key on every unrelated save — a sample-rate change, a
+  // switch flip. Separating it keeps TelemetryConfig safe to read, log and diff,
+  // and keeps the credential on exactly one path.
+  rpc SetTelemetrySecretKey(SetTelemetrySecretKeyRequest) returns (TelemetryAck);
+  rpc ClearTelemetrySecretKey(ClearTelemetrySecretKeyRequest) returns (TelemetryAck);
+
+  // SendTestTrace sends ONE real trace and reports what happened.
+  //
+  // Not a convenience. The tracer DROPS what it cannot send rather than blocking
+  // a plan — correct behaviour, and an invisible failure — so a misconfigured
+  // endpoint looks exactly like a working one from inside the product. A test
+  // trace is the only way an operator learns it does not work.
+  rpc SendTestTrace(SendTestTraceRequest) returns (TestTraceResult);
+}
+
+message GetTelemetryConfigRequest {}
+
+message TelemetryConfig {
+  string host = 1;
+  string project = 2;
+  // enabled is the master switch. Off means nothing leaves the box at all,
+  // whatever the disclosure switches below say.
+  bool enabled = 3;
+
+  // Credential FACTS only — never a credential. There is no GetSecretKey on this
+  // plane and no field here that could carry one: a console that can display a
+  // credential leaks it to whoever is looking at the screen, to a screen
+  // recording, and to whatever logged the response, none of which is recoverable.
+  bool   public_key_configured = 4;
+  string public_key_last_four = 5;
+  bool   secret_key_configured = 6;
+  string secret_key_last_four = 7;
+
+  // sample_rate in [0,1].
+  double sample_rate = 8;
+
+  // ── The three disclosure switches ────────────────────────────────────────
+  //
+  // These are the part that matters. Everything above describes where traces go;
+  // these decide WHAT goes.
+
+  // send_structure_and_timings: plan and step shape, latency, token counts. No
+  // content. This is the setting that makes tracing useful without making it a
+  // disclosure.
+  bool send_structure_and_timings = 9;
+
+  // send_prompts_and_outputs: the actual text. It LEAVES THE BOX — prompts carry
+  // whatever the retrieval stage put in front of the model, which is to say
+  // whatever the caller could read.
+  bool send_prompts_and_outputs = 10;
+
+  // send_from_enforcing_surfaces: whether traces are sent for work done under an
+  // ENFORCED access policy. Off by default, and the default is the point.
+  //
+  // Anything the access policy protects inside Cambrian is NOT protected once it
+  // is a trace. A closed label exists precisely so content does not travel;
+  // shipping its trace to a third party is a hole in the boundary the operator
+  // drew, and it is invisible from every screen that shows the boundary.
+  bool send_from_enforcing_surfaces = 11;
+}
+
+message SetTelemetryConfigRequest {
+  TelemetryConfig config = 1;
+  // reason is mandatory and audited: these switches decide what leaves the
+  // deployment, so "who turned this on and why" must be answerable afterwards.
+  string reason = 2;
+}
+
+message SetTelemetrySecretKeyRequest {
+  // key is write-only. It is never returned by any RPC on this plane, never
+  // written to an audit record, and never logged.
+  string key = 1;
+  string reason = 2;
+}
+
+message ClearTelemetrySecretKeyRequest { string reason = 1; }
+
+message TelemetryAck {
+  bool ok = 1;
+  // error names the problem in the operator's terms when ok is false.
+  string error = 2;
+  // warning is set when the write SUCCEEDED but something about it deserves
+  // saying — most importantly that an environment variable is shadowing the
+  // stored value, so the change is recorded and inert.
+  string warning = 3;
+}
+
+message SendTestTraceRequest {}
+
+message TestTraceResult {
+  bool   ok = 1;
+  int64  latency_ms = 2;
+  // error carries the endpoint's own words where there are any: "invalid public
+  // key" is actionable, "failed" is not.
+  string error = 3;
+  // trace_id is what the operator opens in the Langfuse UI to confirm it landed.
+  // A success they cannot verify is only slightly better than no answer.
+  string trace_id = 4;
+  // host echoes where it was sent, so a test that succeeded against the WRONG
+  // project is visible rather than reassuring.
+  string host = 5;
+}

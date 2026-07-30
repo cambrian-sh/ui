@@ -82,6 +82,84 @@ function Contribution({ c }: { c: PolicyContribution }) {
   );
 }
 
+interface TraceStep {
+  heading: string;
+  body: string;
+  /** The decision step is the one that gets a coloured dot. */
+  tone?: string;
+}
+
+/**
+ * The decision as a sequence, not a verdict.
+ *
+ * A denial is the output of four things happening in order: an identity was
+ * resolved, some policies matched it, one term won, and the result was either
+ * enforced or merely recorded. Rendering only the outcome makes the operator
+ * reconstruct that chain from the contribution list — which is exactly the work
+ * the explainer exists to remove.
+ */
+function DecisionTrace({ decision }: { decision: AccessDecision }) {
+  const matched = decision.decided_by.length;
+
+  const steps: TraceStep[] = [
+    {
+      heading:
+        decision.reason === 'no_principal'
+          ? 'Principal could not be resolved'
+          : 'Principal resolved',
+      body:
+        decision.reason === 'no_principal'
+          ? 'No identity was established for the caller, so no policy could be selected for it.'
+          : 'The caller resolved to a principal, and to the containers it inherits policy from.',
+    },
+    {
+      heading:
+        matched === 0
+          ? 'No policy contributed a term'
+          : `${matched} ${matched === 1 ? 'policy' : 'policies'} matched`,
+      body:
+        matched === 0
+          ? 'Nothing was linked at any container in scope for this request.'
+          : 'Each contributed one term. Broadest container first — that order is the precedence.',
+    },
+    {
+      // The decision step, and the only one that carries the outcome colour.
+      heading: decision.allowed ? 'Allow stands' : 'Deny wins',
+      body: decision.detail
+        ? `The term responsible: ${decision.detail}.`
+        : 'No single term was named for this outcome.',
+      tone: decision.allowed ? 'var(--status-live)' : 'var(--status-err)',
+    },
+    {
+      heading: decision.report_only ? 'Today it is only recorded' : 'Enforced',
+      body: decision.report_only
+        ? 'This policy is in report-only mode, so the outcome above was written to the journal and nothing was blocked.'
+        : 'The outcome above was applied to the request.',
+      tone: decision.report_only ? 'var(--status-warn)' : undefined,
+    },
+  ];
+
+  return (
+    <ol className="relative ml-1 flex flex-col gap-3 border-l border-[var(--border-subtle)] pl-4">
+      {steps.map((step, i) => (
+        <li key={i} className="relative">
+          <span
+            aria-hidden="true"
+            className="absolute -left-[21px] top-[5px] size-[9px] rounded-full"
+            style={{ background: step.tone ?? 'var(--border-strong)' }}
+          />
+          <div className="text-[13.5px] font-medium leading-[1.35] text-[var(--fg-primary)]">
+            {step.heading}
+          </div>
+          <div className="text-[12.5px] leading-[1.55] text-[var(--fg-primary)] opacity-55">
+            {step.body}
+          </div>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
 /**
  * One decision, rendered so it is actionable rather than merely true.
  *
@@ -103,6 +181,8 @@ export function DecisionCard({ decision }: { decision: AccessDecision }) {
           <code className="text-xs text-[var(--color-accent-brand)]">{decision.detail}</code>
         )}
       </div>
+
+      <DecisionTrace decision={decision} />
 
       {decision.would_have_denied && (
         <p className="text-xs text-[var(--color-status-warn)]">

@@ -87,6 +87,50 @@ service AccessPolicyAdmin {
   // open tag, and cannot choose to be enforced — a proposal always lands
   // report-only, and enforcing it is a separate deliberate act.
   rpc ProposePolicy(ProposePolicyRequest) returns (ProposePolicyResponse);
+
+  // ListPrincipals enumerates every identity the policy model can act on.
+  //
+  // There is no principal TABLE — principals are referenced by group members and
+  // policy links and nothing enumerates them — which is why a console's
+  // principals surface listed zero on every deployment forever. This derives the
+  // set from everywhere a principal can appear and reports WHERE each was seen.
+  //
+  // The field that earns it is `orphaned`: a policy linked to a principal that
+  // does not exist applies to nobody, and from the policy list it is
+  // indistinguishable from a working boundary.
+  rpc ListPrincipals(ListPrincipalsRequest) returns (ListPrincipalsResponse);
+
+  // ── Identity bindings (contract 0077) ─────────────────────────────────────
+  //
+  // Without these THE SURFACE IS THE IDENTITY: a policy links to
+  // "chat:telegram", so every sender who finds the bot has identical reach.
+  // "@unknown_4471" is governed by the same rule as "@afsin" — not because they
+  // are different people, but because nobody is.
+  //
+  // They live on THIS plane rather than the surface's own admin service because
+  // a binding maps an external id onto a PRINCIPAL: that is this plane's
+  // vocabulary, the reach figure needs this plane's resolver, and the mapping is
+  // surface-generic rather than specific to any one bridge.
+  rpc ListIdentityBindings(ListIdentityBindingsRequest) returns (ListIdentityBindingsResponse);
+  rpc BindIdentity(BindIdentityRequest) returns (AckResponse);
+  rpc UnbindIdentity(UnbindIdentityRequest) returns (AckResponse);
+  // ListUnboundSenders is the actual worklist: who has spoken through an entry
+  // point without a binding. Everything else here acts on its rows.
+  rpc ListUnboundSenders(ListUnboundSendersRequest) returns (ListUnboundSendersResponse);
+  // BlockSender drops a sender AT THE INGRESS, before any policy or plan sees
+  // them. Stronger than "every policy denies them", and it does not depend on
+  // the policy set being right.
+  rpc BlockSender(BlockSenderRequest) returns (AckResponse);
+  rpc GetStrangerPolicy(GetStrangerPolicyRequest) returns (StrangerPolicySpec);
+  rpc SetStrangerPolicy(SetStrangerPolicyRequest) returns (AckResponse);
+
+  // ListIngressActivity reports who came through an entry point and what
+  // happened, turning an ingress toggle from blind into informed.
+  //
+  // It is a filtered projection of the SAME decision journal ExportDecisions
+  // reads, narrowed to surfaces owned by registered ingresses — not a second
+  // record of the same events, which would be one more thing to keep in step.
+  rpc ListIngressActivity(ListIngressActivityRequest) returns (ListIngressActivityResponse);
 }
 
 message AckResponse {
@@ -351,4 +395,252 @@ message ProposePolicyResponse {
   // blocking is true when at least one problem is blocking. Derived, sent
   // explicitly so a client cannot disagree with the server about it.
   bool blocking = 7;
+
+  // ── Authoring provenance and clarification ─────────────────────────────
+  //
+  // provenance maps a proposal field name to "stated" or "inferred". A draft
+  // that mixes what the operator actually said with what the model filled in is
+  // approved as if all of it were stated; this separates the two so review can
+  // concentrate on the half nobody asked for.
+  map<string, string> provenance = 8;
+
+  // unmapped_phrases are the operator's words the model could NOT resolve to
+  // anything in the vocabulary. Reporting them is what stops a silent drop: a
+  // phrase that quietly vanished produces a boundary narrower than the operator
+  // described, and nothing anywhere says so.
+  repeated string unmapped_phrases = 9;
+
+  // questions is non-empty when the request cannot be turned into a policy
+  // without a decision only the operator can make.
+  //
+  // Deliberately on THIS response rather than a separate clarify RPC: one call
+  // returns either a draft or a question, which keeps the pane a single branch
+  // instead of a second round-trip with its own loading and error states.
+  repeated ProposalQuestion questions = 10;
+}
+
+// ProposalQuestion asks the operator to resolve one phrase.
+message ProposalQuestion {
+  // phrase is the operator's own words, VERBATIM. Paraphrasing it makes the
+  // question unanswerable — they have to recognise what they wrote.
+  string phrase = 1;
+  repeated ResolutionCandidate candidates = 2;
+  // why_it_matters states what changes depending on the answer. A question
+  // without it reads as bureaucracy and gets answered at random.
+  string why_it_matters = 3;
+}
+
+// ResolutionCandidate is one tag the phrase might mean.
+message ResolutionCandidate {
+  string tag = 1;
+  bool   closed = 2;
+  int32  document_count = 3;
+  // cost must be a real SENTENCE, not a label. "Did you mean `finance`?" is not
+  // answerable; "`finance` is closed and currently granted to support-team, so
+  // restricting it revokes that grant" is.
+  string cost = 4;
+}
+
+// ── Principals ──────────────────────────────────────────────────────────────
+
+message ListPrincipalsRequest {}
+
+// PrincipalSpec is one identity the policy model can act on.
+message PrincipalSpec {
+  string id = 1;
+  // kind is "agent" | "user" | "daemon" | "system" | "unknown". "unknown" is
+  // honest for a principal seen only in a policy link, where nothing records
+  // what sort of identity it was meant to be.
+  string kind = 2;
+  string display_name = 3;
+  // sources names where this principal was OBSERVED — "agent_registry",
+  // "group:<id>", "policy_link:<policy id>". A principal is derived, not
+  // registered, so saying where it came from is what makes the row trustworthy.
+  repeated string sources = 4;
+  // group_ids are the groups holding it as a DIRECT member.
+  repeated string group_ids = 5;
+  // has_direct_policy marks a policy linked at this principal specifically,
+  // rather than reaching it through a group or surface.
+  bool has_direct_policy = 6;
+  // orphaned marks a principal that a policy or group REFERS to but which is
+  // registered nowhere. Such a policy applies to nobody and is indistinguishable
+  // from a working boundary anywhere else in the console — the same defect class
+  // as a policy linked to a surface nothing registers.
+  bool orphaned = 7;
+}
+
+message ListPrincipalsResponse { repeated PrincipalSpec principals = 1; }
+
+// ── Ingress activity ────────────────────────────────────────────────────────
+
+message ListIngressActivityRequest {
+  // surface filters to one entry point ("chat:telegram"); empty = all ingresses.
+  string surface = 1;
+  int32  limit = 2;
+}
+
+message IngressActivityOp {
+  string surface = 1;
+  // principal is the identity the decision was made for. On an ingress this is
+  // the sender resolved through the entry point, or the ingress daemon itself
+  // when no identity binding exists — which is exactly the state that makes
+  // every sender interchangeable.
+  string principal = 2;
+  string resource = 3;
+  int64  at_unix_ms = 4;
+  // outcome is "answered" | "no_reply" | "policy_denied" | "would_have_denied"
+  // | "blocked".
+  //
+  // "policy_denied" is the POLICY WORKING, and a console must not render it as
+  // an error: a list of red rows trains an operator to loosen a boundary that is
+  // doing its job. "would_have_denied" is a report-only policy that has not been
+  // enforced yet — the rollout signal, and invisible everywhere else.
+  //
+  // "no_reply" (contract 0080) is a message that never got an answer. It is the
+  // one outcome the decision-journal source could never surface, because a turn
+  // that fails before touching a governed resource makes no access decision.
+  string outcome = 5;
+  string reason = 6;
+
+  // ── contract 0080: the CONTACT view ──────────────────────────────────────
+  //
+  // Sourced from the durable conversation record rather than the in-memory
+  // decision journal, which is what makes this list survive a restart and show
+  // traffic that never asked the decision point anything.
+
+  // external_id is the sender's address on the far side, as the ingress knows it.
+  string external_id = 7;
+  // text is the most recent thing they said. Populated only when the deployment
+  // records message bodies — see request_text_available.
+  string text = 8;
+  // message_count counts what the PERSON sent, not the whole exchange: an
+  // operator judging whether someone should be bound cares how much they asked.
+  int32 message_count = 9;
+  string conversation_id = 10;
+}
+
+message ListIngressActivityResponse {
+  repeated IngressActivityOp activity = 1;
+  // request_text_available reports whether this deployment records what was
+  // ASKED.
+  //
+  // True when the list is built from the conversation store, which holds message
+  // bodies. False when only the decision journal was available — that records
+  // access decisions, not request bodies — and a console must then say "not
+  // recorded" rather than render an empty column reading as "they asked nothing".
+  bool request_text_available = 2;
+}
+
+// ── Identity bindings ───────────────────────────────────────────────────────
+
+// IdentityBindingSpec maps one external identity on one surface to a principal
+// or a group.
+message IdentityBindingSpec {
+  string surface = 1;
+  // external_id is the STABLE NUMERIC id from the platform — never the username,
+  // never the phone number.
+  //
+  // A username changes, so binding on one binds on something the person can
+  // alter at will: an impersonation vector rather than an identity. A phone
+  // number arrives only when someone deliberately shares a contact card, so
+  // binding on it makes identity depend on an unrelated act.
+  string external_id = 2;
+  // username is a LABEL so a console can show a recognisable name. Never matched on.
+  string username = 3;
+  string display_name = 4;
+  // bound_to_kind is "principal" | "group" | "room_group".
+  //
+  // The third is a DELEGATION and is its own kind on purpose: anyone an admin
+  // adds to that room inherits the group the moment they mention the bot, so an
+  // audit must be able to tell a delegated room from a named person.
+  string bound_to_kind = 5;
+  string bound_to_id = 6;
+  int64  bound_at_unix_ms = 7;
+  // username_changed_from lets a console say "the binding held, because it is on
+  // the id" rather than leaving an operator wondering whether a renamed account
+  // is still the same person.
+  string username_changed_from = 8;
+  bool   blocked = 9;
+}
+
+message ListIdentityBindingsRequest { string surface = 1; }
+message ListIdentityBindingsResponse { repeated IdentityBindingSpec bindings = 1; }
+
+message BindIdentityRequest {
+  IdentityBindingSpec binding = 1;
+  // reason is mandatory and audited: a binding grants reach, so who widened it
+  // and why is the question asked after something goes wrong.
+  string reason = 2;
+}
+
+message UnbindIdentityRequest {
+  string surface = 1;
+  string external_id = 2;
+  string reason = 3;
+}
+
+message ListUnboundSendersRequest { string surface = 1; }
+
+// UnboundSenderSpec is someone who has spoken without a binding.
+message UnboundSenderSpec {
+  string surface = 1;
+  string external_id = 2;
+  // username and display_name are LABELS relayed from the platform, never
+  // matched on. EMPTY when more than one person speaks through this external id
+  // — see speaker_ids — because a shared entry point has no single name, and
+  // labelling it after whoever spoke first would let an operator bind a room
+  // believing they had bound the person they saw.
+  string username = 3;
+  string display_name = 4;
+  int64  first_seen_unix_ms = 5;
+  int64  last_seen_unix_ms = 6;
+  int32  message_count = 7;
+  // speaker_ids are the distinct people observed speaking through this external
+  // id (contract 0080), bounded.
+  //
+  // An external id is not always a person: in a 1:1 chat it is, and in a group it
+  // is the ROOM. More than one entry here means binding this row binds the room,
+  // and everyone in it inherits whatever it is bound to.
+  repeated string speaker_ids = 8;
+}
+
+message ListUnboundSendersResponse { repeated UnboundSenderSpec senders = 1; }
+
+message BlockSenderRequest {
+  string surface = 1;
+  string external_id = 2;
+  // blocked false un-blocks, so the RPC is reversible without a second one.
+  bool   blocked = 3;
+  string reason = 4;
+}
+
+message GetStrangerPolicyRequest { string surface = 1; }
+
+message StrangerPolicySpec {
+  string surface = 1;
+  // mode is "surface_default" | "guest_principal" | "refuse_until_bound".
+  //
+  // "surface_default" is today's behaviour and is worth naming rather than
+  // treating as neutral: it is the state where two different people are governed
+  // by one rule because nobody is distinguished.
+  //
+  // "refuse_until_bound" REPLIES once rather than ignoring — silent ignoring is
+  // indistinguishable from a broken bot, so the person retries instead of asking
+  // an operator to bind them.
+  string mode = 2;
+  string guest_principal_id = 3;
+  // readable_documents is THE reach: how many documents an unbound sender can
+  // read right now. -1 when it cannot be computed.
+  //
+  // It is what makes this panel a decision instead of a preference. "Whatever you
+  // set here is what a person you have never heard of gets" is abstract; "right
+  // now a stranger can read 1204 documents" is not. A console cannot compute it —
+  // that would mean evaluating the whole policy set against a principal that does
+  // not exist yet.
+  int64 readable_documents = 4;
+}
+
+message SetStrangerPolicyRequest {
+  StrangerPolicySpec policy = 1;
+  string reason = 2;
 }

@@ -133,10 +133,17 @@ describe('VerifierPoolConsole', () => {
     
     render(<VerifierPoolConsole />);
     
-    expect(screen.getByText('agent-epsilon')).toBeInTheDocument();
+    // Named twice on purpose: once in the list, and once in the callout that
+    // says why it is under surveillance and how it gets out.
+    expect(screen.getAllByText('agent-epsilon').length).toBeGreaterThan(0);
     expect(screen.getByText('Trust score below threshold')).toBeInTheDocument();
     expect(screen.getByText('5m ago')).toBeInTheDocument();
-    
+
+    // The callout states the exit condition — a surveillance state with no way
+    // out reads as a punishment rather than a policy.
+    expect(screen.getByText('UNDER SURVEILLANCE')).toBeInTheDocument();
+    expect(screen.getByText(/not on a timer/)).toBeInTheDocument();
+
     expect(screen.getByText('agent-zeta')).toBeInTheDocument();
     expect(screen.getByText('Failed cross-verification')).toBeInTheDocument();
     expect(screen.getByText('2d ago')).toBeInTheDocument();

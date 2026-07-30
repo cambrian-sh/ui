@@ -1,82 +1,107 @@
 /* Tokens.css - Cambrian Design System (4-layer Token System)
- * 
+ *
  * Architecture: primitive → semantic → component → density
  * - Primitive: raw color/spacing/typography values
  * - Semantic: contextual meaning (canvas, surface, fg-primary, etc)
  * - Component: component-specific (button-primary-bg, etc)
  * - Density: spacing variants (compact, default, spacious)
- * 
+ *
  * The 4-layer token system is the foundation. Everything else builds on this.
  * Tailwind v4 reads these as @theme tokens and generates utilities.
+ *
+ * Palette: "Nocturne" (UX refactor). The three alarm tones are the accent's own
+ * lightness and chroma rotated in hue (289° → 70° → 25°), so they read as one
+ * family and no state shouts louder than its severity. Roughly 1 in 12 men
+ * cannot separate the warn/err pair by colour, so every state in the UI also
+ * carries a word and a shape — never drop the label to save space.
  */
 
 :root {
-  /* === Primitives: Raw color palette === */
-  --color-gray-50: oklch(98% 0.005 250);
-  --color-gray-100: oklch(95% 0.008 250);
-  --color-gray-200: oklch(90% 0.012 250);
-  --color-gray-300: oklch(80% 0.015 250);
-  --color-gray-400: oklch(70% 0.018 250);
-  --color-gray-500: oklch(60% 0.020 250);
-  --color-gray-600: oklch(50% 0.022 250);
-  --color-gray-700: oklch(40% 0.020 250);
-  --color-gray-800: oklch(30% 0.018 250);
-  --color-gray-900: oklch(20% 0.015 250);
-  --color-gray-950: oklch(15% 0.012 250);
+  /* === Primitives: Accent ramp ===
+   * Used as a line and a glow, never as a flood. */
+  --color-accent-100: #f5f4ff;
+  --color-accent-200: #e7e5fe;
+  --color-accent-300: #d2cefd;
+  --color-accent-400: #b5abfc; /* accent text on the dark ground */
+  --color-accent-500: #968ae0;
+  --color-accent-600: #796cbf;
+  --color-accent-700: #5d5294;
+  --color-accent-800: #423a6a; /* tag fills */
+  --color-accent-900: #2b2741;
 
-  --color-teal-100: oklch(96% 0.02 195);
-  --color-teal-200: oklch(92% 0.05 195);
-  --color-teal-300: oklch(78% 0.12 195);
-  --color-teal-400: oklch(72% 0.14 195);
-  --color-teal-500: oklch(65% 0.16 195);
-  --color-teal-600: oklch(58% 0.18 195);
-  --color-teal-700: oklch(48% 0.14 195);
-  --color-teal-800: oklch(38% 0.11 195);
-  --color-teal-900: oklch(28% 0.08 195);
+  /* === Primitives: Neutral ramp === */
+  --color-neutral-100: #f3f5fe;
+  --color-neutral-200: #e4e7f5;
+  --color-neutral-300: #cfd3e5;
+  --color-neutral-400: #b2b6ca;
+  --color-neutral-500: #9397ab; /* done */
+  --color-neutral-600: #75798c; /* pending / dormant */
+  --color-neutral-700: #595d6c;
+  --color-neutral-800: #3f424d;
+  --color-neutral-900: #292b31;
 
-  --color-amber-400: oklch(78% 0.16 75);
-  --color-amber-500: oklch(72% 0.18 75);
+  /* === Primitives: Ground ramp ===
+   * The three surfaces the dark theme is built from. */
+  --color-ground-canvas: #161826;
+  --color-ground-surface: #1b1d2c;
+  --color-ground-elevated: #232532;
 
-  --color-red-500: oklch(65% 0.22 25);
+  /* Legacy gray aliases. The pre-Nocturne palette addressed surfaces through
+   * --color-gray-*; these keep untouched call sites rendering while the
+   * migration finishes. Prefer --color-neutral-* in new code. */
+  --color-gray-50: var(--color-neutral-100);
+  --color-gray-100: var(--color-neutral-200);
+  --color-gray-200: var(--color-neutral-300);
+  --color-gray-300: var(--color-neutral-400);
+  --color-gray-400: var(--color-neutral-500);
+  --color-gray-500: var(--color-neutral-600);
+  --color-gray-600: var(--color-neutral-700);
+  --color-gray-700: var(--color-neutral-800);
+  --color-gray-800: var(--color-ground-elevated);
+  --color-gray-900: var(--color-ground-surface);
+  --color-gray-950: var(--color-ground-canvas);
 
-  --color-blue-500: oklch(65% 0.20 240);
+  /* === Semantic: Ground + surfaces (dark is the default) === */
+  --bg-canvas: var(--color-ground-canvas);
+  --bg-surface: var(--color-ground-surface);
+  --bg-elevated: var(--color-ground-elevated);
+  --bg-pulse: var(--color-accent-700);
 
-  --color-green-500: oklch(70% 0.18 145);
+  --fg-primary: #e9e9ed;
+  --fg-secondary: rgba(233, 233, 237, 0.72);
+  --fg-muted: rgba(233, 233, 237, 0.5);
+  --fg-on-accent: var(--color-ground-canvas);
 
-  /* === Semantic: Contextual application === */
-  --bg-canvas: var(--color-gray-950);
-  --bg-surface: var(--color-gray-900);
-  --bg-elevated: var(--color-gray-800);
-  --bg-pulse: var(--color-teal-600);
+  --accent-bg: #9184d9;
+  --accent-fg: var(--color-ground-canvas);
 
-  --fg-primary: var(--color-gray-50);
-  --fg-secondary: var(--color-gray-200);
-  --fg-muted: var(--color-gray-400);
-  --fg-on-accent: var(--color-gray-950);
+  --border-subtle: rgba(233, 233, 237, 0.09);
+  --border-strong: rgba(233, 233, 237, 0.16);
 
-  --accent-bg: var(--color-teal-400);
-  --accent-fg: var(--color-gray-950);
+  /* === Semantic: Status ===
+   * Five readings. Every one is paired with a word and a shape in the UI. */
+  --status-live: #9184d9; /* running · live · connected  (= accent) */
+  --status-warn: #d9b184; /* waiting on you · degraded · blocked    */
+  --status-err: #d98484; /* failed · down · denied · irreversible  */
+  --status-done: var(--color-neutral-500); /* completed              */
+  --status-idle: var(--color-neutral-600); /* pending · dormant      */
 
-  --border-subtle: var(--color-gray-700);
-  --border-strong: var(--color-gray-600);
-
-  /* Status semantic colors */
-  --status-ok: var(--color-green-500);
-  --status-warn: var(--color-amber-400);
-  --status-err: var(--color-red-500);
-  --status-info: var(--color-blue-500);
-  --status-pulse: var(--color-teal-400);
-  --status-muted: var(--color-gray-500);
+  /* Aliases so pre-Nocturne call sites keep working during the migration.
+   * Remove each one as its last call site moves to a --status-* above. */
+  --status-ok: var(--status-live);
+  --status-pulse: var(--status-live);
+  --status-info: var(--color-accent-400);
+  --status-muted: var(--status-idle);
 
   /* Session state colors (PRD-06 §4) */
-  --state-running: var(--color-green-500);
-  --state-paused: var(--color-amber-400);
-  --state-dormant: var(--color-gray-500);
-  --state-completed: var(--color-blue-500);
+  --state-running: var(--status-live);
+  --state-paused: var(--status-warn);
+  --state-dormant: var(--status-idle);
+  --state-completed: var(--status-done);
 
   /* === Component: Button === */
   --button-primary-bg: var(--accent-bg);
-  --button-primary-bg-hover: var(--color-teal-300);
+  --button-primary-bg-hover: var(--color-accent-400);
   --button-primary-fg: var(--accent-fg);
   --button-primary-border: transparent;
 
@@ -86,10 +111,10 @@
   --button-secondary-border: var(--border-strong);
 
   --button-danger-bg: var(--status-err);
-  --button-danger-fg: var(--fg-primary);
+  --button-danger-fg: var(--fg-on-accent);
 
   /* === Component: Input === */
-  --input-bg: var(--color-gray-950);
+  --input-bg: var(--bg-canvas);
   --input-border: var(--border-subtle);
   --input-fg: var(--fg-primary);
   --input-placeholder: var(--fg-muted);
@@ -117,41 +142,51 @@
 
   /* === Component: List === */
   --list-row-bg: transparent;
-  --list-row-bg-hover: var(--bg-elevated);
+  --list-row-bg-hover: color-mix(in srgb, var(--fg-primary) 5%, transparent);
+  --list-row-bg-selected: color-mix(in srgb, var(--accent-bg) 13%, transparent);
   --list-row-border: var(--border-subtle);
   --list-row-h: 32px;
   --list-row-padding-x: 0.75rem;
 
-  /* === Layout: Geometric dimensions === */
-  --nav-rail-w: 240px;
-  --inspector-w: 360px;
-  --status-strip-h: 32px;
+  /* === Layout: Geometric dimensions ===
+   * The shell's fixed panels. The status strip is gone: connection and seq live
+   * in the header pill, plan count on the rail, spend in the header. */
+  --header-h: 46px;
+  --nav-rail-w: 216px;
+  --nav-rail-collapsed-w: 52px;
+  --inspector-w: 332px;
+  --ingest-pane-w: 392px;
+  --audit-detail-w: 308px;
+  --mobile-tab-bar-h: 48px;
 
   /* === Density: Spacing variants === */
   --density-compact: 0.75rem;
   --density-default: 1rem;
   --density-spacious: 1.5rem;
 
-  /* === Elevation: 3 levels (per PRD-01 §4.3) ===
-   * Dark mode is the default; shadows are forbidden per LD-7 §11, so the
-   * elevation is expressed as a 1px inset border + a low-opacity background
-   * tint. The light-mode override block adds the brand-tinted drop shadow
-   * reserved for floating elements (popovers, menus, dialogs). */
+  /* === Elevation ===
+   * On a dark ground elevation is an inset hairline plus ambient darkness.
+   * Never stack heavy shadows. */
   --elevation-1: 0 0 0 1px var(--border-subtle);
-  --elevation-2: 0 0 0 1px var(--border-subtle);
-  --elevation-3: 0 0 0 1px var(--border-strong);
+  --elevation-2: 0 0 0 1px var(--border-subtle), 0 6px 18px rgba(0, 0, 0, 0.45);
+  --elevation-3: 0 0 0 1px var(--border-strong), 0 16px 40px rgba(0, 0, 0, 0.6);
+  --elevation-sheet: 0 -1px 0 rgba(233, 233, 237, 0.12),
+    0 -20px 50px rgba(0, 0, 0, 0.6);
 
-  /* === Typography === */
-  --text-xs: 0.75rem;
-  --text-sm: 0.8125rem;
-  --text-base: 0.875rem;
-  --text-md: 0.9375rem;
-  --text-lg: 1rem;
-  --text-xl: 1.125rem;
-  --text-2xl: 1.375rem;
-  --text-3xl: 1.75rem;
-  --font-sans: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
-    "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  /* === Typography ===
+   * Nothing below 9.5px, and nothing below 11px carries meaning that is not
+   * repeated elsewhere. Headings never exceed weight 500 — hierarchy is size
+   * and space, not weight. */
+  --text-xs: 0.75rem; /* 12px  — meta / secondary */
+  --text-sm: 0.8125rem; /* 13px  — desktop body */
+  --text-base: 0.875rem; /* 14px  — desktop body */
+  --text-md: 0.9375rem; /* 15px  — mobile body, answers */
+  --text-lg: 1rem; /* 16px */
+  --text-xl: 1.1875rem; /* 19px  — screen title (h4) */
+  --text-2xl: 1.375rem; /* 22px  — big number */
+  --text-3xl: 1.625rem; /* 26px  — mobile screen title */
+  --font-sans: Inter, ui-sans-serif, system-ui, -apple-system,
+    BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
     "Liberation Mono", monospace;
 
@@ -167,11 +202,13 @@
   --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
   --ease-linear: linear;
 
-  /* === Radius: border-radius tokens === */
-  --radius-sm: 0.25rem;
-  --radius-md: 0.375rem;
-  --radius-lg: 0.5rem;
-  --radius-xl: 0.75rem;
+  /* === Radius === */
+  --radius-sm: 4px; /* chips, tags, status pills */
+  --radius-nav: 7px; /* nav rows */
+  --radius-md: 8px; /* buttons, inputs */
+  --radius-lg: 10px; /* cards, panels */
+  --radius-xl: 12px; /* mobile cards */
+  --radius-sheet: 18px; /* mobile sheet top corners */
 }
 
 [data-density="compact"] {
@@ -199,30 +236,65 @@
 }
 
 [data-theme="light"] {
-  --bg-canvas: var(--color-gray-50);
-  --bg-surface: var(--color-gray-100);
-  --bg-elevated: var(--color-gray-200);
-  --bg-pulse: var(--color-teal-300);
+  --bg-canvas: #f7f7fb;
+  --bg-surface: #ffffff;
+  --bg-elevated: #eeeef4;
+  --bg-pulse: var(--color-accent-300);
 
-  --fg-primary: var(--color-gray-950);
-  --fg-secondary: var(--color-gray-700);
-  --fg-muted: var(--color-gray-500);
-  --fg-on-accent: var(--color-gray-50);
+  --fg-primary: #1a1b26;
+  --fg-secondary: rgba(26, 27, 38, 0.72);
+  --fg-muted: rgba(26, 27, 38, 0.55);
+  --fg-on-accent: #ffffff;
 
-  --accent-bg: var(--color-teal-600);
-  --accent-fg: var(--color-gray-50);
+  --accent-bg: var(--color-accent-600);
+  --accent-fg: #ffffff;
 
-  --border-subtle: var(--color-gray-200);
-  --border-strong: var(--color-gray-300);
+  --border-subtle: rgba(26, 27, 38, 0.1);
+  --border-strong: rgba(26, 27, 38, 0.18);
 
-  --button-primary-bg-hover: var(--color-teal-500);
-  --button-secondary-bg-hover: var(--color-gray-200);
+  /* The alarm tones need more chroma to hold contrast on a light ground; the
+   * hue relationship (289° → 70° → 25°) is preserved. */
+  --status-live: var(--color-accent-600);
+  --status-warn: #a8712c;
+  --status-err: #b8474b;
+  --status-done: var(--color-neutral-600);
+  --status-idle: var(--color-neutral-500);
 
-  --input-bg: var(--color-gray-50);
-  --input-border: var(--color-gray-300);
+  --button-primary-bg-hover: var(--color-accent-700);
+  --button-secondary-bg-hover: var(--bg-elevated);
+
+  --input-bg: #ffffff;
+  --input-border: var(--border-subtle);
   --input-border-focus: var(--accent-bg);
 
-  /* Light mode: add brand-tinted drop shadow to floating elements per LD-7 §11. */
-  --elevation-2: 0 0 0 1px var(--border-subtle), 0 4px 12px oklch(0% 0 0 / 0.04);
-  --elevation-3: 0 0 0 1px var(--border-strong), 0 8px 24px oklch(0% 0 0 / 0.08);
+  --list-row-bg-hover: color-mix(in srgb, var(--fg-primary) 4%, transparent);
+
+  /* Light mode: add the brand-tinted drop shadow to floating elements per LD-7 §11. */
+  --elevation-2: 0 0 0 1px var(--border-subtle), 0 4px 12px oklch(0% 0 0 / 0.06);
+  --elevation-3: 0 0 0 1px var(--border-strong), 0 8px 24px oklch(0% 0 0 / 0.1);
+  --elevation-sheet: 0 -1px 0 var(--border-subtle), 0 -20px 50px oklch(0% 0 0 / 0.12);
+}
+
+/* -----------------------------------------------------------------------------
+ * Tint utilities.
+ *
+ * Every tinted surface in the design is one of three steps off a status token.
+ * Set `--tint` on the element (`style={{ '--tint': 'var(--status-warn)' }}`) and
+ * apply one of these, rather than repeating a color-mix() inline.
+ *
+ *   wash 6–9 %   a row or card background
+ *   fill 10–13 % a chip
+ *   ring 24–36 % a hairline
+ * --------------------------------------------------------------------------- */
+
+@utility tint-wash {
+  background: color-mix(in srgb, var(--tint) 8%, transparent);
+}
+
+@utility tint-fill {
+  background: color-mix(in srgb, var(--tint) 12%, transparent);
+}
+
+@utility tint-ring {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--tint) 30%, transparent);
 }

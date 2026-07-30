@@ -1,8 +1,9 @@
 import { createFileRoute } from '@tanstack/react-router';
-import { ConversationPanel } from '@/screens/chat/ConversationPanel';
+import { ChatConsole } from '@/screens/chat/ChatConsole';
 
-// The OSS chat lane (ADR-0084 D9). The screen itself gates on the "chat" capability, so an
-// OSS kernel without the chat worker pool shows an unavailable state rather than a broken UI.
+// The front door (12a). Distinct from `/sessions/$id`, which is a session that
+// already exists: chat is where work is SHAPED, and the session begins on
+// approval of a proposed plan.
 export const Route = createFileRoute('/chat')({
-  component: ConversationPanel,
+  component: ChatConsole,
 });

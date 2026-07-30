@@ -14,7 +14,13 @@ import { useStore } from '@/store/useStore';
 import { projectionStore } from '@/store/projection';
 import { ipc } from '@/ipc';
 import { PluginSurface } from '@/components/PluginSurface';
-import type { GroupSpec, IngressSpec, PolicySpec, ScopeSummary } from '@/ipc/types';
+import type {
+  GroupSpec,
+  IngressSpec,
+  PolicySpec,
+  PrincipalSpec,
+  ScopeSummary,
+} from '@/ipc/types';
 import { ScopeFilters, type ScopeFiltersState } from './ScopeFilters';
 import { ScopeListRow } from './ScopeListRow';
 import { ScopeDetail } from './ScopeDetail';
@@ -25,6 +31,11 @@ import { RolloutPane } from './RolloutPane';
 import { IngressPane } from './IngressPane';
 import { ProposePane } from './ProposePane';
 import { LabelsPane } from './LabelsPane';
+import { RuleEditorPane } from './RuleEditorPane';
+import { ScopeLandingPane } from './ScopeLandingPane';
+import { ReachabilityPane } from './ReachabilityPane';
+import { SurfaceRegistryPane } from './SurfaceRegistryPane';
+import { GuidedTaskPane } from './GuidedTaskPane';
 import { useVocabulary } from './useVocabulary';
 
 /**
@@ -83,6 +94,7 @@ export function AccessPolicyConsole() {
   // Registered ingresses, so their surfaces are offerable as policy link targets
   // rather than typed from memory (ADR-0090).
   const [ingresses, setIngresses] = useState<IngressSpec[]>([]);
+  const [principalSet, setPrincipalSet] = useState<PrincipalSpec[]>([]);
 
   const capabilities = projection.state?.capabilities ?? [];
   const hasPolicyPlane = capabilities.includes(ACCESS_POLICY_CAPABILITY);
@@ -90,6 +102,16 @@ export function AccessPolicyConsole() {
   const scopeMap = projection.state?.scope ?? {};
   const scopes = useMemo(() => Object.values(scopeMap), [scopeMap]);
   const principals = useMemo(() => scopes.map((s) => s.agent_id).sort(), [scopes]);
+
+  // Principals with no agent scope: people bound to an entry point, group members
+  // and policy-link targets. They are exactly what this pane could never show,
+  // because they have no scope row to render — and a person granted reach who is
+  // invisible on the screen that lists who can reach things is the gap worth
+  // closing here.
+  const unscopedPrincipals = useMemo(
+    () => principalSet.filter((p) => !scopeMap[p.id]).sort((a, b) => a.id.localeCompare(b.id)),
+    [principalSet, scopeMap],
+  );
   const role = projection.state?.role ?? null;
 
   const vocabulary = useVocabulary(hasPolicyPlane);
@@ -97,11 +119,18 @@ export function AccessPolicyConsole() {
   const reloadPolicyData = useCallback(async () => {
     if (!hasPolicyPlane) return;
     try {
-      const [g, p, ing] = await Promise.all([
+      const [g, p, ing, principals] = await Promise.all([
         ipc.listGroups(),
         ipc.listPolicies(),
         ipc.listIngresses().catch(() => [] as IngressSpec[]),
+        // The console cannot derive this itself: a principal is not registered
+        // anywhere, and only the kernel sees all four sources it comes from —
+        // the agent registry, group membership, policy links and identity
+        // bindings. Deriving the list from agent scopes, which is what this pane
+        // did, can only ever show agents.
+        ipc.listPrincipals().catch(() => [] as PrincipalSpec[]),
       ]);
+      setPrincipalSet(principals);
       setGroups(g);
       setPolicies(p);
       setIngresses(ing);
@@ -118,7 +147,7 @@ export function AccessPolicyConsole() {
     void reloadPolicyData();
   }, [reloadPolicyData]);
 
-  const tab = search.tab ?? 'principals';
+  const tab = search.tab ?? 'overview';
 
   const filtered = useMemo(() => filterScopes(scopes, filters), [scopes, filters]);
   const isFiltered = filters.search.trim() !== '';
@@ -148,18 +177,50 @@ export function AccessPolicyConsole() {
     <Tabs value={tab} onValueChange={setTab} className="flex h-full min-h-0 flex-col">
       <div className="flex items-center gap-3 border-b border-[var(--border-subtle)] px-4 py-2">
         <TabsList>
+          {/* Coverage first: whether a boundary exists is a different question
+              from whether it covers anything, and only the second one tells an
+              operator what to do next. */}
+          <TabsTrigger value="overview">Overview</TabsTrigger>
+          {/* 7g: the five-pane job threaded, so an operator can see where they
+              are in it and whether they finished. */}
+          <TabsTrigger value="task">Guided task</TabsTrigger>
           <TabsTrigger value="principals">Principals</TabsTrigger>
           <TabsTrigger value="explain">Explain</TabsTrigger>
-          <TabsTrigger value="policies">Policies</TabsTrigger>
-          <TabsTrigger value="groups">Groups</TabsTrigger>
-          <TabsTrigger value="ingress">Ingress</TabsTrigger>
-          <TabsTrigger value="labels">Labels</TabsTrigger>
-          <TabsTrigger value="propose">Assistant</TabsTrigger>
-          <TabsTrigger value="rollout">Rollout</TabsTrigger>
+          {/* The flagship authoring surface: a ScopeRule written as a sentence.
+              It sits next to Explain because authoring and verifying are the two
+              halves of the same job — "saved" and "working" are different claims
+              in a fail-closed system. */}
+          {/* Everything past this rule needs the premium access-policy plane.
+              On a kernel without it these RPCs answer Unimplemented, so the tabs
+              are removed rather than rendered dead — a nav item that leads to a
+              broken pane is worse than an absent one (ADR-0082 D2). */}
+          {hasPolicyPlane && (
+            <>
+              <span
+                aria-hidden="true"
+                className="mx-1 h-4 w-px self-center bg-[var(--border-strong)]"
+              />
+              <TabsTrigger value="rule">Rule</TabsTrigger>
+              <TabsTrigger value="reachability">Reachability</TabsTrigger>
+              <TabsTrigger value="surfaces">Surfaces</TabsTrigger>
+              <TabsTrigger value="policies">Policies</TabsTrigger>
+              <TabsTrigger value="groups">Groups</TabsTrigger>
+              <TabsTrigger value="ingress">Ingress</TabsTrigger>
+              <TabsTrigger value="labels">Labels</TabsTrigger>
+              <TabsTrigger value="propose">Assistant</TabsTrigger>
+              <TabsTrigger value="rollout">Rollout</TabsTrigger>
+            </>
+          )}
         </TabsList>
-        {!hasPolicyPlane && (
+        {hasPolicyPlane ? (
           <span className="text-xs text-[var(--fg-muted)]">
-            Unscoped kernel — every principal reads everything.
+            The nine to the right of the rule are premium — they render only when the handshake
+            says so.
+          </span>
+        ) : (
+          <span className="text-xs text-[var(--fg-muted)]">
+            Unscoped kernel — every principal reads everything, and the premium authoring panes
+            are absent rather than broken.
           </span>
         )}
       </div>
@@ -171,10 +232,10 @@ export function AccessPolicyConsole() {
             <ScrollArea className="flex-1 border-r border-[var(--border-subtle)]">
               {filtered.length === 0 ? (
                 <EmptyState
-                  title={scopes.length === 0 ? 'No principals' : 'No principals match the filters'}
+                  title={scopes.length === 0 ? 'No scoped agents' : 'No principals match the filters'}
                   body={
                     scopes.length === 0
-                      ? 'Principals appear here when agents are registered.'
+                      ? 'Agents with an access scope appear here. People bound to an entry point are listed below — they are principals too, and their reach comes from policy rather than a scope.'
                       : 'Adjust or reset the filters to see more.'
                   }
                   action={
@@ -208,6 +269,50 @@ export function AccessPolicyConsole() {
                     </li>
                   ))}
                 </ul>
+              )}
+
+              {unscopedPrincipals.length > 0 && (
+                <div className="border-t border-[var(--border-subtle)] p-3">
+                  <h3 className="font-mono text-[9.5px] uppercase tracking-[0.14em] text-[var(--fg-muted)]">
+                    Not agents — {unscopedPrincipals.length}
+                  </h3>
+                  <p className="mt-1 text-[11.5px] leading-[1.5] text-[var(--fg-muted)]">
+                    People and groups this deployment resolves traffic to. They have no agent
+                    scope, so their reach comes from the policies linked to them.
+                  </p>
+                  <ul role="list" aria-label="Other principals" className="mt-2 flex flex-col gap-1.5">
+                    {unscopedPrincipals.map((p) => (
+                      <li key={p.id} className="flex flex-wrap items-baseline gap-2 text-[12px]">
+                        <span className="text-[var(--fg-primary)]">{p.display_name || p.id}</span>
+                        <span className="font-mono text-[10px] text-[var(--fg-muted)]">
+                          {p.kind}
+                        </span>
+                        {/* Where the row came from. A derived list that cannot say
+                            that is one an operator has to take on faith. */}
+                        {p.sources.map((src: string) => (
+                          <span
+                            key={src}
+                            className="font-mono text-[10px] text-[var(--color-accent-400)]"
+                          >
+                            {src}
+                          </span>
+                        ))}
+                        {p.has_direct_policy && (
+                          <span className="text-[10.5px] text-[var(--fg-secondary)]">
+                            has a policy of its own
+                          </span>
+                        )}
+                        {/* A policy pointing at nobody is indistinguishable from a
+                            working boundary everywhere else in the console. */}
+                        {p.orphaned && (
+                          <span className="text-[10.5px] text-[var(--status-warn)]">
+                            nothing registers this — any policy on it applies to nobody
+                          </span>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
               )}
             </ScrollArea>
 
@@ -243,6 +348,63 @@ export function AccessPolicyConsole() {
       {/* ADR-0089: the premium tabs render inside PluginSurface, so plugin version
           skew is reported by construction rather than by each pane remembering to
           check. The absent state keeps the copy this console already had. */}
+      <TabsContent value="overview" className="min-h-0 flex-1">
+        <ScrollArea className="h-full">
+          <ScopeLandingPane onGo={setTab} />
+        </ScrollArea>
+      </TabsContent>
+
+      <TabsContent value="reachability" className="min-h-0 flex-1">
+        <PluginSurface
+          pluginId={ACCESS_POLICY_PLUGIN_ID}
+          capability={ACCESS_POLICY_CAPABILITY}
+          absent={<PluginOff subject="Reachability" />}
+        >
+          <ReachabilityPane vocabulary={vocabulary} />
+        </PluginSurface>
+      </TabsContent>
+
+      {/* The surface registry is not premium-gated: an ingress mints a surface
+          on any kernel, and a surface with policy linked but nothing
+          registering it is exactly the fault an OSS operator needs to see. */}
+      <TabsContent value="task" className="min-h-0 flex-1">
+        <PluginSurface
+          pluginId={ACCESS_POLICY_PLUGIN_ID}
+          capability={ACCESS_POLICY_CAPABILITY}
+          absent={<PluginOff subject="Guided task" />}
+        >
+          <ScrollArea className="h-full">
+            <GuidedTaskPane vocabulary={vocabulary} canMutate={role === 'operator'} />
+          </ScrollArea>
+        </PluginSurface>
+      </TabsContent>
+
+      <TabsContent value="surfaces" className="min-h-0 flex-1">
+        <SurfaceRegistryPane onGo={setTab} />
+      </TabsContent>
+
+      <TabsContent value="rule" className="min-h-0 flex-1">
+        <PluginSurface
+          pluginId={ACCESS_POLICY_PLUGIN_ID}
+          capability={ACCESS_POLICY_CAPABILITY}
+          absent={<PluginOff subject="Rule authoring" />}
+        >
+          <ScrollArea className="h-full">
+            <div className="p-4">
+              <RuleEditorPane
+                vocabulary={vocabulary}
+                canMutate={role === 'operator'}
+                disabledReason={
+                  role === 'operator'
+                    ? undefined
+                    : 'Operator role required to author a policy.'
+                }
+              />
+            </div>
+          </ScrollArea>
+        </PluginSurface>
+      </TabsContent>
+
       <TabsContent value="policies" className="min-h-0 flex-1">
         <PluginSurface
           pluginId={ACCESS_POLICY_PLUGIN_ID}
@@ -297,7 +459,7 @@ export function AccessPolicyConsole() {
           capability={ACCESS_POLICY_CAPABILITY}
           absent={<PluginOff subject="Policy drafting" />}
         >
-          <ProposePane role={role} onChanged={() => void reloadPolicyData()} />
+          <ProposePane role={role} onChanged={() => void reloadPolicyData()} vocabulary={vocabulary} />
         </PluginSurface>
       </TabsContent>
 

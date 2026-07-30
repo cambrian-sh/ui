@@ -38,12 +38,17 @@ export const SHORTCUTS: Shortcut[] = [
   { keys: '?', label: 'Open shortcut palette', scope: 'global' },
 ];
 
+// The bindings are unchanged — they simply stopped being drawn at 10px next to
+// every rail label, and are looked up here, in the palette and the shortcut
+// sheet instead.
 export const NAV_SHORTCUTS: Array<{ keys: string; label: string; path: string }> = [
-  { keys: 'g s', label: 'Go to Sessions', path: '/sessions' },
+  { keys: 'g n', label: 'Go to Now', path: '/' },
+  { keys: 'g i', label: 'Go to Inbox', path: '/inbox' },
+  { keys: 'g s', label: 'Go to Tasks', path: '/tasks' },
   { keys: 'g p', label: 'Go to Plans', path: '/plans' },
-  { keys: 'g a', label: 'Go to Agents', path: '/agents' },
-  { keys: 'g t', label: 'Go to Tools', path: '/tools' },
-  { keys: 'g m', label: 'Go to MCP', path: '/mcp' },
+  { keys: 'g a', label: 'Go to Runtime — Agents', path: '/agents' },
+  { keys: 'g t', label: 'Go to Runtime — Tools & Skills', path: '/tools' },
+  { keys: 'g m', label: 'Go to Runtime — MCP', path: '/mcp' },
   { keys: 'g y', label: 'Go to Memory', path: '/memory' },
   { keys: 'g o', label: 'Go to Scope', path: '/scope' },
   { keys: 'g w', label: 'Go to Watch', path: '/watch' },

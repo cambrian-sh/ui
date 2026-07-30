@@ -28,12 +28,30 @@ export function LifecycleConsole() {
 
   const getSchedulerStateColor = (state: string) => {
     switch (state) {
-      case 'idle': return 'var(--status-ok)';
+      case 'idle': return 'var(--status-live)';
       case 'consolidating': return 'var(--status-warn)';
-      case 'dormant': return 'var(--fg-muted)';
-      default: return 'var(--fg-muted)';
+      case 'dormant': return 'var(--status-idle)';
+      default: return 'var(--status-idle)';
     }
   };
+
+  // The bare word is a state name, not information: it does not say what is
+  // affected while it holds. "Consolidating" in particular means writes queue.
+  const schedulerSentence = (state: string): string => {
+    switch (state) {
+      case 'consolidating':
+        return 'A consolidation pass is running. Memory writes queue until it finishes; reads are unaffected.';
+      case 'idle':
+        return 'Nothing is scheduled. Agents consolidate on their own cadence.';
+      case 'dormant':
+        return 'The scheduler is parked. Dormant agents wake on their next bid, not on a timer.';
+      default:
+        return 'The scheduler has not reported a state yet.';
+    }
+  };
+
+  const isConsolidating = lifecycle.scheduler_state === 'consolidating';
+  const last = lifecycle.last_consolidation;
 
   return (
     <div className="flex h-full flex-col gap-6 p-6 overflow-y-auto">
@@ -51,17 +69,23 @@ export function LifecycleConsole() {
             <CardTitle className="text-sm font-medium">Scheduler State</CardTitle>
             <CardDescription>Current status of the lifecycle scheduler</CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="flex flex-col gap-2">
             <div className="flex items-center gap-2">
-              <div 
-                className="h-3 w-3 rounded-full" 
+              <div
+                className={`h-3 w-3 rounded-full${isConsolidating ? ' cambrian-live-pulse' : ''}`}
                 style={{ backgroundColor: getSchedulerStateColor(lifecycle.scheduler_state) }}
                 aria-hidden="true"
               />
-              <span className="text-2xl font-semibold capitalize" data-testid="scheduler-state">
+              <span
+                className="text-[22px] font-medium capitalize leading-[1.2] tracking-[-0.02em]"
+                data-testid="scheduler-state"
+              >
                 {lifecycle.scheduler_state}
               </span>
             </div>
+            <p className="text-[12.5px] leading-[1.5] text-[var(--fg-secondary)]">
+              {schedulerSentence(lifecycle.scheduler_state)}
+            </p>
           </CardContent>
         </Card>
 
@@ -70,10 +94,18 @@ export function LifecycleConsole() {
             <CardTitle className="text-sm font-medium">Pending Jobs</CardTitle>
             <CardDescription>Jobs waiting to be processed</CardDescription>
           </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-semibold tabular-nums" data-testid="pending-jobs">
+          <CardContent className="flex flex-col gap-2">
+            <div
+              className="font-mono text-[22px] font-medium leading-[1.2] tracking-[-0.02em] tabular-nums"
+              data-testid="pending-jobs"
+            >
               {lifecycle.pending_jobs}
             </div>
+            <p className="text-[12.5px] text-[var(--fg-muted)]">
+              {lifecycle.pending_jobs === 0
+                ? 'Nothing queued.'
+                : 'Queued behind the scheduler. They run in order, not in parallel.'}
+            </p>
           </CardContent>
         </Card>
 
@@ -145,12 +177,22 @@ export function LifecycleConsole() {
             <CardDescription>Manual lifecycle controls</CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
-            <p className="text-sm text-[var(--fg-muted)]">
-              Force a full consolidation pass across all agents. This is an expensive operation.
+            <p className="text-[12.5px] leading-[1.55] text-[var(--fg-secondary)]">
+              Force a full consolidation pass across every agent.
+              {/* State the price BEFORE the button, not after the click. "This is
+                  expensive" is not a price; a duration from the last run is. */}
+              {last
+                ? ` The last one took ${formatDuration(last.duration_ms)}, during which memory writes queued.`
+                : ' No pass has run yet, so there is no measured duration to quote — expect writes to queue while it runs.'}
             </p>
-            <TriggerConsolidation isOperator={isOperator} />
+            <TriggerConsolidation isOperator={isOperator && !isConsolidating} />
+            {isConsolidating && (
+              <p className="text-center text-xs text-[var(--status-warn)]">
+                A pass is already running.
+              </p>
+            )}
             {!isOperator && (
-              <p className="text-xs text-[var(--status-warn)] text-center">
+              <p className="text-center text-xs text-[var(--status-warn)]">
                 Operator role required
               </p>
             )}

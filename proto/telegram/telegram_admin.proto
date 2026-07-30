@@ -27,9 +27,76 @@ service TelegramAdmin {
   // SetEnabled starts or stops the ingress. Enabling without a token is refused with a
   // reason rather than silently doing nothing.
   rpc SetEnabled(SetEnabledRequest) returns (AckResponse);
+
+  // ── Multiple bots (contract 0081) ─────────────────────────────────────────
+  //
+  // Each bot is its OWN entry point: its own credential, its own daemon, its own
+  // registered surface. That is the point rather than an implementation detail —
+  // a support bot the public can find and an internal bot for the team should be
+  // governable apart, and one shared surface would give them identical reach.
+  //
+  // One daemon per bot, because Telegram permits exactly one poller per token: a
+  // second poller on the same credential is answered with 409 and neither makes
+  // progress. It also keeps one bot's crash-loop from stopping the others.
+  rpc ListBots(ListBotsRequest) returns (ListBotsResponse);
+  // AddBot registers a new bot. It does NOT mint the surface — registering an
+  // ingress is policy-grade authority and stays an operator action on the authz
+  // admin plane (ADR-0090 D2). This reports the surface the bot WILL use so an
+  // operator can go and register it.
+  rpc AddBot(AddBotRequest) returns (AckResponse);
+  // RemoveBot stops a bot and forgets its credential. Destructive, so it carries
+  // a mandatory reason.
+  rpc RemoveBot(RemoveBotRequest) returns (AckResponse);
 }
 
-message GetStatusRequest {}
+// BotSpec is one configured bot.
+message BotSpec {
+  // id is the stable key, chosen by the operator ("support", "internal"). It is
+  // part of the surface and of the agent principal, so it never changes for a
+  // configured bot — renaming would silently move which policy applies.
+  string id = 1;
+  // label is a human name. Free to change; nothing hangs on it.
+  string label = 2;
+  string surface = 3;
+  // agent_id is the principal this bot's daemon runs as. Distinct per bot, which
+  // is what makes a per-bot surface possible at all: a signal's sender is the
+  // agent id, and the ingress registry maps that agent to its surface.
+  string agent_id = 4;
+  bool token_configured = 5;
+  bool enabled = 6;
+  bool running = 7;
+  string bot_username = 8;
+  // state is "off" | "no_token" | "starting" | "running" | "error".
+  string state = 9;
+  string detail = 10;
+  // surface_registered reports whether an ingress registration exists for this
+  // bot's surface. FALSE means messages arrive with no policy attached to the
+  // door they came through — the console must say so rather than showing a
+  // healthy-looking bot that nothing governs.
+  bool surface_registered = 11;
+}
+
+message ListBotsRequest {}
+message ListBotsResponse { repeated BotSpec bots = 1; }
+
+message AddBotRequest {
+  string id = 1;
+  string label = 2;
+  // token may be supplied at creation. Optional: a bot with no credential is a
+  // valid, visible, stopped state rather than an error.
+  string token = 3;
+}
+
+message RemoveBotRequest {
+  string id = 1;
+  string reason = 2;
+}
+
+// bot_id selects which bot the call is about. EMPTY means the default bot, so a
+// console built before multiple bots existed keeps working unchanged.
+message GetStatusRequest {
+  string bot_id = 1;
+}
 
 message ClearTokenRequest {
   // reason is MANDATORY for this call. Removing the credential stops the ingress and
@@ -37,15 +104,18 @@ message ClearTokenRequest {
   // who decided that and why — the same discipline the operator plane applies to any
   // destructive command.
   string reason = 1;
+  string bot_id = 2;
 }
 
 message SetTokenRequest {
   // token is the BotFather credential. Write-only; see the service comment.
   string token = 1;
+  string bot_id = 2;
 }
 
 message SetEnabledRequest {
   bool enabled = 1;
+  string bot_id = 2;
 }
 
 // TelegramStatus is deliberately shaped so that everything in it is safe to display.
@@ -75,6 +145,15 @@ message TelegramStatus {
   // that mention it in groups. Surfaced because it silently changes behaviour and can
   // only be altered in BotFather, not here.
   bool privacy_mode = 9;
+  // bot_id identifies which bot this status is for (contract 0081).
+  string bot_id = 10;
+  string label = 11;
+  // agent_id is the principal the daemon runs as — the id the ingress registry
+  // maps to this bot's surface.
+  string agent_id = 12;
+  // surface_registered reports whether an ingress registration exists for this
+  // bot's surface. False ⇒ traffic arrives with no policy on the door.
+  bool surface_registered = 13;
 }
 
 message AckResponse {

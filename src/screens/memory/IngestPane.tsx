@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Upload } from 'lucide-react';
 import { open } from '@tauri-apps/plugin-dialog';
 import { ipc } from '@/ipc';
 import type { IngestFileParams, IngestMemoryParams } from '@/ipc/types';
@@ -197,14 +198,24 @@ export function IngestPane({
           </button>
         </div>
       ) : (
+        // The drop target leads the pane. Ingest is the reason this pane
+        // exists, and it used to sit at the same weight as the reason field.
         <div
           className={cn(
-            'flex flex-col items-center justify-center gap-2 rounded-sm border border-dashed border-[var(--border-strong)] bg-[var(--bg-surface)] p-6 text-center',
+            'flex flex-col items-center justify-center gap-2 rounded-[var(--radius-lg)] p-[22px_16px] text-center',
+            'tint-wash tint-ring',
             disabled && 'opacity-50',
           )}
+          style={{ '--tint': 'var(--accent-bg)' } as React.CSSProperties}
         >
-          <p className="text-[11px] text-[var(--fg-secondary)]">
-            Choose files — the app reads them natively, so large documents are fine.
+          <Upload
+            aria-hidden="true"
+            size={24}
+            strokeWidth={1.75}
+            className="text-[var(--color-accent-400)]"
+          />
+          <p className="text-[12.5px] text-[var(--fg-secondary)]">
+            Drop documents here, or
           </p>
           <button
             type="button"
@@ -212,12 +223,17 @@ export function IngestPane({
             disabled={disabled}
             title={disabled ? disabledReason : undefined}
             aria-label="Choose files to ingest"
-            className="rounded-sm border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-3 py-1 text-[11px] text-[var(--fg-primary)] hover:bg-[var(--bg-surface)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)] disabled:cursor-not-allowed"
+            className="rounded-md border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-3 py-1.5 text-[12px] text-[var(--fg-primary)] hover:bg-[var(--bg-surface)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)] disabled:cursor-not-allowed"
           >
             Choose files…
           </button>
+          {/* The picker hands the core a path and the core reads the bytes —
+              the webview never holds them, so document size is not a limit. */}
+          <p className="text-[11px] text-[var(--fg-muted)]">
+            or paste text instead. The app reads files natively, so large documents are fine.
+          </p>
           {pickError && (
-            <p role="alert" className="text-[10px] text-[var(--status-err)]">
+            <p role="alert" className="text-[11px] text-[var(--status-err)]">
               {pickError}
             </p>
           )}
@@ -315,12 +331,23 @@ export function IngestPane({
               label="Labels"
               hint="What this document is. Rules are written about these, so a document with none is unreachable by any rule."
             />
+            {/* This is a deny-by-default outcome with no operator exemption. It
+                was 10px grey text, which is how an operator locks themselves
+                out of a document without noticing. */}
             {closedSelected.length > 0 && (
-              <p role="status" className="text-[10px] text-[var(--color-status-warn)]">
-                {closedSelected.join(', ')} {closedSelected.length === 1 ? 'is' : 'are'} closed.
-                This document will be deny-by-default for everyone — including you, from this
-                console — until a policy grants it.
-              </p>
+              <div
+                role="status"
+                className="flex flex-col gap-1 rounded-md p-2.5 tint-wash tint-ring"
+                style={{ '--tint': 'var(--status-warn)' } as React.CSSProperties}
+              >
+                <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-[var(--status-warn)]">
+                  {closedSelected.join(', ')} {closedSelected.length === 1 ? 'is a closed label' : 'are closed labels'}
+                </span>
+                <span className="text-[12px] leading-[1.5] text-[var(--fg-primary)]">
+                  This document will be deny-by-default for everyone — including you, from this
+                  console — until a policy grants it. There is no operator exemption.
+                </span>
+              </div>
             )}
           </div>
         )}

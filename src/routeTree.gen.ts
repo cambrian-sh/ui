@@ -12,19 +12,23 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as WatchRouteImport } from './routes/watch'
 import { Route as VerifierRouteImport } from './routes/verifier'
 import { Route as ToolsRouteImport } from './routes/tools'
+import { Route as TelegramRouteImport } from './routes/telegram'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as ScopeRouteImport } from './routes/scope'
+import { Route as PluginsRouteImport } from './routes/plugins'
 import { Route as PlansRouteImport } from './routes/plans'
+import { Route as PlanBuilderRouteImport } from './routes/plan-builder'
 import { Route as MemoryRouteImport } from './routes/memory'
 import { Route as McpRouteImport } from './routes/mcp'
 import { Route as LifecycleRouteImport } from './routes/lifecycle'
+import { Route as InboxRouteImport } from './routes/inbox'
 import { Route as CostRouteImport } from './routes/cost'
 import { Route as ChatRouteImport } from './routes/chat'
 import { Route as AuditRouteImport } from './routes/audit'
 import { Route as AgentsRouteImport } from './routes/agents'
 import { Route as IndexRouteImport } from './routes/index'
-import { Route as SessionsIndexRouteImport } from './routes/sessions/index'
-import { Route as SessionsSessionIdRouteImport } from './routes/sessions/$sessionId'
+import { Route as TasksIndexRouteImport } from './routes/tasks/index'
+import { Route as TasksTaskIdRouteImport } from './routes/tasks/$taskId'
 
 const WatchRoute = WatchRouteImport.update({
   id: '/watch',
@@ -41,6 +45,11 @@ const ToolsRoute = ToolsRouteImport.update({
   path: '/tools',
   getParentRoute: () => rootRouteImport,
 } as any)
+const TelegramRoute = TelegramRouteImport.update({
+  id: '/telegram',
+  path: '/telegram',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SettingsRoute = SettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
@@ -51,9 +60,19 @@ const ScopeRoute = ScopeRouteImport.update({
   path: '/scope',
   getParentRoute: () => rootRouteImport,
 } as any)
+const PluginsRoute = PluginsRouteImport.update({
+  id: '/plugins',
+  path: '/plugins',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const PlansRoute = PlansRouteImport.update({
   id: '/plans',
   path: '/plans',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PlanBuilderRoute = PlanBuilderRouteImport.update({
+  id: '/plan-builder',
+  path: '/plan-builder',
   getParentRoute: () => rootRouteImport,
 } as any)
 const MemoryRoute = MemoryRouteImport.update({
@@ -69,6 +88,11 @@ const McpRoute = McpRouteImport.update({
 const LifecycleRoute = LifecycleRouteImport.update({
   id: '/lifecycle',
   path: '/lifecycle',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const InboxRoute = InboxRouteImport.update({
+  id: '/inbox',
+  path: '/inbox',
   getParentRoute: () => rootRouteImport,
 } as any)
 const CostRoute = CostRouteImport.update({
@@ -96,14 +120,14 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
-const SessionsIndexRoute = SessionsIndexRouteImport.update({
-  id: '/sessions/',
-  path: '/sessions/',
+const TasksIndexRoute = TasksIndexRouteImport.update({
+  id: '/tasks/',
+  path: '/tasks/',
   getParentRoute: () => rootRouteImport,
 } as any)
-const SessionsSessionIdRoute = SessionsSessionIdRouteImport.update({
-  id: '/sessions/$sessionId',
-  path: '/sessions/$sessionId',
+const TasksTaskIdRoute = TasksTaskIdRouteImport.update({
+  id: '/tasks/$taskId',
+  path: '/tasks/$taskId',
   getParentRoute: () => rootRouteImport,
 } as any)
 
@@ -113,17 +137,21 @@ export interface FileRoutesByFullPath {
   '/audit': typeof AuditRoute
   '/chat': typeof ChatRoute
   '/cost': typeof CostRoute
+  '/inbox': typeof InboxRoute
   '/lifecycle': typeof LifecycleRoute
   '/mcp': typeof McpRoute
   '/memory': typeof MemoryRoute
+  '/plan-builder': typeof PlanBuilderRoute
   '/plans': typeof PlansRoute
+  '/plugins': typeof PluginsRoute
   '/scope': typeof ScopeRoute
   '/settings': typeof SettingsRoute
+  '/telegram': typeof TelegramRoute
   '/tools': typeof ToolsRoute
   '/verifier': typeof VerifierRoute
   '/watch': typeof WatchRoute
-  '/sessions/$sessionId': typeof SessionsSessionIdRoute
-  '/sessions/': typeof SessionsIndexRoute
+  '/tasks/$taskId': typeof TasksTaskIdRoute
+  '/tasks/': typeof TasksIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -131,17 +159,21 @@ export interface FileRoutesByTo {
   '/audit': typeof AuditRoute
   '/chat': typeof ChatRoute
   '/cost': typeof CostRoute
+  '/inbox': typeof InboxRoute
   '/lifecycle': typeof LifecycleRoute
   '/mcp': typeof McpRoute
   '/memory': typeof MemoryRoute
+  '/plan-builder': typeof PlanBuilderRoute
   '/plans': typeof PlansRoute
+  '/plugins': typeof PluginsRoute
   '/scope': typeof ScopeRoute
   '/settings': typeof SettingsRoute
+  '/telegram': typeof TelegramRoute
   '/tools': typeof ToolsRoute
   '/verifier': typeof VerifierRoute
   '/watch': typeof WatchRoute
-  '/sessions/$sessionId': typeof SessionsSessionIdRoute
-  '/sessions': typeof SessionsIndexRoute
+  '/tasks/$taskId': typeof TasksTaskIdRoute
+  '/tasks': typeof TasksIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -150,17 +182,21 @@ export interface FileRoutesById {
   '/audit': typeof AuditRoute
   '/chat': typeof ChatRoute
   '/cost': typeof CostRoute
+  '/inbox': typeof InboxRoute
   '/lifecycle': typeof LifecycleRoute
   '/mcp': typeof McpRoute
   '/memory': typeof MemoryRoute
+  '/plan-builder': typeof PlanBuilderRoute
   '/plans': typeof PlansRoute
+  '/plugins': typeof PluginsRoute
   '/scope': typeof ScopeRoute
   '/settings': typeof SettingsRoute
+  '/telegram': typeof TelegramRoute
   '/tools': typeof ToolsRoute
   '/verifier': typeof VerifierRoute
   '/watch': typeof WatchRoute
-  '/sessions/$sessionId': typeof SessionsSessionIdRoute
-  '/sessions/': typeof SessionsIndexRoute
+  '/tasks/$taskId': typeof TasksTaskIdRoute
+  '/tasks/': typeof TasksIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -170,17 +206,21 @@ export interface FileRouteTypes {
     | '/audit'
     | '/chat'
     | '/cost'
+    | '/inbox'
     | '/lifecycle'
     | '/mcp'
     | '/memory'
+    | '/plan-builder'
     | '/plans'
+    | '/plugins'
     | '/scope'
     | '/settings'
+    | '/telegram'
     | '/tools'
     | '/verifier'
     | '/watch'
-    | '/sessions/$sessionId'
-    | '/sessions/'
+    | '/tasks/$taskId'
+    | '/tasks/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -188,17 +228,21 @@ export interface FileRouteTypes {
     | '/audit'
     | '/chat'
     | '/cost'
+    | '/inbox'
     | '/lifecycle'
     | '/mcp'
     | '/memory'
+    | '/plan-builder'
     | '/plans'
+    | '/plugins'
     | '/scope'
     | '/settings'
+    | '/telegram'
     | '/tools'
     | '/verifier'
     | '/watch'
-    | '/sessions/$sessionId'
-    | '/sessions'
+    | '/tasks/$taskId'
+    | '/tasks'
   id:
     | '__root__'
     | '/'
@@ -206,17 +250,21 @@ export interface FileRouteTypes {
     | '/audit'
     | '/chat'
     | '/cost'
+    | '/inbox'
     | '/lifecycle'
     | '/mcp'
     | '/memory'
+    | '/plan-builder'
     | '/plans'
+    | '/plugins'
     | '/scope'
     | '/settings'
+    | '/telegram'
     | '/tools'
     | '/verifier'
     | '/watch'
-    | '/sessions/$sessionId'
-    | '/sessions/'
+    | '/tasks/$taskId'
+    | '/tasks/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -225,17 +273,21 @@ export interface RootRouteChildren {
   AuditRoute: typeof AuditRoute
   ChatRoute: typeof ChatRoute
   CostRoute: typeof CostRoute
+  InboxRoute: typeof InboxRoute
   LifecycleRoute: typeof LifecycleRoute
   McpRoute: typeof McpRoute
   MemoryRoute: typeof MemoryRoute
+  PlanBuilderRoute: typeof PlanBuilderRoute
   PlansRoute: typeof PlansRoute
+  PluginsRoute: typeof PluginsRoute
   ScopeRoute: typeof ScopeRoute
   SettingsRoute: typeof SettingsRoute
+  TelegramRoute: typeof TelegramRoute
   ToolsRoute: typeof ToolsRoute
   VerifierRoute: typeof VerifierRoute
   WatchRoute: typeof WatchRoute
-  SessionsSessionIdRoute: typeof SessionsSessionIdRoute
-  SessionsIndexRoute: typeof SessionsIndexRoute
+  TasksTaskIdRoute: typeof TasksTaskIdRoute
+  TasksIndexRoute: typeof TasksIndexRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -261,6 +313,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ToolsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/telegram': {
+      id: '/telegram'
+      path: '/telegram'
+      fullPath: '/telegram'
+      preLoaderRoute: typeof TelegramRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/settings': {
       id: '/settings'
       path: '/settings'
@@ -275,11 +334,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ScopeRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/plugins': {
+      id: '/plugins'
+      path: '/plugins'
+      fullPath: '/plugins'
+      preLoaderRoute: typeof PluginsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/plans': {
       id: '/plans'
       path: '/plans'
       fullPath: '/plans'
       preLoaderRoute: typeof PlansRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/plan-builder': {
+      id: '/plan-builder'
+      path: '/plan-builder'
+      fullPath: '/plan-builder'
+      preLoaderRoute: typeof PlanBuilderRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/memory': {
@@ -301,6 +374,13 @@ declare module '@tanstack/react-router' {
       path: '/lifecycle'
       fullPath: '/lifecycle'
       preLoaderRoute: typeof LifecycleRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/inbox': {
+      id: '/inbox'
+      path: '/inbox'
+      fullPath: '/inbox'
+      preLoaderRoute: typeof InboxRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/cost': {
@@ -338,18 +418,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/sessions/': {
-      id: '/sessions/'
-      path: '/sessions'
-      fullPath: '/sessions/'
-      preLoaderRoute: typeof SessionsIndexRouteImport
+    '/tasks/': {
+      id: '/tasks/'
+      path: '/tasks'
+      fullPath: '/tasks/'
+      preLoaderRoute: typeof TasksIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/sessions/$sessionId': {
-      id: '/sessions/$sessionId'
-      path: '/sessions/$sessionId'
-      fullPath: '/sessions/$sessionId'
-      preLoaderRoute: typeof SessionsSessionIdRouteImport
+    '/tasks/$taskId': {
+      id: '/tasks/$taskId'
+      path: '/tasks/$taskId'
+      fullPath: '/tasks/$taskId'
+      preLoaderRoute: typeof TasksTaskIdRouteImport
       parentRoute: typeof rootRouteImport
     }
   }
@@ -361,17 +441,21 @@ const rootRouteChildren: RootRouteChildren = {
   AuditRoute: AuditRoute,
   ChatRoute: ChatRoute,
   CostRoute: CostRoute,
+  InboxRoute: InboxRoute,
   LifecycleRoute: LifecycleRoute,
   McpRoute: McpRoute,
   MemoryRoute: MemoryRoute,
+  PlanBuilderRoute: PlanBuilderRoute,
   PlansRoute: PlansRoute,
+  PluginsRoute: PluginsRoute,
   ScopeRoute: ScopeRoute,
   SettingsRoute: SettingsRoute,
+  TelegramRoute: TelegramRoute,
   ToolsRoute: ToolsRoute,
   VerifierRoute: VerifierRoute,
   WatchRoute: WatchRoute,
-  SessionsSessionIdRoute: SessionsSessionIdRoute,
-  SessionsIndexRoute: SessionsIndexRoute,
+  TasksTaskIdRoute: TasksTaskIdRoute,
+  TasksIndexRoute: TasksIndexRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

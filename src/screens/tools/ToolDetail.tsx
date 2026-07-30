@@ -1,3 +1,4 @@
+import { formatTokens } from '@/lib/format';
 import { useState } from 'react';
 import { ipc } from '@/ipc';
 import { projectionStore } from '@/store/projection';
@@ -15,7 +16,7 @@ import {
   TabsTrigger,
 } from '@/design-system/components';
 import { useMutation } from '@/lib/useMutation';
-import { ConfirmMutationDialog } from '@/screens/sessions/ConfirmMutationDialog';
+import { ConfirmMutationDialog } from '@/screens/tasks/ConfirmMutationDialog';
 import { ErrorState } from '@/design-system/components/cambrian/error-state';
 import { ToolEffects } from './ToolEffects';
 
@@ -131,7 +132,7 @@ export function ToolDetail({ toolId, role }: ToolDetailProps) {
           <div>
             <dt className="text-[var(--fg-muted)]">Last cost</dt>
             <dd className="tabular-nums text-[var(--fg-secondary)]">
-              ${tool.last_cost.toFixed(2)}
+              {formatTokens(tool.last_cost)} tok
             </dd>
           </div>
         </dl>

@@ -8,7 +8,7 @@
 use std::collections::HashMap;
 
 use chrono::Utc;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::pb;
 
@@ -87,7 +87,11 @@ fn plan_step_from_op(op: &pb::PlanStepOp) -> PlanStep {
         depends_on: op.depends_on.clone(),
         is_thought: op.is_thought,
         status: op.status.clone(),
-        agent: if op.agent.is_empty() { None } else { Some(op.agent.clone()) },
+        agent: if op.agent.is_empty() {
+            None
+        } else {
+            Some(op.agent.clone())
+        },
     }
 }
 
@@ -246,6 +250,26 @@ pub struct AgentSummary {
     pub trust_score: f64,
     pub last_activity_at: String,
     pub last_state: String,
+    /// The agent's DECLARED capabilities (contract 0072/0074).
+    ///
+    /// This is what makes route preview answerable in the UI at zero cost: the
+    /// L1 eligibility gate is set containment over declared capabilities, so the
+    /// console can compute the eligible set exactly rather than approximating
+    /// it. Merit RANKING is not reproducible here and is not attempted.
+    pub capabilities: Vec<String>,
+    /// Detail fields contract 0057 removed and 0074 restored.
+    pub description: String,
+    pub runtime: String,
+    pub exec_path: String,
+    pub manifest_version: String,
+    /// An agent whose capability claims have not been verified by an interview.
+    /// Routing treats it differently, so a console must be able to show it.
+    pub provisional: bool,
+    pub system: bool,
+    pub classification_tags: Vec<String>,
+    /// Most recent reported failure. A failing agent is otherwise
+    /// indistinguishable from an idle one.
+    pub last_error: String,
 }
 
 #[derive(Clone, Serialize, Default)]
@@ -306,6 +330,127 @@ pub struct WatchConfigSummary {
     pub last_fire_at: Option<String>,
     pub last_fire_status: String,
     pub error_count: i32,
+}
+
+/// One `WatchActionOp` — what an arm of a pipeline does.
+#[derive(Clone, Serialize, Deserialize, Default)]
+pub struct WatchAction {
+    pub r#type: String,
+    pub target_type: String,
+    pub target: String,
+    pub payload: String,
+}
+
+/// The WHOLE `WatchConfigOp`.
+///
+/// `WatchConfigSummary` above deliberately keeps only what the old list screen
+/// rendered, which meant the condition, the action, the debounce window, dry-run
+/// and the cron fields were all discarded at the transport boundary. The
+/// pipeline builder needs every one of them, so this carries the config
+/// unabridged rather than widening the summary and changing what existing
+/// screens receive.
+#[derive(Clone, Serialize, Deserialize, Default)]
+pub struct WatchConfigFull {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub source_type: String,
+    pub source_stream_id: String,
+    pub condition: String,
+    pub condition_type: String,
+    /// Source-specific parameters the daemon reads (e.g. a filesystem path).
+    pub daemon_params: std::collections::HashMap<String, String>,
+    pub action: WatchAction,
+    pub active: bool,
+    pub response_mode: String,
+    pub max_concurrent_plans: i32,
+    pub debounce_seconds: i32,
+    pub condition_payload_keys: Vec<String>,
+    /// REACT-03: the operator ack for a high-risk llm-condition watch.
+    pub approved: bool,
+    /// REACT-05: evaluate and record, never act.
+    pub dry_run: bool,
+    pub source_cron: String,
+    pub source_timezone: String,
+    pub missed_fire_policy: String,
+}
+
+#[derive(Clone, Serialize, Default)]
+pub struct WatchMetrics {
+    pub watch_id: String,
+    pub signals_seen: i64,
+    pub condition_fired: i64,
+    pub condition_suppressed: i64,
+    pub dry_run_would_fire: i64,
+    pub action_failed: i64,
+    pub dead_lettered: i64,
+    pub mean_condition_latency_ms: f64,
+}
+
+#[derive(Clone, Serialize, Default)]
+pub struct WatchDeadLetter {
+    pub id: String,
+    pub watch_id: String,
+    pub action_type: String,
+    pub key: String,
+    pub reason: String,
+    pub signal_stream_id: String,
+    pub signal_raw_text: String,
+    pub failed_at_unix_ms: i64,
+}
+
+/// One replayed signal from `BacktestWatch`. Never executes an arm.
+#[derive(Clone, Serialize, Default)]
+pub struct WatchBacktestVerdict {
+    pub seq: u64,
+    pub stream_id: String,
+    pub raw_text: String,
+    pub would_fire: bool,
+    pub eval_error: String,
+}
+
+// ============================================================================
+// ROUTE-07 / ADR-0077: route preview
+// ============================================================================
+
+/// A candidate profile supplied to `PreviewRoute`.
+///
+/// The RPC scores caller-supplied profiles so the preview is deterministic and
+/// needs no live fleet. That is why the console cannot answer "who would take
+/// this step" against the real registry without either a live-fleet mode on the
+/// RPC or the merit inputs on `AgentSummary` — see report.md §4.12.
+#[derive(Clone, Deserialize, Default)]
+pub struct PreviewCandidate {
+    pub agent_id: String,
+    pub trait_name: String,
+    pub success_rate: f64,
+    pub trust_score: f64,
+    pub network_latency_ms: i32,
+    pub computation_latency_ms: i32,
+    pub context_growth_bytes: i32,
+    pub provisional: bool,
+    pub avg_cost_per_task: f64,
+}
+
+#[derive(Clone, Serialize, Default)]
+pub struct PreviewRanked {
+    pub agent_id: String,
+    pub score: f64,
+    pub success_rate: f64,
+    pub trust_score: f64,
+    /// w3 * (1/normLatency) contribution.
+    pub latency_term: f64,
+    /// w4 * normalizedCost contribution — subtracted.
+    pub cost_term: f64,
+    /// Cold-start penalty applied.
+    pub provisional: bool,
+}
+
+#[derive(Clone, Serialize, Default)]
+pub struct PreviewRouteResult {
+    pub ranked: Vec<PreviewRanked>,
+    /// "hand_weights" | "learned_scorer" — which scorer produced this.
+    pub arm: String,
 }
 
 // ============================================================================
@@ -543,10 +688,29 @@ pub struct StateOfRecord {
     pub cost_dashboard: CostDashboard,
     /// Bounded tail of `MemoryWrittenOp`s — the ingest queue's status lane.
     pub memory_written: Vec<MemoryWrittenEvent>,
+    /// Plans that have gone terminal, newest first, bounded.
+    ///
+    /// `plans` is *Plans in Flight* and must drop a plan the moment it finishes,
+    /// or the list stops meaning what it says. But dropping it was also throwing
+    /// away the only record of HOW it ended: a finished plan and a plan that
+    /// never reported became the same observation — absent — so any surface
+    /// asking "how did my run go?" could only answer "still waiting".
+    pub completed_plans: Vec<PlanInFlight>,
+    /// Latest ADR-0098 progress snapshot per conversation (contract 0079).
+    ///
+    /// A map rather than a list because these SUPERSEDE: the console shows one
+    /// status line per conversation, and the newest snapshot is the only one
+    /// worth showing. It lives in the projection rather than on a side event
+    /// lane so navigating away from chat and back mid-turn does not lose the
+    /// indicator for a turn that is still running.
+    pub conversation_progress: HashMap<String, ConversationProgress>,
 }
 
 const AUDIT_TAIL_MAX: usize = 200;
 const MEMORY_WRITTEN_MAX: usize = 500;
+/// Enough to answer "how did the thing I just ran go?" for the runs still on
+/// screen. This is a courtesy tail, not history — Sessions holds the record.
+const COMPLETED_PLANS_MAX: usize = 50;
 
 impl StateOfRecord {
     /// Reset the live, feed-derived state (kept across a resync: connection/role
@@ -569,6 +733,10 @@ impl StateOfRecord {
         self.verifier_pool = VerifierPoolState::default();
         self.cost_dashboard = CostDashboard::default();
         self.memory_written.clear();
+        self.completed_plans.clear();
+        // Progress is live-only: a snapshot never carries it, and a resync means
+        // we cannot know whether the turn it described is still running.
+        self.conversation_progress.clear();
     }
 
     /// Apply a Snapshot's bounded live state and the capability/version handshake.
@@ -677,7 +845,38 @@ impl StateOfRecord {
         match payload {
             Payload::PlanState(p) => {
                 if p.terminal {
+                    // Carry the last known DAG forward. The terminal update is
+                    // allowed to arrive with no steps, and taking it literally
+                    // would blank a ladder we had been drawing for the whole run.
+                    let mut done = self
+                        .plans
+                        .iter()
+                        .find(|x| x.plan_id == p.plan_id)
+                        .cloned()
+                        .unwrap_or_else(|| PlanInFlight {
+                            session_id: p.session_id.clone(),
+                            plan_id: p.plan_id.clone(),
+                            ..Default::default()
+                        });
+                    done.status = p.status.clone();
+                    done.cost = p.cost_so_far;
+                    done.step_count = p.active_step;
+                    if !p.active_agent.is_empty() {
+                        done.active_agent = Some(p.active_agent.clone());
+                    }
+                    if !p.steps.is_empty() {
+                        done.steps = p.steps.iter().map(plan_step_from_op).collect();
+                    }
+                    if done.session_id.is_empty() {
+                        done.session_id = p.session_id.clone();
+                    }
+
                     self.plans.retain(|x| x.plan_id != p.plan_id);
+                    // Newest first, and idempotent: a re-delivered terminal event
+                    // must update the entry rather than stack a duplicate.
+                    self.completed_plans.retain(|x| x.plan_id != done.plan_id);
+                    self.completed_plans.insert(0, done);
+                    self.completed_plans.truncate(COMPLETED_PLANS_MAX);
                 } else if let Some(existing) =
                     self.plans.iter_mut().find(|x| x.plan_id == p.plan_id)
                 {
@@ -720,8 +919,10 @@ impl StateOfRecord {
             Payload::SessionState(st) => {
                 let created = ts_iso(&st.created_at);
                 let updated = ts_iso(&st.updated_at);
-                if let Some(existing) =
-                    self.sessions.iter_mut().find(|x| x.session_id == st.session_id)
+                if let Some(existing) = self
+                    .sessions
+                    .iter_mut()
+                    .find(|x| x.session_id == st.session_id)
                 {
                     existing.state = st.status.clone();
                     if !st.goal.is_empty() {
@@ -785,14 +986,52 @@ impl StateOfRecord {
                 }
             }
             Payload::AgentReady(a) => {
+                // Absolute state, folded by agent id (ADR-0047 D6). An absent
+                // field is NOT a cleared one: a producer that does not populate
+                // the 0074 detail fields must not blank what an earlier event
+                // already established, so each is only overwritten when present.
                 if let Some(existing) = self.agents.iter_mut().find(|x| x.id == a.agent_id) {
                     existing.trust_score = a.trust_score;
                     existing.last_activity_at = now_iso();
+                    if !a.capabilities.is_empty() {
+                        existing.capabilities = a.capabilities.clone();
+                    }
+                    if !a.description.is_empty() {
+                        existing.description = a.description.clone();
+                    }
+                    if !a.r#trait.is_empty() {
+                        existing.trait_ = a.r#trait.clone();
+                    }
+                    if !a.runtime.is_empty() {
+                        existing.runtime = a.runtime.clone();
+                    }
+                    if !a.exec_path.is_empty() {
+                        existing.exec_path = a.exec_path.clone();
+                    }
+                    if !a.manifest_version.is_empty() {
+                        existing.manifest_version = a.manifest_version.clone();
+                    }
+                    if !a.classification_tags.is_empty() {
+                        existing.classification_tags = a.classification_tags.clone();
+                    }
+                    existing.provisional = a.provisional;
+                    existing.system = a.system;
+                    existing.last_error = a.last_error.clone();
                 } else {
                     self.agents.push(AgentSummary {
                         id: a.agent_id.clone(),
+                        trait_: a.r#trait.clone(),
                         trust_score: a.trust_score,
                         last_activity_at: now_iso(),
+                        capabilities: a.capabilities.clone(),
+                        description: a.description.clone(),
+                        runtime: a.runtime.clone(),
+                        exec_path: a.exec_path.clone(),
+                        manifest_version: a.manifest_version.clone(),
+                        provisional: a.provisional,
+                        system: a.system,
+                        classification_tags: a.classification_tags.clone(),
+                        last_error: a.last_error.clone(),
                         ..Default::default()
                     });
                 }
@@ -812,6 +1051,30 @@ impl StateOfRecord {
                     self.memory_written.drain(0..drop);
                 }
             }
+            Payload::ConversationProgress(p) => {
+                // Ephemeral: seq is 0, so the cursor bump above is a no-op and
+                // this can never be replayed on resume. Deliberate — replaying
+                // "working on it" for a turn that ended an hour ago is worse
+                // than showing nothing.
+                if p.text.is_empty() {
+                    // Empty text is the CLEAR signal, not an empty status line.
+                    self.conversation_progress.remove(&p.conversation_id);
+                } else {
+                    self.conversation_progress.insert(
+                        p.conversation_id.clone(),
+                        ConversationProgress {
+                            conversation_id: p.conversation_id.clone(),
+                            text: p.text.clone(),
+                            phase: p.phase.clone(),
+                            step: p.step,
+                            total_steps: p.total_steps,
+                            r#final: p.r#final,
+                            updated_at_unix_ms: p.updated_at_unix_ms,
+                        },
+                    );
+                }
+            }
+
             Payload::WatchTriggered(w) => {
                 if let Some(existing) = self
                     .watch_configs
@@ -876,7 +1139,10 @@ mod tests {
         // Across the major line: the panels compiled here may be wrong.
         assert_eq!(pb::plugin_skew("authz", "2.0.0"), pb::PluginSkew::Major);
         // A plugin this console never pinned — unknown, not assumed compatible.
-        assert_eq!(pb::plugin_skew("telegram", "1.0.0"), pb::PluginSkew::Unknown);
+        assert_eq!(
+            pb::plugin_skew("telegram", "1.0.0"),
+            pb::PluginSkew::Unknown
+        );
         // An unreadable version is exactly when NOT to claim compatibility.
         assert_eq!(pb::plugin_skew("authz", "nightly"), pb::PluginSkew::Unknown);
         assert_eq!(pb::plugin_skew("authz", ""), pb::PluginSkew::Unknown);
@@ -910,7 +1176,10 @@ mod tests {
     fn an_oss_kernel_reports_no_plugins() {
         let mut st = StateOfRecord::default();
         st.apply_snapshot(&snapshot_with_plugins(vec![]));
-        assert!(st.plugins.is_empty(), "no plugins is a correct deployment, not a warning");
+        assert!(
+            st.plugins.is_empty(),
+            "no plugins is a correct deployment, not a warning"
+        );
         assert_eq!(st.contract_skew, 0);
     }
 
@@ -943,8 +1212,14 @@ mod tests {
                 session_id: id.to_string(),
                 status: status.to_string(),
                 goal: goal.to_string(),
-                created_at: Some(::prost_types::Timestamp { seconds: 1_700_000_000, nanos: 0 }),
-                updated_at: Some(::prost_types::Timestamp { seconds: 1_700_000_500, nanos: 0 }),
+                created_at: Some(::prost_types::Timestamp {
+                    seconds: 1_700_000_000,
+                    nanos: 0,
+                }),
+                updated_at: Some(::prost_types::Timestamp {
+                    seconds: 1_700_000_500,
+                    nanos: 0,
+                }),
                 ..Default::default()
             })),
             ..Default::default()
@@ -963,7 +1238,10 @@ mod tests {
         assert_eq!(st.sessions[0].session_id, "s1");
         assert_eq!(st.sessions[0].state, "active");
         assert_eq!(st.sessions[0].title, "ship it");
-        assert!(!st.sessions[0].created_at.is_empty(), "created_at must be populated");
+        assert!(
+            !st.sessions[0].created_at.is_empty(),
+            "created_at must be populated"
+        );
         assert!(!st.sessions[0].last_activity_at.is_empty());
     }
 
@@ -998,6 +1276,118 @@ mod tests {
             })),
             ..Default::default()
         }
+    }
+
+    fn progress(conv: &str, text: &str, fin: bool) -> pb::OperatorEvent {
+        pb::OperatorEvent {
+            seq: 0,
+            payload: Some(Payload::ConversationProgress(pb::ConversationProgressOp {
+                conversation_id: conv.into(),
+                text: text.into(),
+                phase: "retrieval".into(),
+                step: 1,
+                total_steps: 3,
+                r#final: fin,
+                updated_at_unix_ms: 1,
+            })),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn progress_supersedes_and_never_moves_the_cursor() {
+        let mut s = StateOfRecord::default();
+        s.fold(&session_state(7, "s1", "active", "g"));
+        assert_eq!(s.cursor, 7);
+
+        s.fold(&progress("c1", "Searching memory", false));
+        s.fold(&progress("c1", "Reading 4 documents", false));
+
+        // One line per conversation — the newest wins.
+        assert_eq!(s.conversation_progress.len(), 1);
+        assert_eq!(s.conversation_progress["c1"].text, "Reading 4 documents");
+        // seq 0 must not rewind or advance the resume cursor.
+        assert_eq!(s.cursor, 7);
+    }
+
+    #[test]
+    fn empty_progress_text_clears_the_line() {
+        let mut s = StateOfRecord::default();
+        s.fold(&progress("c1", "Searching memory", false));
+        s.fold(&progress("c1", "", true));
+        // The final update carries nothing to say, so the line comes DOWN rather
+        // than sticking as a blank row.
+        assert!(s.conversation_progress.is_empty());
+    }
+
+    fn plan_state(
+        seq: u64,
+        plan: &str,
+        status: &str,
+        terminal: bool,
+        steps: Vec<(&str, &str)>,
+    ) -> pb::OperatorEvent {
+        pb::OperatorEvent {
+            seq,
+            payload: Some(Payload::PlanState(pb::PlanStateOp {
+                session_id: "sess-1".into(),
+                plan_id: plan.into(),
+                status: status.into(),
+                terminal,
+                steps: steps
+                    .into_iter()
+                    .enumerate()
+                    .map(|(i, (label, st))| pb::PlanStepOp {
+                        index: i as i32,
+                        label: label.into(),
+                        status: st.into(),
+                        ..Default::default()
+                    })
+                    .collect(),
+                ..Default::default()
+            })),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn a_finished_plan_leaves_in_flight_but_keeps_its_outcome() {
+        let mut s = StateOfRecord::default();
+        s.fold(&plan_state(1, "p1", "running", false, vec![
+            ("write the file", "running"),
+            ("summarise it", "pending"),
+        ]));
+        assert_eq!(s.plans.len(), 1);
+
+        s.fold(&plan_state(2, "p1", "completed", true, vec![]));
+
+        // Plans in Flight must not keep a finished plan...
+        assert!(s.plans.is_empty());
+        // ...but "it finished" has to stay distinguishable from "it never
+        // reported", which is the whole bug: both used to read as absent.
+        assert_eq!(s.completed_plans.len(), 1);
+        assert_eq!(s.completed_plans[0].status, "completed");
+        // A terminal update carrying no steps must not blank the ladder.
+        assert_eq!(s.completed_plans[0].steps.len(), 2);
+    }
+
+    #[test]
+    fn a_terminal_plan_never_seen_running_is_still_recorded() {
+        let mut s = StateOfRecord::default();
+        // Fast plans can finish before the console folds any live update.
+        s.fold(&plan_state(1, "p2", "completed", true, vec![("do it", "done")]));
+        assert!(s.plans.is_empty());
+        assert_eq!(s.completed_plans.len(), 1);
+        assert_eq!(s.completed_plans[0].plan_id, "p2");
+        assert_eq!(s.completed_plans[0].steps.len(), 1);
+    }
+
+    #[test]
+    fn a_redelivered_terminal_event_updates_rather_than_duplicates() {
+        let mut s = StateOfRecord::default();
+        s.fold(&plan_state(1, "p3", "completed", true, vec![]));
+        s.fold(&plan_state(2, "p3", "completed", true, vec![]));
+        assert_eq!(s.completed_plans.len(), 1);
     }
 
     #[test]
@@ -1050,4 +1440,197 @@ mod tests {
         assert!(!s.fold(&ev));
         assert_eq!(s.cursor, 7);
     }
+}
+
+// ── Contract 0072–0076 surfaces ──────────────────────────────────────────────
+//
+// These mirror the TypeScript shapes in `src/ipc/types.ts`. Where the kernel does
+// not serve a field the TS type declares, the value chosen here must read as
+// "not reported" rather than as a real measurement — a fabricated zero is worse
+// than an obvious gap, because a console cannot tell it apart from a true one.
+
+/// One ADR-0098 progress snapshot (contract 0079).
+///
+/// Snapshots SUPERSEDE rather than accumulate: the projection keeps the latest
+/// per conversation and the console renders one line. Appending them would turn
+/// a status line into a log of itself.
+#[derive(Clone, Serialize, Default)]
+pub struct ConversationProgress {
+    pub conversation_id: String,
+    /// The rendered line. EMPTY means CLEAR — a final update with nothing to say
+    /// takes the line down.
+    pub text: String,
+    pub phase: String,
+    pub step: i32,
+    pub total_steps: i32,
+    pub r#final: bool,
+    pub updated_at_unix_ms: i64,
+}
+
+#[derive(Clone, Serialize, Default)]
+pub struct GeneratorSpec {
+    pub id: String,
+    pub protocol: String,
+    pub endpoint: String,
+    pub model: String,
+    pub timeout_ms: i64,
+    pub capability_tags: Vec<String>,
+    pub native_tools: bool,
+    pub disable_thinking: bool,
+    pub breaker: String,
+    pub recent_failures: i32,
+    /// -1 = not measured by this kernel. The kernel tracks breaker state and
+    /// failure counts but no latency percentiles, and reporting 0 ms would claim
+    /// an instantaneous endpoint.
+    pub p50_latency_ms: i64,
+    pub p99_latency_ms: i64,
+    /// -1 = not tracked (contract 0072). Distinct from 0, which would make a busy
+    /// generator look idle.
+    pub tokens_today: i64,
+    pub calls_today: i64,
+    pub latency_samples: Vec<i64>,
+    /// The only credential facts on the wire. There is no key field and no RPC
+    /// that returns one.
+    pub key_configured: bool,
+    pub key_last_four: String,
+    /// "env:<VAR>" or "store" — where the ACTIVE credential comes from, so an
+    /// operator can see why a pasted key had no effect.
+    pub key_source: String,
+    pub is_default: bool,
+}
+
+#[derive(Clone, Serialize, Default)]
+pub struct RoleAssignment {
+    pub role: String,
+    pub generator_id: String,
+    /// Set when `generator_id` names a generator that does not exist: the role
+    /// silently falls back to the default, and nothing else in the system says so.
+    pub falling_back_to: Option<String>,
+}
+
+#[derive(Clone, Serialize, Default)]
+pub struct GeneratorTestResult {
+    pub reachable: bool,
+    pub round_trip_ms: i64,
+    pub authenticated: bool,
+    /// The model string the ENDPOINT echoed back — the field this probe exists
+    /// for. An endpoint answering happily with a different build is the most
+    /// common misconfiguration here and is invisible in a successful generation.
+    pub model_served: String,
+    pub model_matches: bool,
+    pub native_tools_ok: bool,
+    pub tokens_in: i64,
+    pub tokens_out: i64,
+    pub tokens_cached: i64,
+    pub error: String,
+}
+
+#[derive(Clone, Serialize, Default)]
+pub struct ConfigSchema {
+    pub schema_version: String,
+    pub schema_json: String,
+    pub schema_hash: String,
+    pub editable_keys: Vec<String>,
+    pub kernel_only_keys: Vec<String>,
+    /// The live values, keyed as the write path keys them.
+    pub current_values: std::collections::HashMap<String, f64>,
+    /// key → "default" | "tuning.json" | "store" | "env:CAMBRIAN_…" | "runtime".
+    /// An "env:" source means a write to this key will be SHADOWED.
+    pub value_source: std::collections::HashMap<String, String>,
+}
+
+#[derive(Clone, Serialize, Default)]
+pub struct ClassifiedInput {
+    /// One of chat | plan | ingest | watch | clarification. FIVE values, not
+    /// three: `ingest` WRITES to memory, so collapsing it into another makes an
+    /// operator approve a write believing they approved a question.
+    pub classification: String,
+    pub why: String,
+    pub confidence: f64,
+    pub clarification_question: String,
+    pub clarification_options: Vec<String>,
+}
+
+#[derive(Clone, Serialize, Default)]
+pub struct InterviewOption {
+    pub label: String,
+    pub detail: String,
+    /// -1 = not counted. A 0 is a real and alarming answer ("this option would
+    /// search nothing"); "we could not count" is not the same statement.
+    pub document_count: i32,
+}
+
+#[derive(Clone, Serialize, Default)]
+pub struct InterviewQuestion {
+    pub question: String,
+    pub kind: String,
+    pub options: Vec<InterviewOption>,
+    pub why_it_changes_the_answer: String,
+}
+
+// Deserialize as well as Serialize: an authored step travels INBOUND from the
+// webview (SubmitPlan) as well as outbound in a proposal, and the round trip
+// through both directions is what lets "Run it" on a proposal card hand straight
+// to SubmitPlan without reshaping.
+#[derive(Clone, Serialize, serde::Deserialize, Default)]
+pub struct AuthoredStep {
+    pub query: String,
+    pub required_capabilities: Vec<String>,
+    pub depends_on: Vec<i32>,
+    pub max_energy: f64,
+    pub recommended_model: String,
+    pub checkpoint_after: bool,
+    pub checkpoint_query: String,
+    pub is_thought: bool,
+    /// SOFT pin — goes first, ranking still runs behind it.
+    pub preferred_agent: String,
+    /// Pin STRENGTH ("soft" | "hard"). A hard pin kills the step rather than
+    /// cascading, so the two must stay distinguishable.
+    pub agent_pin: String,
+    /// -1 = not a fan-out. 0 is a legitimate step index, so absence needs a
+    /// sentinel of its own.
+    pub fan_out_over: i32,
+    pub fan_out_var: String,
+}
+
+#[derive(Clone, Serialize, Default)]
+pub struct PlanProposal {
+    pub steps: Vec<AuthoredStep>,
+    pub estimated_tokens: i64,
+    pub estimated_wall_ms: i64,
+    pub max_parallel: i32,
+    pub access_note: String,
+}
+
+#[derive(Clone, Serialize, Default)]
+pub struct PlanProposalResponse {
+    /// Non-empty ⇒ too vague to plan. Render these INSTEAD of a proposal: showing
+    /// a runnable plan beside a question invites approving the plan and skipping
+    /// the question.
+    pub questions: Vec<InterviewQuestion>,
+    pub proposal: Option<PlanProposal>,
+    pub access_consequence: String,
+}
+
+#[derive(Clone, Serialize, Default)]
+pub struct PlanValidationIssue {
+    pub step_index: i32,
+    pub code: String,
+    pub message: String,
+    /// Fatal blocks submission; advisory does not. Conflating them either blocks
+    /// valid plans or runs broken ones.
+    pub fatal: bool,
+}
+
+#[derive(Clone, Serialize, Default)]
+pub struct SubmitPlanResult {
+    pub command_id: String,
+    pub deduped: bool,
+    pub accepted: bool,
+    pub session_id: String,
+    pub plan_id: String,
+    pub issues: Vec<PlanValidationIssue>,
+    /// The topological order the executor would really use — the question a DAG
+    /// author is asking once the graph passes a handful of nodes.
+    pub execution_order: Vec<i32>,
 }

@@ -2,6 +2,18 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { ProposePane } from '@/screens/scope/ProposePane';
 import type { LinkSpec, PolicyProposal, PolicySpec } from '@/ipc/types';
+import type { Vocabulary } from '@/screens/scope/useVocabulary';
+
+// The pane renders tags through the shared sentence renderer, which needs the
+// vocabulary to mark closed labels. Nothing here is closed, so the marker is
+// absent and the assertions below read the plain tag names.
+const VOCAB: Vocabulary = {
+  tags: ['secrets', 'airline'],
+  configured: true,
+  closed: new Set<string>(),
+  loading: false,
+  error: null,
+};
 
 const proposePolicy = vi.fn();
 const savePolicy = vi.fn();
@@ -64,7 +76,7 @@ describe('ProposePane (ADR-0092)', () => {
   });
 
   it('shows the terms and the containers, not just the prose', async () => {
-    render(<ProposePane role="operator" onChanged={() => {}} />);
+    render(<ProposePane role="operator" onChanged={() => {}} vocabulary={VOCAB} />);
     await draft();
 
     expect(screen.getByText('secrets')).toBeInTheDocument();
@@ -84,7 +96,7 @@ describe('ProposePane (ADR-0092)', () => {
         problems: [{ severity: 'blocking', message: 'tag "sekrets" is coined' }],
       }),
     );
-    render(<ProposePane role="operator" onChanged={() => {}} />);
+    render(<ProposePane role="operator" onChanged={() => {}} vocabulary={VOCAB} />);
     await draft();
 
     expect(screen.getByText(/coined/)).toBeInTheDocument();
@@ -95,7 +107,7 @@ describe('ProposePane (ADR-0092)', () => {
     proposePolicy.mockResolvedValue(
       proposal({ problems: [{ severity: 'warning', message: 'this policy GRANTS airline' }] }),
     );
-    render(<ProposePane role="operator" onChanged={() => {}} />);
+    render(<ProposePane role="operator" onChanged={() => {}} vocabulary={VOCAB} />);
     await draft();
 
     expect(screen.getByText(/GRANTS airline/)).toBeInTheDocument();
@@ -106,7 +118,7 @@ describe('ProposePane (ADR-0092)', () => {
   // ever grew its own apply RPC, the model's output would become a write.
   it('approves by saving the policy and then its links', async () => {
     const onChanged = vi.fn();
-    render(<ProposePane role="operator" onChanged={onChanged} />);
+    render(<ProposePane role="operator" onChanged={onChanged} vocabulary={VOCAB} />);
     await draft();
 
     fireEvent.click(screen.getByRole('button', { name: /approve/i }));
@@ -123,7 +135,7 @@ describe('ProposePane (ADR-0092)', () => {
   // A refused policy must not leave links pointing at something that was never saved.
   it('does not link when the policy is refused', async () => {
     savePolicy.mockResolvedValue({ ok: false, error: 'unsatisfiable rule', version: 0 });
-    render(<ProposePane role="operator" onChanged={() => {}} />);
+    render(<ProposePane role="operator" onChanged={() => {}} vocabulary={VOCAB} />);
     await draft();
 
     fireEvent.click(screen.getByRole('button', { name: /approve/i }));
@@ -134,7 +146,7 @@ describe('ProposePane (ADR-0092)', () => {
   // Zero counts over an empty journal mean "nothing to compare". Rendering them as
   // three zeroes would read as "this change is safe", which is the opposite claim.
   it('says the blast radius is unknown rather than zero on an empty journal', async () => {
-    render(<ProposePane role="operator" onChanged={() => {}} />);
+    render(<ProposePane role="operator" onChanged={() => {}} vocabulary={VOCAB} />);
     await draft();
     expect(screen.getByText(/no journalled decisions to replay/i)).toBeInTheDocument();
     expect(screen.getByText(/unknown/)).toBeInTheDocument();
@@ -147,7 +159,7 @@ describe('ProposePane (ADR-0092)', () => {
         simulation: { decisions: [], newly_denied: 3, newly_allowed: 0, unchanged: 37 },
       }),
     );
-    render(<ProposePane role="operator" onChanged={() => {}} />);
+    render(<ProposePane role="operator" onChanged={() => {}} vocabulary={VOCAB} />);
     await draft();
     expect(screen.getByText(/3 newly denied/)).toBeInTheDocument();
     expect(screen.getByText(/against 40 recent decisions/i)).toBeInTheDocument();
@@ -155,13 +167,13 @@ describe('ProposePane (ADR-0092)', () => {
 
   // The landing has to be stated where approval happens, not somewhere else.
   it('states that approval lands report-only', async () => {
-    render(<ProposePane role="operator" onChanged={() => {}} />);
+    render(<ProposePane role="operator" onChanged={() => {}} vocabulary={VOCAB} />);
     await draft();
     expect(screen.getByRole('button', { name: /approve as report-only/i })).toBeInTheDocument();
   });
 
   it('is read-only for a viewer', async () => {
-    render(<ProposePane role="viewer" onChanged={() => {}} />);
+    render(<ProposePane role="viewer" onChanged={() => {}} vocabulary={VOCAB} />);
     expect(screen.getByRole('button', { name: /draft a policy/i })).toBeDisabled();
     expect(screen.getByText(/needs the operator role/i)).toBeInTheDocument();
   });
@@ -170,7 +182,7 @@ describe('ProposePane (ADR-0092)', () => {
   // unavailable, not as a broken console.
   it('shows the kernel error when no LLM is configured', async () => {
     proposePolicy.mockRejectedValue(new Error('policy proposals need an LLM; none is configured'));
-    render(<ProposePane role="operator" onChanged={() => {}} />);
+    render(<ProposePane role="operator" onChanged={() => {}} vocabulary={VOCAB} />);
     await draft();
     await waitFor(() =>
       expect(screen.getByRole('alert')).toHaveTextContent(/need an LLM/i),
