@@ -4,6 +4,7 @@
 //! owns the client-side state of record (`state`), the Operator Transport Plane
 //! client (`transport`), and the Tauri command/event bridge to the webview.
 
+pub mod logs;
 pub mod pb;
 pub mod policy;
 pub mod state;
@@ -19,7 +20,8 @@ use policy::{
     StrangerPolicy, TagSpec, UnboundSender,
 };
 use state::{
-    AuthoredStep, ClassifiedInput, ConfigSchema, ConversationMessage, ConversationSummary,
+    AuthoredStep, ClassifiedInput, ConfigSchema, ConfigWriteResult, ConversationMessage,
+    ConversationSummary,
     GeneratorSpec, GeneratorTestResult, PlanProposalResponse, RoleAssignment, SkillSummary,
     StateOfRecord, SubmitPlanResult, ToolSummary, WatchConfigSummary,
 };
@@ -877,6 +879,52 @@ async fn op_telegram_set_enabled(
 }
 
 #[tauri::command(rename_all = "snake_case")]
+async fn op_query_logs(
+    transport: State<'_, Transport>,
+    filter: Option<crate::logs::LogFilter>,
+    after_seq: Option<u64>,
+    limit: Option<i32>,
+) -> Result<crate::logs::LogPage, String> {
+    transport
+        .inner()
+        .clone()
+        .query_logs(
+            filter.unwrap_or_default(),
+            after_seq.unwrap_or(0),
+            limit.unwrap_or(0),
+        )
+        .await
+}
+
+/// Start (or restart) the live tail. Records arrive on `kernel://log`.
+///
+/// Starting again replaces the running tail rather than adding a second one —
+/// otherwise changing a filter would leave both streams emitting into the same
+/// channel and the console would show a merge of two filters.
+#[tauri::command(rename_all = "snake_case")]
+async fn op_start_log_tail(
+    app: tauri::AppHandle,
+    transport: State<'_, Transport>,
+    tail: State<'_, crate::logs::LogTail>,
+    filter: Option<crate::logs::LogFilter>,
+    after_seq: Option<u64>,
+) -> Result<(), String> {
+    transport.inner().clone().start_log_tail(
+        app,
+        tail.inner().clone(),
+        filter.unwrap_or_default(),
+        after_seq.unwrap_or(0),
+    );
+    Ok(())
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_stop_log_tail(tail: State<'_, crate::logs::LogTail>) -> Result<(), String> {
+    tail.inner().stop();
+    Ok(())
+}
+
+#[tauri::command(rename_all = "snake_case")]
 async fn op_telegram_list_bots(
     transport: State<'_, Transport>,
 ) -> Result<Vec<crate::telegram::TelegramBot>, String> {
@@ -1159,6 +1207,49 @@ async fn op_test_generator(
     transport.inner().clone().test_generator(id).await
 }
 
+/// Contract 0083: create or replace a generator.
+///
+/// The TS client has called this since the panes were built; nothing served it,
+/// so a Save produced `Command op_save_generator not found` -- a console error
+/// for a missing bridge, which reads to an operator like a broken kernel.
+#[tauri::command(rename_all = "snake_case")]
+async fn op_save_generator(
+    transport: State<'_, Transport>,
+    generator: GeneratorSpec,
+    reason: String,
+) -> Result<ConfigWriteResult, String> {
+    transport.inner().clone().save_generator(generator, reason).await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_remove_generator(
+    transport: State<'_, Transport>,
+    id: String,
+    reason: String,
+) -> Result<ConfigWriteResult, String> {
+    transport.inner().clone().remove_generator(id, reason).await
+}
+
+/// Write-only, exactly like the Telegram bot token: the key goes in and only its
+/// last four ever come back. There is deliberately no getter anywhere.
+#[tauri::command(rename_all = "snake_case")]
+async fn op_set_generator_key(
+    transport: State<'_, Transport>,
+    id: String,
+    key: String,
+) -> Result<ConfigWriteResult, String> {
+    transport.inner().clone().set_generator_key(id, key).await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_clear_generator_key(
+    transport: State<'_, Transport>,
+    id: String,
+    reason: String,
+) -> Result<ConfigWriteResult, String> {
+    transport.inner().clone().clear_generator_key(id, reason).await
+}
+
 /// The read half of the runtime-config surface.
 ///
 /// `value_source` is what it exists for: it names the layer supplying each key,
@@ -1218,6 +1309,9 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .manage(Transport::default())
+        // Holds the running log tail so a restart replaces it rather than
+        // stacking a second stream onto the same event channel.
+        .manage(crate::logs::LogTail::default())
         .invoke_handler(tauri::generate_handler![
             op_login,
             op_login_saved,
@@ -1263,6 +1357,10 @@ pub fn run() {
             op_list_generators,
             op_list_role_assignments,
             op_test_generator,
+            op_save_generator,
+            op_remove_generator,
+            op_set_generator_key,
+            op_clear_generator_key,
             op_classify_input,
             op_propose_plan,
             op_submit_plan,
@@ -1278,6 +1376,9 @@ pub fn run() {
             op_telegram_set_token,
             op_telegram_clear_token,
             op_telegram_set_enabled,
+            op_query_logs,
+            op_start_log_tail,
+            op_stop_log_tail,
             op_telegram_list_bots,
             op_telegram_add_bot,
             op_telegram_remove_bot,

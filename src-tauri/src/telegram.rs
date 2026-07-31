@@ -76,6 +76,12 @@ pub struct TelegramBot {
 pub struct TelegramAck {
     pub ok: bool,
     pub error: String,
+    /// What succeeded and what it left undone.
+    ///
+    /// A bot can be created successfully and still not be governed — its surface
+    /// is registered separately, under the operator's own authority — and an
+    /// `ok` alone cannot carry that.
+    pub detail: String,
 }
 
 impl Transport {
@@ -124,6 +130,7 @@ impl Transport {
         Ok(TelegramAck {
             ok: ack.ok,
             error: ack.error,
+            detail: ack.detail,
         })
     }
 
@@ -138,6 +145,7 @@ impl Transport {
         Ok(TelegramAck {
             ok: ack.ok,
             error: ack.error,
+            detail: ack.detail,
         })
     }
 
@@ -151,6 +159,7 @@ impl Transport {
         Ok(TelegramAck {
             ok: ack.ok,
             error: ack.error,
+            detail: ack.detail,
         })
     }
 
@@ -194,12 +203,16 @@ impl Transport {
             .add_bot(Request::new(pb::telegram::AddBotRequest { id, label, token }))
             .await
         {
-            Ok(_) => Ok(TelegramAck { ok: true, error: String::new() }),
+            Ok(resp) => Ok(TelegramAck {
+                ok: true,
+                error: String::new(),
+                detail: resp.into_inner().detail,
+            }),
             Err(st)
                 if st.code() == tonic::Code::InvalidArgument
                     || st.code() == tonic::Code::AlreadyExists =>
             {
-                Ok(TelegramAck { ok: false, error: st.message().to_string() })
+                Ok(TelegramAck { ok: false, error: st.message().to_string(), detail: String::new() })
             }
             Err(st) => Err(map_status(st)),
         }
@@ -216,9 +229,9 @@ impl Transport {
             .remove_bot(Request::new(pb::telegram::RemoveBotRequest { id, reason }))
             .await
         {
-            Ok(_) => Ok(TelegramAck { ok: true, error: String::new() }),
+            Ok(_) => Ok(TelegramAck { ok: true, error: String::new(), detail: String::new() }),
             Err(st) if st.code() == tonic::Code::InvalidArgument => {
-                Ok(TelegramAck { ok: false, error: st.message().to_string() })
+                Ok(TelegramAck { ok: false, error: st.message().to_string(), detail: String::new() })
             }
             Err(st) => Err(map_status(st)),
         }

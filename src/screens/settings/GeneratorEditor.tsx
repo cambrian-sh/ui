@@ -5,7 +5,7 @@ import { ipc } from '@/ipc';
 import { useMutation } from '@/lib/useMutation';
 import { formatRelativeTime, formatTokens } from '@/lib/format';
 import { cn } from '@/design-system/lib/utils';
-import type { GeneratorSpec, GeneratorTestResult } from '@/ipc/types';
+import type { ConfigWriteOutcome, ConfigWriteResult, GeneratorSpec, GeneratorTestResult } from '@/ipc/types';
 
 export interface GeneratorEditorProps {
   generator: GeneratorSpec;
@@ -29,6 +29,7 @@ export function GeneratorEditor({ generator, canMutate, onClose }: GeneratorEdit
   const [draft, setDraft] = useState<GeneratorSpec>(generator);
   const [result, setResult] = useState<GeneratorTestResult | null>(null);
   const [key, setKey] = useState('');
+  const [written, setWritten] = useState<ConfigWriteOutcome | null>(null);
 
   const test = useMutation(async () => {
     const r = await ipc.testGenerator(draft.id);
@@ -36,22 +37,39 @@ export function GeneratorEditor({ generator, canMutate, onClose }: GeneratorEdit
     return r;
   });
 
-  const save = useMutation(async (reason: string) => ipc.saveGenerator(draft, reason));
+  const save = useMutation(async (reason: string) => {
+    const res = await ipc.saveGenerator(draft, reason);
+    const outcome = firstOutcome(res);
+    setWritten(outcome);
+    // A rejected write is a FAILED save, not a save with a note attached. The
+    // kernel reports it per key rather than as an RPC error, so it has to be
+    // raised here or the form would show "Saved" over a store that refused it.
+    if (outcome && outcome.effect === 'rejected') {
+      throw new Error(outcome.error || 'the kernel refused this configuration');
+    }
+    return res;
+  });
 
   const saveKey = useMutation(async () => {
-    const out = await ipc.setGeneratorKey(draft.id, key);
+    const res = await ipc.setGeneratorKey(draft.id, key);
     // Cleared on BOTH outcomes: a credential left sitting in a text box is the
     // same exposure the write-only API exists to avoid.
     setKey('');
-    if (!out.ok) throw new Error(out.error);
-    return out;
+    const outcome = firstOutcome(res);
+    // A key stored under an env var that overrides it changes nothing until
+    // that variable is removed, and silence there is indistinguishable from a
+    // broken save.
+    if (outcome && outcome.effect === 'rejected') {
+      throw new Error(outcome.error || 'the credential store refused this key');
+    }
+    setWritten(outcome);
+    return res;
   });
 
   const clearKey = useMutation(async () => {
-    const out = await ipc.clearGeneratorKey(draft.id, 'operator removed the key');
+    const res = await ipc.clearGeneratorKey(draft.id, 'operator removed the key');
     setKey('');
-    if (!out.ok) throw new Error(out.error);
-    return out;
+    return res;
   });
 
   // A save the last test disagrees with is the case worth nagging about.
@@ -154,14 +172,23 @@ export function GeneratorEditor({ generator, canMutate, onClose }: GeneratorEdit
           If you save this
         </h3>
         <ul className="flex flex-col gap-1 text-[12px] leading-[1.5] text-[var(--fg-secondary)]">
-          <li>Roles pointed here start using the new configuration on their next call.</li>
+          {/* This list used to promise the change took effect on the next call.
+              It does not: the kernel builds its generators once, at boot, into
+              the provider's routing table, breaker map and ledger. Saying
+              otherwise sent an operator looking for a fault in a save that had
+              worked exactly as designed. */}
+          <li>The configuration is stored durably and outranks every config file.</li>
+          <li>
+            It takes effect when the kernel next starts — generators are built at boot, so
+            roles pointed here keep using the current one until then.
+          </li>
           <li>Nothing in flight is interrupted.</li>
           <li>The change is audited under your name, with the reason you give.</li>
-          <li>The breaker resets, so the new configuration gets a clean three attempts.</li>
         </ul>
       </section>
 
       {save.error && <ErrorState reason={save.error} />}
+      {written && !save.error && <WriteOutcomeNote outcome={written} />}
 
       <div className="flex flex-wrap items-center gap-2">
         <Button
@@ -211,14 +238,21 @@ function TestReport({
       // else in the console would ever reveal it.
       detail: result.model_matches
         ? result.model_served
-        : `asked for ${configuredModel}, got ${result.model_served || 'no model string back'}`,
+        : `asked for ${result.model_requested || configuredModel}, got ${
+            result.model_served || 'no model string back'
+          }`,
     },
     {
-      ok: result.native_tools_ok,
+      // NOT TESTED is a third state. Rendering it as a failure reported a defect
+      // the probe never measured — and "native tools are broken" is exactly the
+      // sort of false alarm that sends someone rewriting a working config.
+      ok: result.native_tools_checked ? result.native_tools_ok : null,
       label: 'Native tools',
-      detail: result.native_tools_ok
-        ? 'the test tool call came back well-formed'
-        : 'the tool call did not come back well-formed',
+      detail: !result.native_tools_checked
+        ? 'not checked — this probe makes a plain completion call'
+        : result.native_tools_ok
+          ? 'the test tool call came back well-formed'
+          : 'the tool call did not come back well-formed',
     },
   ];
 
@@ -227,11 +261,20 @@ function TestReport({
       <ul className="flex flex-col gap-1">
         {checks.map((c) => (
           <li key={c.label} className="flex items-baseline gap-2 text-[12px]">
+            {/* Three states, not two. `null` is NOT TESTED — drawn as a neutral
+                dash, because a cross claims a measurement that was never made. */}
             <span
               aria-hidden="true"
-              style={{ color: c.ok ? 'var(--status-live)' : 'var(--status-err)' }}
+              style={{
+                color:
+                  c.ok === null
+                    ? 'var(--fg-muted)'
+                    : c.ok
+                      ? 'var(--status-live)'
+                      : 'var(--status-err)',
+              }}
             >
-              {c.ok ? '✓' : '✕'}
+              {c.ok === null ? '–' : c.ok ? '✓' : '✕'}
             </span>
             <span className="font-medium text-[var(--fg-primary)]">{c.label}</span>
             <span className="text-[var(--fg-muted)]">{c.detail}</span>
@@ -379,4 +422,44 @@ function Toggle({
       <span className="font-mono">{label}</span>
     </label>
   );
+}
+
+
+/** The first per-key outcome, or null when the kernel answered with a bare ack. */
+function firstOutcome(res: ConfigWriteResult): ConfigWriteOutcome | null {
+  return res.outcomes.length > 0 ? res.outcomes[0] : null;
+}
+
+/**
+ * What the write actually did.
+ *
+ * `stored` and `applied` are different facts, and the gap between them is where
+ * this console has repeatedly misled: a value written to the store while an
+ * environment variable pins the live one is saved, correct, and doing nothing.
+ */
+function WriteOutcomeNote({ outcome }: { outcome: ConfigWriteOutcome }) {
+  if (outcome.effect === 'shadowed') {
+    return (
+      <p className="text-[12px] leading-[1.5] text-[var(--status-warn)]">
+        Stored, but <code className="font-mono">{outcome.shadowed_by}</code> supplies the live
+        value and outranks the store. This takes effect when that variable is removed — not on
+        the next restart.
+      </p>
+    );
+  }
+  if (outcome.effect === 'restart_required') {
+    return (
+      <p className="text-[12px] leading-[1.5] text-[var(--fg-secondary)]">
+        Stored. It takes effect the next time the kernel starts.
+      </p>
+    );
+  }
+  if (outcome.effect === 'live') {
+    return (
+      <p className="text-[12px] leading-[1.5] text-[var(--status-live)]">
+        Stored and applied to the running kernel.
+      </p>
+    );
+  }
+  return null;
 }

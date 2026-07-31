@@ -1147,6 +1147,14 @@ export interface TelegramStatus {
 export interface TelegramAck {
   ok: boolean;
   error: string;
+  /**
+   * What succeeded and what it left undone.
+   *
+   * A bot can be created successfully and still not be governed — its surface is
+   * registered separately, under the operator's own authority — and an `ok`
+   * alone cannot carry that.
+   */
+  detail: string;
 }
 
 export interface EffectRule {
@@ -1329,6 +1337,37 @@ export interface DecisionRecord {
  * An authoring outcome that is NOT an error: a group cycle, an unsatisfiable
  * rule, a coined tag. Rendered next to the field rather than as a failure toast.
  */
+/**
+ * What happened to ONE key in a durable config write (contract 0072/0083).
+ *
+ * The kernel reports per-key outcomes rather than one ack because a partial
+ * write can partly succeed, and `effect` is the half an operator acts on.
+ */
+export interface ConfigWriteOutcome {
+  key: string;
+  stored: boolean;
+  /**
+   * `live` — applied to the running kernel and stored.
+   * `restart_required` — stored; this key is read only at boot.
+   * `shadowed` — stored, but a higher layer supplies the live value.
+   * `rejected` — not stored.
+   *
+   * Never flatten this to ok/failed: a stored-but-inert setting that renders as
+   * "saved" is the state that makes someone rewrite a working config.
+   */
+  effect: 'live' | 'restart_required' | 'shadowed' | 'rejected' | string;
+  /** Names the layer winning over the store ("env:CAMBRIAN_…"). */
+  shadowed_by: string;
+  error: string;
+}
+
+export interface ConfigWriteResult {
+  command_id: string;
+  deduped: boolean;
+  /** Empty when the kernel answered with a bare ack. Nothing is invented. */
+  outcomes: ConfigWriteOutcome[];
+}
+
 export interface SaveOutcome {
   ok: boolean;
   error: string;
@@ -1422,7 +1461,18 @@ export interface GeneratorTestResult {
   authenticated: boolean;
   /** What the endpoint echoed back. Compared against the configured model. */
   model_served: string;
+  /** What the probe asked for — the generator's configured model. */
+  model_requested: string;
+  /** Decided by the kernel, which holds both sides of the comparison. */
   model_matches: boolean;
+  /**
+   * Whether tool-calling was exercised AT ALL.
+   *
+   * False means NOT TESTED, which is not the same as failed. The probe does a
+   * plain completion today, and drawing that as a failing check reported a
+   * defect that was never measured.
+   */
+  native_tools_checked: boolean;
   native_tools_ok: boolean;
   tokens_in: number;
   tokens_out: number;
@@ -1743,4 +1793,70 @@ export interface ExplainAccessParams {
   resource_id?: string;
   tags?: string[];
   effects?: string[];
+}
+
+// ============================================================================
+// Kernel logs (contract 0082) — OPERATOR-ONLY.
+//
+// A Viewer's token is refused by the kernel: a log line carries whatever the
+// kernel happened to write and bypasses the access-policy plane entirely, so it
+// is not filtered per principal the way a memory read is. The whole surface
+// gates on the `kernel-logs` capability.
+// ============================================================================
+
+export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
+
+/** One attribute, with its type preserved so numbers stay comparable. */
+export interface LogAttr {
+  key: string;
+  kind: 'string' | 'int' | 'float' | 'bool';
+  /** Rendered form — always present, so a row draws without a type switch. */
+  value: string;
+  /** Numeric form for int/float, for comparison and sorting. */
+  num: number | null;
+}
+
+export interface LogRecord {
+  /** Monotonic within a boot — the resume cursor. */
+  seq: number;
+  at_unix_ms: number;
+  level: LogLevel;
+  /** An agent's logger name, or the message's own prefix ("ADR-0074"). */
+  component: string;
+  message: string;
+  attrs: LogAttr[];
+  /** Changes on every kernel start — how a reader tells a restart happened. */
+  boot_id: string;
+  /** Message or an attribute was clipped. Never render it as the whole value. */
+  truncated: boolean;
+}
+
+/** What the kernel's retention window can currently answer for. */
+export interface LogWindow {
+  boot_id: string;
+  capacity: number;
+  count: number;
+  /**
+   * Records overwritten since boot. Non-zero means the window no longer reaches
+   * back to kernel start — the console must say so rather than presenting a
+   * truncated story as the whole one.
+   */
+  dropped: number;
+  oldest_unix_ms: number;
+  newest_unix_ms: number;
+  /** Newest sequence issued — where a tail resumes from. */
+  last_seq: number;
+}
+
+export interface LogFilter {
+  level_at_least?: LogLevel;
+  components?: string[];
+  contains?: string;
+  attr_equals?: Record<string, string>;
+  since_unix_ms?: number;
+}
+
+export interface LogPage {
+  records: LogRecord[];
+  window: LogWindow;
 }

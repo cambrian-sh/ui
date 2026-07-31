@@ -106,6 +106,15 @@ export const NAV_GROUPS: readonly NavGroup[] = [
     entries: [
       { path: "/scope", label: "Scope & Access", icon: ShieldCheck },
       { path: "/audit", label: "Audit", icon: ScrollText },
+      {
+        // What the PROCESS did, as opposed to who changed what (Audit) or what
+        // is true now (the feed). Operator-only at the kernel, so the nav entry
+        // is absent for a Viewer rather than leading to a refusal.
+        path: "/logs",
+        label: "Logs",
+        icon: ScrollText,
+        requires: "kernel-logs",
+      },
       { path: "/cost", label: "Cost & Energy", icon: Receipt },
       { path: "/plugins", label: "Plugins", icon: Blocks },
     ],

@@ -385,19 +385,26 @@ export const ipc = {
     invoke<t.DecisionRecord[]>('op_export_decisions', { ...params }),
 
   // ── Models & providers ────────────────────────────────────────────────────
-  // PROPOSED CONTRACT — no kernel serves these yet, so every call here rejects
-  // today and the panes render "not reported by this kernel" rather than an
-  // empty form. They exist so the surface is reviewable and the kernel team has
-  // a concrete target. See operator_ui_refactor/report.md.
+  // Served: reads on contract 0072, writes on 0083. The writes land on the
+  // ADR-0101 store, not on a config file — the operator plane does not edit
+  // gitignored JSON, which is the practice that store exists to end.
 
   listGenerators: (): Promise<t.GeneratorSpec[]> =>
     invoke<t.GeneratorSpec[]>('op_list_generators'),
 
-  saveGenerator: (generator: t.GeneratorSpec, reason: string): Promise<t.SaveOutcome> =>
-    invoke<t.SaveOutcome>('op_save_generator', { generator, reason }),
+  /**
+   * Create or replace a generator.
+   *
+   * The result carries the kernel's per-key `effect`, which for generators is
+   * `restart_required`: they are built once, at boot, into the provider's
+   * routing table. Rendering this as a plain "Saved" would leave an operator
+   * watching traffic go to a model they believe they replaced.
+   */
+  saveGenerator: (generator: t.GeneratorSpec, reason: string): Promise<t.ConfigWriteResult> =>
+    invoke<t.ConfigWriteResult>('op_save_generator', { generator, reason }),
 
-  removeGenerator: (id: string, reason: string): Promise<t.SaveOutcome> =>
-    invoke<t.SaveOutcome>('op_remove_generator', { id, reason }),
+  removeGenerator: (id: string, reason: string): Promise<t.ConfigWriteResult> =>
+    invoke<t.ConfigWriteResult>('op_remove_generator', { id, reason }),
 
   /** One real call against the live endpoint. Billed like any other. */
   testGenerator: (id: string): Promise<t.GeneratorTestResult> =>
@@ -407,11 +414,11 @@ export const ipc = {
    * Write-only, exactly like the Telegram bot token: the key goes in and only
    * its last four ever come back. There is deliberately no `getGeneratorKey`.
    */
-  setGeneratorKey: (id: string, key: string): Promise<t.SaveOutcome> =>
-    invoke<t.SaveOutcome>('op_set_generator_key', { id, key }),
+  setGeneratorKey: (id: string, key: string): Promise<t.ConfigWriteResult> =>
+    invoke<t.ConfigWriteResult>('op_set_generator_key', { id, key }),
 
-  clearGeneratorKey: (id: string, reason: string): Promise<t.SaveOutcome> =>
-    invoke<t.SaveOutcome>('op_clear_generator_key', { id, reason }),
+  clearGeneratorKey: (id: string, reason: string): Promise<t.ConfigWriteResult> =>
+    invoke<t.ConfigWriteResult>('op_clear_generator_key', { id, reason }),
 
   // ── Part 3 PROPOSED CONTRACT ───────────────────────────────────────────
   // No kernel serves these yet; every call rejects and the panes say so rather
@@ -483,6 +490,21 @@ export const ipc = {
     dryRun = false,
   ): Promise<t.SubmitPlanResult> =>
     invoke<t.SubmitPlanResult>('op_submit_plan', { steps, reason, dry_run: dryRun }),
+
+  // ── Kernel logs (contract 0082, operator-only) ────────────────────────────
+  /** History over the kernel's retention window. */
+  queryLogs: (filter: t.LogFilter = {}, afterSeq = 0, limit = 0): Promise<t.LogPage> =>
+    invoke<t.LogPage>('op_query_logs', { filter, after_seq: afterSeq, limit }),
+  /**
+   * Start the live tail. Records arrive on the `kernel://log` event.
+   *
+   * `afterSeq` of 0 starts at the kernel's live edge rather than replaying the
+   * window — ask for history with `queryLogs` first, then tail from the sequence
+   * it returned. Calling this again REPLACES the running tail.
+   */
+  startLogTail: (filter: t.LogFilter = {}, afterSeq = 0): Promise<void> =>
+    invoke<void>('op_start_log_tail', { filter, after_seq: afterSeq }),
+  stopLogTail: (): Promise<void> => invoke<void>('op_stop_log_tail'),
 
   listRoleAssignments: (): Promise<t.RoleAssignment[]> =>
     invoke<t.RoleAssignment[]>('op_list_role_assignments'),

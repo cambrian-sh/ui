@@ -16,7 +16,8 @@ use tonic::{Request, Status};
 use crate::pb;
 use crate::pb::operator_console_client::OperatorConsoleClient;
 use crate::state::{
-    AuthoredStep, ClassifiedInput, ConfigSchema, ConnectionStatus, ConversationMessage,
+    AuthoredStep, ClassifiedInput, ConfigSchema, ConfigWriteOutcome, ConfigWriteResult,
+    ConnectionStatus, ConversationMessage,
     ConversationSummary, GeneratorSpec, GeneratorTestResult, InterviewOption, InterviewQuestion,
     PlanProposal, PlanProposalResponse, PlanValidationIssue, PreviewCandidate, PreviewRanked,
     PreviewRouteResult, RoleAssignment, SkillSummary, StateOfRecord, SubmitPlanResult, ToolSummary,
@@ -507,6 +508,71 @@ impl Transport {
         Ok(resp.role)
     }
 
+    /// Re-authenticate an expired session in place, without disturbing the feed.
+    ///
+    /// Operator tokens are random bytes in an in-memory map on the kernel side, so
+    /// a kernel restart invalidates every one of them. Retrying the feed with a
+    /// dead token can never succeed no matter how patient the loop is -- which is
+    /// why a restarted kernel left the console stuck in `reconnecting` while the
+    /// kernel itself was up and answering.
+    ///
+    /// This uses the credentials the operator already chose to save for
+    /// auto-connect. Nothing new is stored, and an operator who did NOT tick
+    /// remember-me is told to sign in again rather than being silently logged
+    /// into an instance they did not ask to rejoin.
+    ///
+    /// Returns true when a fresh token was obtained.
+    async fn reauthenticate(&self, app: &AppHandle) -> bool {
+        let endpoint = match self.endpoint.lock().await.clone() {
+            Some(e) => e,
+            None => return false,
+        };
+        let Some((saved_endpoint, username, password)) = Self::saved_connection() else {
+            self.set_fault(
+                app,
+                "the kernel restarted, which ended this session -- sign in again".to_string(),
+            )
+            .await;
+            self.set_connection(app, ConnectionStatus::Down).await;
+            return false;
+        };
+        // Only rejoin the instance these credentials were saved for. A console
+        // pointed at a different endpoint must not silently authenticate there.
+        if saved_endpoint != endpoint {
+            return false;
+        }
+
+        let mut client = match self.client().await {
+            Ok(c) => c,
+            // The kernel is not back yet: not an auth problem, so let the
+            // ordinary reconnect backoff handle it.
+            Err(_) => return false,
+        };
+        match client
+            .login(Request::new(pb::LoginRequest { username, password }))
+            .await
+        {
+            Ok(resp) => {
+                let resp = resp.into_inner();
+                self.set_token(Some(resp.token.clone()));
+                {
+                    let mut st = self.state.lock().await;
+                    st.role = Some(resp.role.clone());
+                }
+                tracing::info!("session re-established after a kernel restart");
+                true
+            }
+            Err(e) => {
+                // Saved credentials that no longer work is a dead end for the
+                // loop: say so instead of retrying them every 30 seconds.
+                self.set_fault(app, format!("sign in again: {}", e.message()))
+                    .await;
+                self.set_connection(app, ConnectionStatus::Down).await;
+                false
+            }
+        }
+    }
+
     fn stop_requested(&self) -> bool {
         *self.stop_requested.lock().unwrap()
     }
@@ -544,12 +610,22 @@ impl Transport {
 
     // ---- Reads -----------------------------------------------------------
 
-    async fn snapshot_into_state(&self) -> Result<(), String> {
-        let mut client = self.client().await?;
+    /// Seed state from a snapshot.
+    ///
+    /// Returns the gRPC CODE alongside the message: the feed loop has to tell an
+    /// expired session (retrying forever cannot fix it) from an unreachable
+    /// kernel (retrying is exactly the fix).
+    async fn snapshot_into_state(&self) -> Result<(), (tonic::Code, String)> {
+        // Unavailable, not Unauthenticated: a channel that will not open is a
+        // kernel that is not there, which the reconnect backoff handles.
+        let mut client = self
+            .client()
+            .await
+            .map_err(|e| (tonic::Code::Unavailable, e))?;
         let snap = client
             .snapshot(Request::new(pb::SnapshotRequest {}))
             .await
-            .map_err(|e| format!("snapshot: {}", e.message()))?
+            .map_err(|e| (e.code(), format!("snapshot: {}", e.message())))?
             .into_inner();
         let mut s = self.state.lock().await;
         let conn = s.connection.clone();
@@ -1452,10 +1528,18 @@ impl Transport {
 
             // Seed from a snapshot (state + capability/version handshake), then
             // subscribe from the cursor it stamped.
-            if let Err(e) = self.snapshot_into_state().await {
-                self.set_fault(&app, format!("snapshot: {e}")).await;
+            if let Err((code, e)) = self.snapshot_into_state().await {
+                // A kernel restart invalidates every operator token: they are
+                // random bytes in an in-memory map, so nothing survives the
+                // process. Retrying with a dead token can never succeed, and
+                // the console sat in `reconnecting` against a kernel that was
+                // up and healthy.
+                if code == tonic::Code::Unauthenticated && self.reauthenticate(&app).await {
+                    continue;
+                }
+                self.set_fault(&app, e).await;
                 if self.backoff(&app, &mut attempt, &mut waited).await {
-                    return; // unreachable: stop the loop
+                    return;
                 }
                 continue;
             }
@@ -1479,6 +1563,13 @@ impl Transport {
             {
                 Ok(s) => s.into_inner(),
                 Err(e) => {
+                    // Same as the snapshot path: a token the kernel no longer
+                    // knows is not something patience fixes.
+                    if e.code() == tonic::Code::Unauthenticated
+                        && self.reauthenticate(&app).await
+                    {
+                        continue;
+                    }
                     self.set_fault(&app, format!("stream_events: {}", e.message()))
                         .await;
                     if self.backoff(&app, &mut attempt, &mut waited).await {
@@ -1523,7 +1614,7 @@ impl Transport {
                         Some(Payload::Resync(_)) => {
                             // Cursor aged out: re-snapshot, then keep folding the
                             // live tail the kernel continues to send (D6).
-                            if let Err(e) = self.snapshot_into_state().await {
+                            if let Err((_, e)) = self.snapshot_into_state().await {
                                 tracing::warn!("resync snapshot failed: {e}");
                             }
                             self.emit_state(app).await;
@@ -1562,9 +1653,12 @@ impl Transport {
     /// Sleep with exponential backoff. Returns true if we've exceeded the
     /// unreachable threshold (caller should stop).
     async fn backoff(&self, app: &AppHandle, attempt: &mut u32, waited: &mut Duration) -> bool {
-        let delay = RECONNECT_BASE
+        let base = RECONNECT_BASE
             .saturating_mul(2u32.saturating_pow(*attempt))
             .min(RECONNECT_CAP);
+        // +/-10% jitter, so several consoles reconnecting to one kernel do not
+        // arrive in lockstep every 30 seconds.
+        let delay = jittered(base);
         *attempt += 1;
         // Compare CUMULATIVE wait against the threshold. Comparing the single
         // delay could never trip it: delay caps at RECONNECT_CAP (30s), which is
@@ -1579,8 +1673,19 @@ impl Transport {
             _ = tokio::time::sleep(delay) => {}
             _ = self.stop_notify.notified() => return true,
         }
-        // Stop after the cap has been hit enough times to cross the threshold.
-        *attempt > 8
+        // NEVER give up. This used to return `*attempt > 8`, and every caller
+        // treats true as "stop the loop and return" -- so after roughly 150
+        // seconds of failed attempts the feed loop EXITED, permanently. A kernel
+        // that came back afterwards could not be noticed, because nothing was
+        // watching any more, and the console sat at "kernel unreachable" until
+        // someone restarted the app.
+        //
+        // "Unreachable" is a STATE TO DISPLAY, not a reason to stop trying. It is
+        // already surfaced above by the cumulative-wait check, and the interval is
+        // capped at 30s, so retrying forever costs one connect attempt every half
+        // minute. Only an explicit disconnect stops this loop -- the select! arm
+        // above.
+        false
     }
 }
 
@@ -1593,6 +1698,30 @@ struct TokenChunk {
 
 fn new_command_id() -> String {
     uuid::Uuid::new_v4().to_string()
+}
+
+/// Project a SetConfigOpResponse without collapsing its per-key verdicts.
+///
+/// A partial write can partly succeed, and the effect (`live`,
+/// `restart_required`, `shadowed`, `rejected`) is the half an operator acts on.
+/// Flattening it to a boolean is what makes a stored-but-inert setting look
+/// applied.
+fn config_write_result(resp: pb::SetConfigOpResponse) -> ConfigWriteResult {
+    ConfigWriteResult {
+        command_id: resp.command_id,
+        deduped: resp.deduped,
+        outcomes: resp
+            .outcomes
+            .into_iter()
+            .map(|o| ConfigWriteOutcome {
+                key: o.key,
+                stored: o.stored,
+                effect: o.effect,
+                shadowed_by: o.shadowed_by,
+                error: o.error,
+            })
+            .collect(),
+    }
 }
 
 pub(crate) fn map_status(e: Status) -> String {
@@ -1621,11 +1750,13 @@ impl Transport {
                 endpoint: g.endpoint,
                 model: g.model,
                 timeout_ms: g.timeout_ms,
-                // Not on the operator contract: these live in providers.json and
-                // are not projected. Empty/false rather than invented values.
-                capability_tags: Vec::new(),
-                native_tools: false,
-                disable_thinking: false,
+                // The DECLARED half (contract 0083). Reported so an edit
+                // round-trips: reconstructing these on save wrote an invented
+                // `false` over a true native_tools declaration, which silently
+                // disables tool-calling.
+                capability_tags: g.capabilities,
+                native_tools: g.native_tools,
+                disable_thinking: g.disable_thinking,
                 breaker: g.breaker_state,
                 recent_failures: g.recent_failures,
                 // The kernel tracks breaker state, not latency percentiles.
@@ -1683,10 +1814,11 @@ impl Transport {
             .await
             .map_err(map_status)?
             .into_inner();
-        // model_matches compares what was ASKED against what the endpoint ECHOED.
-        // An endpoint answering happily with a different build is the most common
-        // misconfiguration in this space and nothing else reveals it.
-        let model_matches = !resp.model_served.is_empty() && resp.model_served == id;
+        // The verdict is the KERNEL's now. This used to compare model_served
+        // against the generator ID -- a different string entirely -- so a
+        // correctly-served model reported a mismatch while the panel displayed
+        // two identical values beside it.
+        let _ = &id;
         Ok(GeneratorTestResult {
             reachable: resp.ok,
             round_trip_ms: resp.latency_ms,
@@ -1694,14 +1826,121 @@ impl Transport {
             // surfaces as ok=false with the endpoint's own words in error.
             authenticated: resp.ok,
             model_served: resp.model_served,
-            model_matches,
-            // The probe does not exercise native tool-calling, so this is not a
-            // claim either way -- false rather than a fabricated pass.
-            native_tools_ok: false,
+            model_requested: resp.model_requested,
+            model_matches: resp.model_matches,
+            // Whether tool-calling was exercised AT ALL. False means not tested,
+            // which the console must not draw as a failure.
+            native_tools_checked: resp.native_tools_checked,
+            native_tools_ok: resp.native_tools_ok,
             tokens_in: -1,
             tokens_out: -1,
             tokens_cached: -1,
             error: resp.error,
+        })
+    }
+
+    /// Contract 0083: create or replace a generator.
+    ///
+    /// The kernel stores the WHOLE list and reports the effect, which is
+    /// `restart_required` -- generators are built once, at boot, into the
+    /// provider's routing table. That verdict is passed through rather than
+    /// flattened into ok/failed: "saved" alone would leave an operator watching
+    /// traffic go to a model they believe they replaced.
+    pub async fn save_generator(
+        &self,
+        generator: GeneratorSpec,
+        reason: String,
+    ) -> Result<ConfigWriteResult, String> {
+        let mut client = self.client().await?;
+        let resp = client
+            .save_generator(Request::new(pb::SaveGeneratorOpRequest {
+                generator: Some(pb::GeneratorSpecOp {
+                    id: generator.id,
+                    // `protocol` in the console is the kernel's `provider`: the
+                    // wire protocol, not the vendor.
+                    provider: generator.protocol,
+                    model: generator.model,
+                    endpoint: generator.endpoint,
+                    timeout_ms: generator.timeout_ms,
+                    capabilities: generator.capability_tags,
+                    native_tools: generator.native_tools,
+                    disable_thinking: generator.disable_thinking,
+                    // A VARIABLE NAME never travels from this form; the key
+                    // itself has exactly one path onto the plane.
+                    api_key_env: String::new(),
+                }),
+                command_id: new_command_id(),
+                reason,
+            }))
+            .await
+            .map_err(map_status)?
+            .into_inner();
+        Ok(config_write_result(resp))
+    }
+
+    pub async fn remove_generator(
+        &self,
+        id: String,
+        reason: String,
+    ) -> Result<ConfigWriteResult, String> {
+        let mut client = self.client().await?;
+        let resp = client
+            .remove_generator(Request::new(pb::RemoveGeneratorOpRequest {
+                generator_id: id,
+                command_id: new_command_id(),
+                reason,
+            }))
+            .await
+            .map_err(map_status)?
+            .into_inner();
+        Ok(config_write_result(resp))
+    }
+
+    /// Write-only by construction: the key goes in and only its last four ever
+    /// come back, on the NEXT ListGenerators. Nothing here echoes it.
+    pub async fn set_generator_key(
+        &self,
+        id: String,
+        key: String,
+    ) -> Result<ConfigWriteResult, String> {
+        let mut client = self.client().await?;
+        let resp = client
+            .set_generator_key(Request::new(pb::SetGeneratorKeyOpRequest {
+                generator_id: id.clone(),
+                key,
+                command_id: new_command_id(),
+                // The reason names the generator and never the credential --
+                // this string lands in the audit log, which is the one store
+                // designed to be read and exported.
+                reason: format!("operator installed an api key for {id}"),
+            }))
+            .await
+            .map_err(map_status)?
+            .into_inner();
+        Ok(config_write_result(resp))
+    }
+
+    pub async fn clear_generator_key(
+        &self,
+        id: String,
+        reason: String,
+    ) -> Result<ConfigWriteResult, String> {
+        let mut client = self.client().await?;
+        let ack = client
+            .clear_generator_key(Request::new(pb::ClearGeneratorKeyOpRequest {
+                generator_id: id,
+                command_id: new_command_id(),
+                reason,
+            }))
+            .await
+            .map_err(map_status)?
+            .into_inner();
+        // A CommandAck carries no per-key outcome, so none is invented here. The
+        // absence of an error IS the result.
+        Ok(ConfigWriteResult {
+            command_id: ack.command_id,
+            deduped: ack.deduped,
+            outcomes: Vec::new(),
         })
     }
 
@@ -1858,4 +2097,24 @@ fn authored_step_to_pb(s: AuthoredStep) -> pb::AuthoredStepOp {
         fan_out_over: s.fan_out_over,
         fan_out_var: s.fan_out_var,
     }
+}
+
+/// Spread a retry delay by ±10%.
+///
+/// Deterministic source (the clock) rather than a new dependency: the point is
+/// that two clients do not retry in lockstep, not cryptographic unpredictability.
+fn jittered(base: Duration) -> Duration {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.subsec_nanos())
+        .unwrap_or(0);
+    // -10% .. +10%
+    let spread = (base.as_millis() as u64) / 5;
+    if spread == 0 {
+        return base;
+    }
+    let offset = (nanos as u64 % spread) as i64 - (spread / 2) as i64;
+    let millis = (base.as_millis() as i64 + offset).max(1) as u64;
+    Duration::from_millis(millis)
 }

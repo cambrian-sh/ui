@@ -29,6 +29,9 @@ const STATE_TONE: Record<string, { label: string; tone: string }> = {
   starting: { label: 'Starting', tone: 'var(--status-warn)' },
   off: { label: 'Off', tone: 'var(--fg-muted)' },
   no_token: { label: 'Not configured', tone: 'var(--fg-muted)' },
+  // A bot the kernel recorded but could not build this run — it exists, it is
+  // addressable, and it is not going to poll until the kernel restarts.
+  pending_start: { label: 'Waiting for restart', tone: 'var(--status-warn)' },
   error: { label: 'Error', tone: 'var(--status-err)' },
 };
 
@@ -75,10 +78,21 @@ export function TelegramConsole() {
       // The list first: it names which bots exist, and the status call is about
       // ONE of them. Asking for a bot that is not configured answers NotFound
       // rather than quietly reporting a different bridge.
-      const list = await ipc.telegramListBots().catch(() => [] as TelegramBot[]);
+      // A FAILED list is not an empty list. Swallowing the error here renders
+      // "no bots" for a call that never answered, which is indistinguishable
+      // from a kernel that has none — and it is the reason a bot that existed
+      // looked like it had never been created.
+      let list: TelegramBot[] = [];
+      let listError = '';
+      try {
+        list = await ipc.telegramListBots();
+      } catch (e) {
+        listError = e instanceof Error ? e.message : String(e);
+      }
       setBots(list);
+      if (listError) setError(listError);
       setStatus(await ipc.telegramStatus(activeBot));
-      setError(null);
+      if (!listError) setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -235,10 +249,39 @@ export function TelegramConsole() {
             onSelect={setBot}
             onAdd={async (id, label) => {
               const ack = await ipc.telegramAddBot(id, label);
+              if (!ack.ok) {
+                setNotice(ack.error);
+                await reload();
+                return;
+              }
+              // Registering the surface is done HERE, under the operator's own
+              // token, and not by the plugin: registration mints a surface and
+              // decides what an entry point may reach (ADR-0090 D2). Doing it as
+              // part of the same action is what makes "add a bot" finish the job
+              // — the previous flow left every new bot ungoverned and told the
+              // operator to go and finish it somewhere else.
+              let governed = '';
+              try {
+                const out = await ipc.registerIngress({
+                  agent_id: `telegram_ingress_${id}`,
+                  surface_kind: 'chat',
+                  surface_id: `telegram:${id}`,
+                  // The bot may speak for Telegram identities and nothing else.
+                  // An empty namespace would read as a wildcard.
+                  namespace: ['tg:'],
+                });
+                governed = out.ok
+                  ? ` Its surface chat:telegram:${id} is registered, so its traffic arrives governed.`
+                  : ` Its surface could not be registered (${out.error}) — until it is, its traffic arrives with no policy on the door.`;
+              } catch (e) {
+                // An unreachable access plane is not a failed bot. The bot
+                // exists; saying which half did not happen is the useful part.
+                governed = ` Its surface chat:telegram:${id} is NOT registered (${
+                  e instanceof Error ? e.message : String(e)
+                }) — until it is, its traffic arrives with no policy on the door.`;
+              }
               setNotice(
-                ack.ok
-                  ? `Bot "${id}" recorded. Its surface is chat:telegram:${id} — register it in Scope & Access, and it starts polling after the next kernel restart.`
-                  : ack.error,
+                `Bot "${id}" created.${governed}${ack.detail ? ` ${ack.detail}` : ''} Paste its token to start it.`,
               );
               await reload();
             }}

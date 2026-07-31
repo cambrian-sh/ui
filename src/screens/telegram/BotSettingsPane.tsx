@@ -55,7 +55,11 @@ export function BotSettingsPane({
       // text box, and leaving it sitting there is the same exposure the
       // write-only API exists to avoid.
       setToken('');
-      setNotice(ack.ok ? 'Token saved.' : ack.error);
+      // `detail` carries what the kernel did beyond succeeding — notably that
+      // it took the token out of a larger paste. Silently using something
+      // different from what was typed is the kind of helpfulness that becomes
+      // a mystery later.
+      setNotice(ack.ok ? (ack.detail ? `Token saved. ${ack.detail}` : 'Token saved.') : ack.error);
       if (ack.ok) setConfiguring(false);
       await onChanged();
     } catch (e) {

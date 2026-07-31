@@ -1467,7 +1467,32 @@ pub struct ConversationProgress {
     pub updated_at_unix_ms: i64,
 }
 
-#[derive(Clone, Serialize, Default)]
+/// What happened to ONE key in a durable config write (contract 0072/0083).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConfigWriteOutcome {
+    pub key: String,
+    pub stored: bool,
+    /// "live" | "restart_required" | "shadowed" | "rejected". Passed through
+    /// verbatim: a console renders its copy from this word, and flattening it to
+    /// ok/failed is what makes a stored-but-inert setting look applied.
+    pub effect: String,
+    /// Names the layer winning over the store ("env:CAMBRIAN_…"), and only when
+    /// effect == "shadowed". "Something pins this" leaves an operator hunting.
+    pub shadowed_by: String,
+    pub error: String,
+}
+
+/// A durable config write, per key.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConfigWriteResult {
+    pub command_id: String,
+    pub deduped: bool,
+    /// Empty when the kernel answered with a bare ack — the absence of an error
+    /// is the result, and no outcome is invented to fill the gap.
+    pub outcomes: Vec<ConfigWriteOutcome>,
+}
+
+#[derive(Clone, Serialize, Deserialize, Default)]
 pub struct GeneratorSpec {
     pub id: String,
     pub protocol: String,
@@ -1517,7 +1542,12 @@ pub struct GeneratorTestResult {
     /// for. An endpoint answering happily with a different build is the most
     /// common misconfiguration here and is invisible in a successful generation.
     pub model_served: String,
+    /// What the probe asked the endpoint for.
+    pub model_requested: String,
     pub model_matches: bool,
+    /// Whether tool-calling was exercised at all. False = NOT TESTED, which is
+    /// not the same as failed and must not be drawn as one.
+    pub native_tools_checked: bool,
     pub native_tools_ok: bool,
     pub tokens_in: i64,
     pub tokens_out: i64,

@@ -160,4 +160,11 @@ message AckResponse {
   bool ok = 1;
   // error is a human sentence. Empty when ok.
   string error = 2;
+  // detail is what SUCCEEDED and what it left undone.
+  //
+  // A bot can be created successfully and still not be governable — its surface
+  // is not registered until an operator does that on the access plane — and an
+  // ok with nothing else to say cannot carry that. Empty when there is nothing
+  // beyond the success to report.
+  string detail = 3;
 }

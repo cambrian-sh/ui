@@ -8,6 +8,8 @@ const TONE: Record<string, string> = {
   starting: 'var(--status-warn)',
   off: 'var(--fg-muted)',
   no_token: 'var(--fg-muted)',
+  // Recorded, but its bridge is not built on THIS kernel run.
+  pending_start: 'var(--status-warn)',
   error: 'var(--status-err)',
 };
 

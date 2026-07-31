@@ -20,6 +20,7 @@ import { Route as PlansRouteImport } from './routes/plans'
 import { Route as PlanBuilderRouteImport } from './routes/plan-builder'
 import { Route as MemoryRouteImport } from './routes/memory'
 import { Route as McpRouteImport } from './routes/mcp'
+import { Route as LogsRouteImport } from './routes/logs'
 import { Route as LifecycleRouteImport } from './routes/lifecycle'
 import { Route as InboxRouteImport } from './routes/inbox'
 import { Route as CostRouteImport } from './routes/cost'
@@ -85,6 +86,11 @@ const McpRoute = McpRouteImport.update({
   path: '/mcp',
   getParentRoute: () => rootRouteImport,
 } as any)
+const LogsRoute = LogsRouteImport.update({
+  id: '/logs',
+  path: '/logs',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const LifecycleRoute = LifecycleRouteImport.update({
   id: '/lifecycle',
   path: '/lifecycle',
@@ -139,6 +145,7 @@ export interface FileRoutesByFullPath {
   '/cost': typeof CostRoute
   '/inbox': typeof InboxRoute
   '/lifecycle': typeof LifecycleRoute
+  '/logs': typeof LogsRoute
   '/mcp': typeof McpRoute
   '/memory': typeof MemoryRoute
   '/plan-builder': typeof PlanBuilderRoute
@@ -161,6 +168,7 @@ export interface FileRoutesByTo {
   '/cost': typeof CostRoute
   '/inbox': typeof InboxRoute
   '/lifecycle': typeof LifecycleRoute
+  '/logs': typeof LogsRoute
   '/mcp': typeof McpRoute
   '/memory': typeof MemoryRoute
   '/plan-builder': typeof PlanBuilderRoute
@@ -184,6 +192,7 @@ export interface FileRoutesById {
   '/cost': typeof CostRoute
   '/inbox': typeof InboxRoute
   '/lifecycle': typeof LifecycleRoute
+  '/logs': typeof LogsRoute
   '/mcp': typeof McpRoute
   '/memory': typeof MemoryRoute
   '/plan-builder': typeof PlanBuilderRoute
@@ -208,6 +217,7 @@ export interface FileRouteTypes {
     | '/cost'
     | '/inbox'
     | '/lifecycle'
+    | '/logs'
     | '/mcp'
     | '/memory'
     | '/plan-builder'
@@ -230,6 +240,7 @@ export interface FileRouteTypes {
     | '/cost'
     | '/inbox'
     | '/lifecycle'
+    | '/logs'
     | '/mcp'
     | '/memory'
     | '/plan-builder'
@@ -252,6 +263,7 @@ export interface FileRouteTypes {
     | '/cost'
     | '/inbox'
     | '/lifecycle'
+    | '/logs'
     | '/mcp'
     | '/memory'
     | '/plan-builder'
@@ -275,6 +287,7 @@ export interface RootRouteChildren {
   CostRoute: typeof CostRoute
   InboxRoute: typeof InboxRoute
   LifecycleRoute: typeof LifecycleRoute
+  LogsRoute: typeof LogsRoute
   McpRoute: typeof McpRoute
   MemoryRoute: typeof MemoryRoute
   PlanBuilderRoute: typeof PlanBuilderRoute
@@ -369,6 +382,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof McpRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/logs': {
+      id: '/logs'
+      path: '/logs'
+      fullPath: '/logs'
+      preLoaderRoute: typeof LogsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/lifecycle': {
       id: '/lifecycle'
       path: '/lifecycle'
@@ -443,6 +463,7 @@ const rootRouteChildren: RootRouteChildren = {
   CostRoute: CostRoute,
   InboxRoute: InboxRoute,
   LifecycleRoute: LifecycleRoute,
+  LogsRoute: LogsRoute,
   McpRoute: McpRoute,
   MemoryRoute: MemoryRoute,
   PlanBuilderRoute: PlanBuilderRoute,
