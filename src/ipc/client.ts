@@ -299,6 +299,55 @@ export const ipc = {
   telegramRemoveBot: (id: string, reason: string): Promise<t.TelegramAck> =>
     invoke<t.TelegramAck>('op_telegram_remove_bot', { id, reason }),
 
+  // ── The record lane (ADR-0102) — the drift product ────────────────────────
+  // Reads on the premium plane, gated on `record-lane`. These are request/
+  // response rather than projection because alerts are NOT on the operator event
+  // feed: `ListAlerts` is poll-only, and a live indicator over a poll would be a
+  // lie. When alerts gain a feed lane (a contract bump) these move.
+
+  /**
+   * Raised drift alerts, newest first, scoped to the caller.
+   *
+   * Every alert stands alone — `quote` is populated on its citations — so the
+   * feed and its evidence inspector render with no second round trip.
+   */
+  listAlerts: (): Promise<t.Alert[]> => invoke<t.Alert[]>('op_list_alerts'),
+
+  /**
+   * The four-outcome tally.
+   *
+   * Check `available` FIRST and separately: false means this deployment has no
+   * reconciler, and rendering it as four zeros is the exact failure the field
+   * exists to prevent.
+   */
+  getDriftStats: (): Promise<t.DriftStats> => invoke<t.DriftStats>('op_get_drift_stats'),
+
+  /** What the lane declined to compare, and across which closed boundary. */
+  listRefusals: (): Promise<t.Refusal[]> => invoke<t.Refusal[]>('op_list_refusals'),
+
+  /**
+   * Retention history for the RECORD source.
+   *
+   * The feed (`retention_runs` on the projection) is the live lane and covers
+   * both sources; this only backfills what the feed cannot replay, so a failed
+   * pass from before login is visible on the first paint.
+   */
+  listRetentionRuns: (): Promise<t.RetentionRunEvent[]> =>
+    invoke<t.RetentionRunEvent[]>('op_list_retention_runs'),
+
+  /**
+   * What every connected source can and cannot see.
+   *
+   * An EMPTY array means no connector has reported — not "coverage is zero".
+   * There is deliberately no `reportCoverage` here: reporting is a connector's
+   * job, and an operator console asserting what a daemon can see would be
+   * inventing the denominator this surface exists to make honest.
+   */
+  getCoverage: (): Promise<t.SourceCoverage[]> => invoke<t.SourceCoverage[]>('op_get_coverage'),
+
+  /** Last accepted push per record kind. Empty is a real answer: no import recorded. */
+  getPushStatus: (): Promise<t.KindPushStatus[]> => invoke<t.KindPushStatus[]>('op_get_push_status'),
+
   /**
    * Apply or remove one label on a document or memory.
    *

@@ -83,3 +83,21 @@ The Rust core tells the webview the `role` (`operator`/`viewer`) and the `capabi
 ## Out of scope (PRD)
 
 No marketing site, no end-user chat product, no agent IDE, no marketplace, no full observability/Grafana clone, no mobile-native, no i18n at V1 (externalize strings), light mode is a follow-on (dark-mode-first).
+
+## The drift surfaces (`screens/drift/`, route `/drift`, ADR-0102)
+
+The drift product's own output. Mounted inside `PluginSurface` (`pluginId="drift"`, capability `record-lane`) so contract skew is reported by construction and an absent plugin renders as a *complete deployment*, not a fault. Four surfaces behind `?tab=`: **Alerts**, **Ledger**, **Coverage**, **Retention**; `?alert=` selects one alert's evidence, which fills the **inspector slot** rather than a permanent aside.
+
+Five rules govern this screen, and each exists because the obvious implementation is wrong:
+
+1. **Silence has two meanings, so there is no empty state.** "No drift found" and "nothing could be compared" are different facts that the kernel keeps apart the whole way through — four outcome kinds, five unresolved reasons, refusals on their own surface. The feed therefore carries a *permanent* card pointing at the ledger, and an empty alert list says which of the two it is instead of rendering nothing.
+2. **`GetDriftStats.available === false` is never a tally of zeros.** When it is false the not-configured card is the **entire page**: the four outcome cards, the reason list and the refusals do not render at all. A deployment with no reconciler and one with nothing wrong produce identical numbers, and this is the only thing that tells them apart.
+3. **Citation markers are derived, never hardcoded.** `drift-format.ts` parses the kernel's `[n]` markers and resolves each against `citations[]`; the `[3..n]` run comes from the history array's own length. A marker with no citation renders as **plain text**, not as a followable superscript — a hardcoded `[3][4]` once produced two unfollowable markers on two of three alerts, and this page argues for that invariant in its own copy.
+4. **Nothing implies an action the product does not take.** No Resolve, acknowledge, dismiss or snooze: alerts have no state field, and a UI-local flag is wrong the moment there are two operators. "N since you last looked" is the honest substitute — it is a claim about this client only, so a local high-water mark is the right shape for it.
+5. **`refused` is styled with the accent, never as an error.** It is the product declining to cross a classification boundary, which is the thing being sold.
+
+**Coverage carries two more silences that must not collapse.** `GetCoverage` returning an empty list means *no connector has reported* — the store is pushed and process-lifetime, so that is the absence of a statement, not a statement that everything is covered. And `GetPushStatus` is driven off the record rows, so a kind configured in the exporter but never pushed once has no entry at all; the list says it is not exhaustive rather than implying it. The retention horizon is read through `describeHorizon()` because it has **three** states — `N` days, unlimited, and `-1` "not reported" — and a console that printed unknown as unlimited would be making a recall claim against the wrong denominator. (The design mockup's `90 d · plan tier: pro` was wrong for that reason: only `free` is 90 days in the connector's table.)
+
+**This screen polls, and it is the only one that does.** `ListAlerts` is request/response only — alerts are not on the operator event feed, and putting them there is a contract bump — so the alert queries set `refetchInterval` explicitly against an otherwise inert `queryClient`. The header says "polled N s ago" for exactly that reason: a pulsing live dot over a poll would be a lie. Retention is the exception and *is* folded (`retention_runs` on the projection, capability `retention-feed`), merged with `ListRetentionRuns` so a pass from before login is still visible on the first paint.
+
+`tags[]` on an alert are **inherited** classification (ADR-0095 D9). An alert is never more visible than the material it quotes, and it is the artifact most likely to be forwarded — so the copy/export path leads with the tags, and any future share affordance must too.

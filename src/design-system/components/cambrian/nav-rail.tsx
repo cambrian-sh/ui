@@ -9,6 +9,7 @@ import {
   MessagesSquare,
   Network,
   Receipt,
+  Scale as ScaleIcon,
   ScrollText,
   Search,
   Settings,
@@ -105,6 +106,19 @@ export const NAV_GROUPS: readonly NavGroup[] = [
     label: "Governance",
     entries: [
       { path: "/scope", label: "Scope & Access", icon: ShieldCheck },
+      {
+        // The drift product's own output (ADR-0102). Governance rather than
+        // Execution: it answers "what did we promise, and does the record
+        // agree" — a question about what happened, not about what can act.
+        //
+        // Gated on `record-lane`, which the plugin reports only after it finds a
+        // store. A deployment with the plugin and no Postgres is CORRECT, and a
+        // rail entry leading to a surface that answers Unimplemented is a lie.
+        path: "/drift",
+        label: "Drift",
+        icon: ScaleIcon,
+        requires: "record-lane",
+      },
       { path: "/audit", label: "Audit", icon: ScrollText },
       {
         // What the PROCESS did, as opposed to who changed what (Audit) or what

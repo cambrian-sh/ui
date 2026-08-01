@@ -1,4 +1,14 @@
-# Cambrian UI — Development Rules (CLAUDE.md)
+# Cambrian UI — Development Rules
+
+> **This file is canonical.** `CLAUDE.md` in this directory points here; it is not a
+> second copy. Edit this file, and never maintain the two by hand.
+>
+> They were previously two hand-maintained copies that drifted into stating
+> *contradictory* invariants — this file carried the pre-ADR-0073 "only
+> `OperatorConsole`" rule, which forbids the premium planes the UI is required to
+> render, and omitted the session→TASK naming exception entirely. An agent reading
+> one file and an agent reading the other derived opposite rules. The content below
+> is the correct, current version.
 
 ## Session Bootstrap (REQUIRED)
 
@@ -7,9 +17,9 @@ Every new session MUST start by reading, in full:
 2. **`docs/web-ui-prd.md`** — the product spec (what to build: 53 user stories, 24 use cases, the V1 demo path, out of scope).
 3. **`proto/operator.proto`** — the vendored, pinned gRPC contract. The *only* API to the runtime.
 
-Then read the **layer file for the layer you are working in**, and its `CLAUDE.md`:
-- Working in the **Rust core / transport / state** → `src-tauri/CONTEXT.md` + `src-tauri/CLAUDE.md`.
-- Working in the **webview / UI / projection** → `src/CONTEXT.md` + `src/CLAUDE.md`.
+Then read the **layer file for the layer you are working in**, and its `AGENTS.md`:
+- Working in the **Rust core / transport / state** → `src-tauri/CONTEXT.md` + `src-tauri/AGENTS.md`.
+- Working in the **webview / UI / projection** → `src/CONTEXT.md` + `src/AGENTS.md`.
 
 Do not assume anything about the runtime, the transport, or the domain terminology without consulting these. For runtime-side rationale, the kernel repo's `docs/adr/0047-operator-transport-plane.md` is the authority (this UI consumes ADR-0047's Operator Transport Plane).
 
@@ -19,10 +29,12 @@ This is a **Tauri 2** desktop app: a **Rust core** + a **React 19 / TypeScript**
 
 ## Non-negotiable rules
 
-- **Only `OperatorConsole`.** The runtime is reachable exclusively through the `OperatorConsole` gRPC service in `proto/operator.proto`. Never call the agent-facing `Orchestrator`/`AgentService`. Never bypass the kernel (no direct DB, no parallel store). The UI is a **controller over the kernel's boundary, not a back door**.
+- **Only the operator plane.** The runtime is reachable through the pinned `OperatorConsole` service in `proto/operator.proto`, **plus** any premium-owned service mounted on the same kernel server behind the same operator auth interceptors — vendored under `proto/<plugin>/`, spoken over the same connection and token (ADR-0073/0088). Never call the agent-facing `Orchestrator`/`AgentService`. Never carry an `x-agent-id` principal for a human. Never bypass the kernel (no direct DB, no parallel store). The UI is a **controller over the kernel's boundary, not a back door**.
+- **A premium surface is capability-gated, never probed.** Render a plugin's panel only when `capabilities[]` from the handshake carries its string (`access-policy`, `chat`, `memory-answer`, …). The kernel forwards plugin capabilities without interpreting them (ADR-0082 D2), so this is the whole rendering contract. When the capability is absent, say what the deployment **is** — an unscoped OSS kernel is correct, not broken — and never turn the empty state into an upsell.
 - **gRPC lives in the Rust core only.** Put `tonic`/`prost` and all kernel I/O in `src-tauri`. The webview gets typed data via Tauri commands/events. Do NOT add gRPC-Web, Envoy, `protobuf.js`, or browser sockets — they are unnecessary and forbidden by the architecture (the kernel speaks native HTTP/2 gRPC, which the Rust core handles).
 - **The vendored proto is pinned and read-only.** Do not hand-edit `proto/operator.proto`. Re-vendor from the kernel repo (`api/proto/operator.proto`) when the contract bumps, and update the pinned-version header + `CONTEXT.md`.
 - **Use the kernel's vocabulary verbatim** (Substrate, ExecutionPlan, Gatekeeper, Auctioneer, TrustScore, HITL, Inject, Plans in Flight, …). Never invent synonyms. See `CONTEXT.md §10`.
+  - **One deliberate exception: a kernel `session` is called a TASK in the UI.** Every ask an operator makes is registered as a session, and "task" is what that is to a human. The rename is presentation-only — the wire keeps `session_id`, `SessionSummary`, `op_*_session`, and the route is `/tasks`. Do not "correct" the visible copy back to Session, and do not rename the wire to Task.
 - **Realtime by default.** No "click to refresh" anywhere. State updates by folding the `StreamEvents` feed. The status of the connection (live / reconnecting / down) and what is stale must always be honest and visible.
 
 ## Transport rules (implement in the Rust core)

@@ -17,7 +17,8 @@ The Rust core is the **only** thing that talks gRPC to the runtime-core. The web
 | File | Responsibility |
 |---|---|
 | `build.rs` | `tonic-build` codegen — generates the `OperatorConsole` **client** (no server stubs) from `../proto/operator.proto`; `rerun-if-changed` on the proto. |
-| `src/pb.rs` | `tonic::include_proto!("cambrian")` + `PINNED_CONTRACT_VERSION = "0070"`, plus `PINNED_PLUGIN_VERSIONS` and `plugin_skew()` — the per-plugin version expectation this build was compiled against (ADR-0089). The generated `tonic`/`prost` types live here; **nothing outside the core references them**. |
+| `src/pb.rs` | `tonic::include_proto!("cambrian")` + `PINNED_CONTRACT_VERSION` (currently `0085`), plus `PINNED_PLUGIN_VERSIONS` and `plugin_skew()` — the per-plugin version expectation this build was compiled against (ADR-0089). Also the capability constants (`RECORD_LANE_CAPABILITY`, `RETENTION_FEED_CAPABILITY`, …). The generated `tonic`/`prost` types live here; **nothing outside the core references them**. |
+| `src/records.rs` | The record lane (ADR-0102): alerts, the drift tally, refusals, retention runs, coverage and push status. **Reads only** — the console never calls `IngestRecords`, `IngestMessages` or `ReportCoverage`. Reporting coverage is a connector's job, and an operator console asserting what a daemon can see would be inventing the denominator that surface exists to make honest. |
 | `src/state.rs` | The **state of record**: `StateOfRecord` (connection, role, handshake, cursor, plans-by-id, sessions, audit tail, pending HITL) + an **idempotent absolute-state `fold`** (last-writer-wins by id; `token` events return `false` and are excluded) + `apply_snapshot` + `reset_live`. The fold also populates **subsystem caches**: `AgentReadyOp` → `agents`, `WatchTriggeredOp` → `watch_configs` (idempotent by id). `tools`/`skills`/`watch_configs` are additionally upserted from the `List*` RPCs. Serde-serializable (it IS the projection). |
 | `src/transport.rs` | The gRPC client + **`AuthInterceptor`** (bearer token), `login` (+ OS-keychain persistence), the **command senders**, and the **feed loop** (`run_feed`/`drain`/`backoff`): snapshot-seed → subscribe-from-cursor → fold+emit → `Resync` re-snapshot → reconnect with exponential backoff → `Unreachable`. |
 | `src/lib.rs` | The **Tauri bridge**: managed `Transport` state + the `op_*` commands + `run()`. |
@@ -73,10 +74,14 @@ The Rust core is the **only** thing that talks gRPC to the runtime-core. The web
 
 ## The contract: the operator PLANE (two services, one connection)
 
-The core speaks **two** gRPC services, and it is important that they are not peers:
+The core speaks the pinned OSS service plus every premium plane compiled into this build, and it is important that they are not peers:
 
 1. **`cambrian.OperatorConsole`** — the pinned OSS contract, generated from `../proto/operator.proto`. Version-handshaked (`PINNED_CONTRACT_VERSION`, currently `0070`) with a skew banner. Since ADR-0089 the same handshake also carries every declared plugin with its own version line; `StateOfRecord.plugins` holds the kernel's report plus this build's skew verdict, computed here rather than in the webview because the pinned table is a property of the compiled client.
 2. **`cambrian.premium.authz.AccessPolicyAdmin`** — a PREMIUM-owned plane (ADR-0073/0088), generated from `../proto/authz/access_policy.proto`, mounted on the same kernel server behind the same operator auth interceptors. It rides the **same channel and the same bearer token** via `Transport::authed_channel` — a second connection would be a second thing to authenticate, reconnect and reason about, and would make the premium plane look like a side door rather than the extension it is.
+3. **`cambrian.premium.telegram.TelegramAdmin`** and **`cambrian.premium.telemetry.*`** — the ingress and Langfuse administration planes, on the same terms.
+4. **`cambrian.premium.records.RecordLane`** — the drift product's plane (ADR-0102), generated from `../proto/records/records.proto`, on the same terms as the rest. `src/records.rs` holds the client and its serde DTOs; `op_list_alerts` / `op_get_drift_stats` / `op_list_refusals` / `op_list_retention_runs` are the Tauri commands.
+
+   Two things here are contract facts rather than choices. **`GetDriftStats.available` is not a count** — false means this deployment has no reconciler, and it is carried to the webview untouched because a tally of zeros beside an absent detector is exactly what the field exists to prevent. And **`record-lane` is reported after Build, not declared in the manifest**: the lane needs Postgres, so a kernel with the plugin and no database correctly never advertises it. That makes the capability's absence meaningful rather than a fault.
 
 Neither is the agent-facing `Orchestrator`/`AgentService`, and the core never carries an `x-agent-id` principal. That was always the point of the rule and it is unchanged.
 
@@ -142,3 +147,11 @@ The reconnect loop is otherwise unstoppable by design, so `op_disconnect` sets a
 - Expose user intents as `#[tauri::command]`s that call the gRPC client and return/ack.
 - Emit **projection events** (typed, serde) to the webview as the state of record changes. **Batch** high-frequency classes (`token`, `plan_state` ticks) at ~60fps / 100ms; deliver **control** classes (`hitl_raised`, `audit`, errors, `llm_health`) immediately and un-batched.
 - The webview holds no kernel state the core didn't give it; a webview reload re-requests the current projection.
+
+**Retention on the feed (contract `0084`, capability `retention-feed`, ADR-0102 A1).** The fold pushes `RetentionRunOp` into a bounded `retention_runs` list (cap 100). Three details are load-bearing:
+
+- It is **source-agnostic**. The record compactor and the reactive-journal GC publish the same shape, so `source` is read rather than assumed and one console panel serves both.
+- The dedup key is **`(source, run_id)`**, not `seq`. `run_id` is the source's own id and is only unique within a source, and the list survives a resync — so the same pass can legitimately arrive twice, once live and once replayed.
+- `reset_live` deliberately does **not** clear it. A snapshot carries no retention history, so clearing on resync would let an ordinary cursor event erase the evidence that a pass failed — in a product whose argument is auditability. The webview merges this with `ListRetentionRuns` on the record lane so a pass from before login is still visible on the first paint.
+
+`undefined` and `[]` are different answers here: a core that cannot report retention and a kernel that has run no pass are different facts, and only the second is evidence about deletion.

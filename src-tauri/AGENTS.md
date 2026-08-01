@@ -1,4 +1,4 @@
-# Rust Core (`src-tauri`) — Development Rules (CLAUDE.md)
+# Rust Core (`src-tauri`) — Development Rules
 
 ## Bootstrap
 Read, in order: project root `../CONTEXT.md`, this directory's `CONTEXT.md` (the full transport contract + recovery rules), and the vendored `../proto/operator.proto`. The product spec is `../docs/web-ui-prd.md`.

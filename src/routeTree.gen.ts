@@ -23,6 +23,7 @@ import { Route as McpRouteImport } from './routes/mcp'
 import { Route as LogsRouteImport } from './routes/logs'
 import { Route as LifecycleRouteImport } from './routes/lifecycle'
 import { Route as InboxRouteImport } from './routes/inbox'
+import { Route as DriftRouteImport } from './routes/drift'
 import { Route as CostRouteImport } from './routes/cost'
 import { Route as ChatRouteImport } from './routes/chat'
 import { Route as AuditRouteImport } from './routes/audit'
@@ -101,6 +102,11 @@ const InboxRoute = InboxRouteImport.update({
   path: '/inbox',
   getParentRoute: () => rootRouteImport,
 } as any)
+const DriftRoute = DriftRouteImport.update({
+  id: '/drift',
+  path: '/drift',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const CostRoute = CostRouteImport.update({
   id: '/cost',
   path: '/cost',
@@ -143,6 +149,7 @@ export interface FileRoutesByFullPath {
   '/audit': typeof AuditRoute
   '/chat': typeof ChatRoute
   '/cost': typeof CostRoute
+  '/drift': typeof DriftRoute
   '/inbox': typeof InboxRoute
   '/lifecycle': typeof LifecycleRoute
   '/logs': typeof LogsRoute
@@ -166,6 +173,7 @@ export interface FileRoutesByTo {
   '/audit': typeof AuditRoute
   '/chat': typeof ChatRoute
   '/cost': typeof CostRoute
+  '/drift': typeof DriftRoute
   '/inbox': typeof InboxRoute
   '/lifecycle': typeof LifecycleRoute
   '/logs': typeof LogsRoute
@@ -190,6 +198,7 @@ export interface FileRoutesById {
   '/audit': typeof AuditRoute
   '/chat': typeof ChatRoute
   '/cost': typeof CostRoute
+  '/drift': typeof DriftRoute
   '/inbox': typeof InboxRoute
   '/lifecycle': typeof LifecycleRoute
   '/logs': typeof LogsRoute
@@ -215,6 +224,7 @@ export interface FileRouteTypes {
     | '/audit'
     | '/chat'
     | '/cost'
+    | '/drift'
     | '/inbox'
     | '/lifecycle'
     | '/logs'
@@ -238,6 +248,7 @@ export interface FileRouteTypes {
     | '/audit'
     | '/chat'
     | '/cost'
+    | '/drift'
     | '/inbox'
     | '/lifecycle'
     | '/logs'
@@ -261,6 +272,7 @@ export interface FileRouteTypes {
     | '/audit'
     | '/chat'
     | '/cost'
+    | '/drift'
     | '/inbox'
     | '/lifecycle'
     | '/logs'
@@ -285,6 +297,7 @@ export interface RootRouteChildren {
   AuditRoute: typeof AuditRoute
   ChatRoute: typeof ChatRoute
   CostRoute: typeof CostRoute
+  DriftRoute: typeof DriftRoute
   InboxRoute: typeof InboxRoute
   LifecycleRoute: typeof LifecycleRoute
   LogsRoute: typeof LogsRoute
@@ -403,6 +416,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof InboxRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/drift': {
+      id: '/drift'
+      path: '/drift'
+      fullPath: '/drift'
+      preLoaderRoute: typeof DriftRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/cost': {
       id: '/cost'
       path: '/cost'
@@ -461,6 +481,7 @@ const rootRouteChildren: RootRouteChildren = {
   AuditRoute: AuditRoute,
   ChatRoute: ChatRoute,
   CostRoute: CostRoute,
+  DriftRoute: DriftRoute,
   InboxRoute: InboxRoute,
   LifecycleRoute: LifecycleRoute,
   LogsRoute: LogsRoute,

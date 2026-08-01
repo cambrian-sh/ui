@@ -444,6 +444,46 @@ export interface StateOfRecord {
    * in flight for that conversation.
    */
   conversation_progress?: Record<string, ConversationProgress>;
+  /**
+   * Retention/compaction passes seen on the feed (`RetentionRunOp`, contract
+   * 0084), oldest first. Gated on the `retention-feed` capability.
+   *
+   * Source-agnostic: the record compactor and the reactive-journal GC publish
+   * the same shape, so read `source` rather than assuming one.
+   *
+   * Optional, and `undefined` is NOT the same as `[]`: a core predating this
+   * omits the field, which means "this console cannot tell you", while an empty
+   * array means "connected, and no pass has run". The retention panel has to
+   * keep those apart — the whole point of the surface is that silence about
+   * deletion is not evidence of it.
+   */
+  retention_runs?: RetentionRunEvent[];
+}
+
+/**
+ * One retention/compaction pass (ADR-0102 A1).
+ *
+ * Two fields matter more than the counts. `bounded` on every tick means the
+ * backlog is not draining — a capacity warning, not a status line. A non-empty
+ * `error` means retention has STOPPED HAPPENING and data that should have been
+ * erased is still on disk; failed passes are published precisely so that cannot
+ * be silent.
+ */
+export interface RetentionRunEvent {
+  /** e.g. "records" | "reactive_journal". Free-form by design. */
+  source: string;
+  run_id: number;
+  started_at: string;
+  finished_at: string;
+  /** Empty means the pass ran and removed nothing — normal, not missing data. */
+  deleted: RetentionDeletionEvent[];
+  bounded: boolean;
+  error: string;
+}
+
+export interface RetentionDeletionEvent {
+  category: string;
+  count: number;
 }
 
 // ============================================================================
@@ -1859,4 +1899,218 @@ export interface LogFilter {
 export interface LogPage {
   records: LogRecord[];
   window: LogWindow;
+}
+
+// ============================================================================
+// The record lane (ADR-0102) — the drift product's own plane
+//
+// Read/response types, not projection: `ListAlerts` is poll-only (alerts are not
+// on the operator event feed), and the drift tally is a process-lifetime gauge.
+// The one exception is retention, which IS folded — see `RetentionRunEvent`.
+// ============================================================================
+
+/**
+ * One piece of evidence behind an alert, and the anchor for one `[n]` marker.
+ *
+ * Markers are contiguous from 1, and every marker has a citation while every
+ * citation has a marker. A citation with no anchor is one the operator cannot
+ * follow — so the marker run is DERIVED from this array, never hardcoded.
+ */
+export interface AlertCitation {
+  /** 1-based and contiguous. */
+  index: number;
+  /** "message" | "record" */
+  kind: string;
+  /** A message id, or `KEY@date` for a record. */
+  ref: string;
+  /** Populated on the alert itself — the inspector renders with no second call. */
+  quote: string;
+  /** ISO 8601, or "" when absent. */
+  at: string;
+  /**
+   * The record version quoted; 0 for a message citation. Shown and not followed:
+   * there is no RPC to fetch a record version by id.
+   */
+  version_id: number;
+}
+
+/**
+ * One raised drift alert — someone promised a date the system of record
+ * disagrees with, with both sides quoted.
+ *
+ * **Advisory.** It notifies. It does not email the customer, amend the purchase
+ * order or update a CRM, and no affordance in the UI may imply that it does.
+ */
+export interface Alert {
+  id: number;
+  kind: string;
+  record_key: string;
+  owner: string;
+  speaker: string;
+  message_id: string;
+  /**
+   * SIGNED. Positive = the record is LATER than promised, which is the direction
+   * a customer feels. The single most load-bearing field on the alert.
+   */
+  delta_days: number;
+  promised: string;
+  recorded: string;
+  /**
+   * Distinct dates the record has carried, not versions — a nightly export
+   * rewrites every open row. `>= 2` is "this keeps moving", a different
+   * conversation from "it slipped once".
+   */
+  slip_count: number;
+  /** The rendered sentence, carrying inline `[n]` markers (ADR-0081). */
+  text: string;
+  citations: AlertCitation[];
+  /**
+   * INHERITED classification (ADR-0095 D9), derived from both the message and
+   * the record. An alert is never more visible than the material behind it, and
+   * it is the artifact most likely to be forwarded — every copy/export/share
+   * affordance must honour these.
+   */
+  tags: string[];
+  raised_at: string;
+  /** Measured from the MESSAGE arriving, not from when reconciliation started. */
+  detect_latency_ms: number;
+  /**
+   * Whether the commitment behind this alert was later superseded by a correction.
+   *
+   * **NOT SERVED BY THE CURRENT CONTRACT.** `records.proto` carries no
+   * supersession signal on a raised alert — `Alert.kind` is the record family
+   * (e.g. "purchase_order"), and `Superseded` exists only on the drift
+   * pipeline's per-message result, which describes an incoming message rather
+   * than a stored alert.
+   *
+   * It is declared here rather than omitted because the product truth is real
+   * and this is the only honest way to carry it: a correction after the promise
+   * stops it being reconciled, but an alert already raised stays raised by
+   * design, and an operator seeing a stale alert with nothing explaining it will
+   * assume a bug. The banner renders only when this is true, so today it never
+   * renders and is never inferred from `slip_count` or anything else.
+   *
+   * Kernel ask: add a supersession flag to `Alert`.
+   */
+  superseded?: boolean;
+}
+
+/** One unresolved reason and its count, pre-sorted by the core. */
+export interface UnresolvedReason {
+  reason: string;
+  count: number;
+}
+
+/**
+ * The reconciliation tally.
+ *
+ * PROCESS-LIFETIME, not durable: it resets on kernel restart while `available`
+ * stays true. A window on the current process, not a trend — never build a
+ * "total issues ever" figure on it; `ListAlerts` is the durable truth.
+ */
+export interface DriftStats {
+  consistent: number;
+  drift: number;
+  /**
+   * Alerts NOT derived because they would have crossed a closed-tag boundary.
+   * Working as intended — never styled as an error.
+   */
+  refused: number;
+  /**
+   * Kept broken out, never summed. 400 `record_not_found` means the export is
+   * stale; 400 `ambiguous_match` means the counterparty naming is — same number,
+   * different team, different week.
+   */
+  unresolved: UnresolvedReason[];
+  /** The DENOMINATOR: 12 of 15 and 12 of 40 000 are opposite findings. */
+  total: number;
+  /**
+   * False when this deployment has no reconciler.
+   *
+   * It must NEVER render as a tally of zeros. A detector that was never switched
+   * on and a deployment with nothing wrong produce identical numbers, and this
+   * flag is the only thing that tells them apart.
+   */
+  available: boolean;
+}
+
+/**
+ * One derivation refused because it would have crossed a closed-tag boundary
+ * (ADR-0095 D9).
+ *
+ * Not an error log. It is what keeps "suppressed by policy" distinguishable from
+ * "nothing found", and it belongs on the page rather than in a debug panel.
+ */
+export interface Refusal {
+  id: number;
+  at: string;
+  /** What was being derived, e.g. "drift_alert". */
+  kind: string;
+  /** The subject, e.g. the record key. */
+  ref: string;
+  /** The distinct closed tags that could not be combined. */
+  boundary: string[];
+  reason: string;
+}
+
+/**
+ * What one connector can and cannot see (BRAIN-03).
+ *
+ * PUSHED by the connector, never queried by the kernel: only the daemon holding
+ * the workspace token can enumerate channels, and only the ones it was invited
+ * to — Slack has no read-the-whole-workspace scope.
+ *
+ * Held in memory kernel-side and process-lifetime, so an empty list from
+ * `getCoverage()` means NO CONNECTOR HAS REPORTED, not "coverage is zero". An
+ * absent report is the honest rendering of an absent connector.
+ */
+export interface SourceCoverage {
+  /** The ingress surface this describes, e.g. "slack". */
+  source: string;
+  /** The daemon that reported it. */
+  connector: string;
+  invited_channels: string[];
+  /** Derived server-side from the channel list, never trusted from the wire. */
+  channel_count: number;
+  /** free | pro | business | enterprise_grid */
+  plan_tier: string;
+  /**
+   * How far back the SOURCE retains history.
+   *
+   * THREE states, and they must not be collapsed: `-1` is "not reported",
+   * deliberately distinct from `0` ("retains nothing"), and the value is
+   * meaningless entirely when `horizon_unlimited` is true. Use
+   * {@link describeHorizon} rather than reading this raw — a wrong horizon is a
+   * recall claim measured against the wrong denominator.
+   */
+  retention_horizon_days: number;
+  horizon_unlimited: boolean;
+  /**
+   * True only for an approved Enterprise Grid partner. False means private
+   * channels, DMs and Slack Connect are NOT covered.
+   */
+  discovery_api: boolean;
+  /** The connector's own plain-English limits, carried verbatim. */
+  limits: string[];
+  /** Stamped kernel-side on receipt — what makes staleness visible. */
+  reported_at: string;
+}
+
+/**
+ * The last accepted push for one record kind.
+ *
+ * Only kinds that have actually been pushed appear: the query is driven off the
+ * record rows. A kind configured but never pushed has no rows and therefore no
+ * entry — the console must say so rather than implying the list is exhaustive.
+ */
+export interface KindPushStatus {
+  kind: string;
+  last_push_id: string;
+  /** "webhook" | "csv" | "view" */
+  transport: string;
+  /** Rows in that push. */
+  record_count: number;
+  received_at: string;
+  /** Un-superseded rows — "our open orders", not every version ever pushed. */
+  live_records: number;
 }

@@ -21,7 +21,7 @@ fn now_iso() -> String {
 /// The webview treats "" as "unknown" and renders an em-dash. That matters: five of the
 /// eight SessionSummary fields used to be structurally blank because the kernel had no way
 /// to send them, and the time-range filter silently discarded every session as a result.
-fn ts_iso(ts: &Option<::prost_types::Timestamp>) -> String {
+pub(crate) fn ts_iso(ts: &Option<::prost_types::Timestamp>) -> String {
     match ts {
         Some(t) => chrono::DateTime::from_timestamp(t.seconds, t.nanos as u32)
             .map(|d| d.to_rfc3339())
@@ -704,10 +704,25 @@ pub struct StateOfRecord {
     /// lane so navigating away from chat and back mid-turn does not lose the
     /// indicator for a turn that is still running.
     pub conversation_progress: HashMap<String, ConversationProgress>,
+    /// Retention/compaction passes seen on the feed (`RetentionRunOp`, contract
+    /// 0084, ADR-0102 A1), newest last.
+    ///
+    /// SOURCE-AGNOSTIC by design: the record compactor and the reactive-journal GC
+    /// publish the same shape, so one list serves both and the retention panel
+    /// reads `source` rather than assuming one. An operator asking "what was
+    /// deleted and when" gets one answer instead of two half-answers.
+    ///
+    /// Folded rather than polled because a FAILED pass means erasure has stopped
+    /// happening, and that is not something to discover on the next refresh.
+    pub retention_runs: Vec<RetentionRunEvent>,
 }
 
 const AUDIT_TAIL_MAX: usize = 200;
 const MEMORY_WRITTEN_MAX: usize = 500;
+/// Enough to show a run of bounded passes as a shape rather than a number — one
+/// bounded pass is normal, twelve in a row is a capacity warning, and that
+/// distinction needs a window wider than the twelve it is trying to show.
+const RETENTION_RUNS_MAX: usize = 100;
 /// Enough to answer "how did the thing I just ran go?" for the runs still on
 /// screen. This is a courtesy tail, not history — Sessions holds the record.
 const COMPLETED_PLANS_MAX: usize = 50;
@@ -737,6 +752,10 @@ impl StateOfRecord {
         // Progress is live-only: a snapshot never carries it, and a resync means
         // we cannot know whether the turn it described is still running.
         self.conversation_progress.clear();
+        // retention_runs is deliberately NOT cleared. A snapshot does not carry
+        // retention history, so clearing it here would make a resync — an ordinary
+        // cursor event — erase the evidence that a pass failed. The fold dedupes on
+        // (source, run_id), so replayed events after a snapshot are harmless.
     }
 
     /// Apply a Snapshot's bounded live state and the capability/version handshake.
@@ -1075,6 +1094,39 @@ impl StateOfRecord {
                 }
             }
 
+            Payload::RetentionRun(r) => {
+                // Dedupe on the source's own run id rather than on `seq`: this
+                // list survives a resync (see `reset_live`), so the same pass can
+                // legitimately arrive twice — once live, once replayed — and a
+                // seq-keyed guard would let the replay through as a second row.
+                if !self
+                    .retention_runs
+                    .iter()
+                    .any(|x| x.run_id == r.run_id && x.source == r.source)
+                {
+                    self.retention_runs.push(RetentionRunEvent {
+                        source: r.source.clone(),
+                        run_id: r.run_id,
+                        started_at: ts_iso(&r.started_at),
+                        finished_at: ts_iso(&r.finished_at),
+                        deleted: r
+                            .deleted
+                            .iter()
+                            .map(|d| RetentionDeletionEvent {
+                                category: d.category.clone(),
+                                count: d.count,
+                            })
+                            .collect(),
+                        bounded: r.bounded,
+                        error: r.error.clone(),
+                    });
+                    if self.retention_runs.len() > RETENTION_RUNS_MAX {
+                        let drop = self.retention_runs.len() - RETENTION_RUNS_MAX;
+                        self.retention_runs.drain(0..drop);
+                    }
+                }
+            }
+
             Payload::WatchTriggered(w) => {
                 if let Some(existing) = self
                     .watch_configs
@@ -1264,6 +1316,54 @@ mod tests {
             st.fold(&session_state(1, "s1", status, "g"));
             assert_eq!(st.sessions[0].state, status);
         }
+    }
+
+    fn retention_run(seq: u64, source: &str, run_id: i64, error: &str) -> pb::OperatorEvent {
+        pb::OperatorEvent {
+            seq,
+            payload: Some(Payload::RetentionRun(pb::RetentionRunOp {
+                source: source.to_string(),
+                run_id,
+                error: error.to_string(),
+                deleted: vec![pb::RetentionDeletionOp {
+                    category: "record_versions".to_string(),
+                    count: 5000,
+                }],
+                ..Default::default()
+            })),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn retention_runs_dedupe_on_source_and_run_id() {
+        // The same pass legitimately arrives twice — live, then replayed after a
+        // snapshot — and a second row would misreport how many passes ran.
+        let mut st = StateOfRecord::default();
+        st.fold(&retention_run(1, "records", 7, ""));
+        st.fold(&retention_run(2, "records", 7, ""));
+        assert_eq!(st.retention_runs.len(), 1);
+    }
+
+    #[test]
+    fn two_sources_may_share_a_run_id() {
+        // run_id is the SOURCE's own id, so it is only unique within a source.
+        let mut st = StateOfRecord::default();
+        st.fold(&retention_run(1, "records", 1, ""));
+        st.fold(&retention_run(2, "reactive_journal", 1, ""));
+        assert_eq!(st.retention_runs.len(), 2);
+    }
+
+    #[test]
+    fn a_resync_does_not_erase_evidence_that_retention_failed() {
+        // A snapshot carries no retention history, so clearing this on resync
+        // would let an ordinary cursor event delete the record of a failed pass —
+        // in a product whose argument is auditability.
+        let mut st = StateOfRecord::default();
+        st.fold(&retention_run(1, "records", 7, "delete: context deadline exceeded"));
+        st.reset_live();
+        assert_eq!(st.retention_runs.len(), 1);
+        assert!(!st.retention_runs[0].error.is_empty());
     }
 
     fn watch_triggered(seq: u64, watch_config_id: &str, stream_id: &str) -> pb::OperatorEvent {
@@ -1465,6 +1565,38 @@ pub struct ConversationProgress {
     pub total_steps: i32,
     pub r#final: bool,
     pub updated_at_unix_ms: i64,
+}
+
+/// One retention/compaction pass off the feed (`RetentionRunOp`, contract 0084).
+///
+/// Shaped identically to `records::RetentionRun` on the plugin plane on purpose:
+/// the panel merges the two — the feed is the live lane, the RPC backfills the
+/// history the feed cannot replay — and a console whose retention page showed a
+/// different history depending on how long it had been connected would be worse
+/// than one that showed none.
+#[derive(Clone, Serialize, Default)]
+pub struct RetentionRunEvent {
+    /// The retention domain that ran, e.g. "records" or "reactive_journal". Read
+    /// rather than assumed: one panel serves both sources.
+    pub source: String,
+    pub run_id: i64,
+    pub started_at: String,
+    pub finished_at: String,
+    /// Empty means the pass ran and removed nothing — a normal outcome, not
+    /// missing data.
+    pub deleted: Vec<RetentionDeletionEvent>,
+    /// Hit the per-pass cap; more remains. On every tick, the backlog is not
+    /// draining.
+    pub bounded: bool,
+    /// Non-empty means the pass FAILED and erasure has stopped happening.
+    pub error: String,
+}
+
+/// One category a pass removed.
+#[derive(Clone, Serialize, Default)]
+pub struct RetentionDeletionEvent {
+    pub category: String,
+    pub count: i32,
 }
 
 /// What happened to ONE key in a durable config write (contract 0072/0083).

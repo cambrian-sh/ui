@@ -7,6 +7,7 @@
 pub mod logs;
 pub mod pb;
 pub mod policy;
+pub mod records;
 pub mod state;
 mod telegram;
 pub mod transport;
@@ -924,6 +925,57 @@ async fn op_stop_log_tail(tail: State<'_, crate::logs::LogTail>) -> Result<(), S
     Ok(())
 }
 
+// ---------------------------------------------------------------------------
+// Record lane (ADR-0102) — the drift product's surfaces.
+//
+// All four are request/response reads on the premium plane, deliberately NOT on
+// the projection: `ListAlerts` is poll-only (alerts are not on the operator event
+// feed, and putting them there is a contract bump), and the drift tally is a
+// process-lifetime gauge rather than folded state. The one exception is retention,
+// which IS on the feed as `RetentionRunOp` — `op_list_retention_runs` only
+// backfills the history the feed cannot replay.
+// ---------------------------------------------------------------------------
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_list_alerts(transport: State<'_, Transport>) -> Result<Vec<crate::records::Alert>, String> {
+    transport.inner().clone().list_alerts().await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_get_drift_stats(
+    transport: State<'_, Transport>,
+) -> Result<crate::records::DriftStats, String> {
+    transport.inner().clone().drift_stats().await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_list_refusals(
+    transport: State<'_, Transport>,
+) -> Result<Vec<crate::records::Refusal>, String> {
+    transport.inner().clone().list_refusals().await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_list_retention_runs(
+    transport: State<'_, Transport>,
+) -> Result<Vec<crate::records::RetentionRun>, String> {
+    transport.inner().clone().list_retention_runs().await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_get_coverage(
+    transport: State<'_, Transport>,
+) -> Result<Vec<crate::records::SourceCoverage>, String> {
+    transport.inner().clone().coverage().await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_get_push_status(
+    transport: State<'_, Transport>,
+) -> Result<Vec<crate::records::KindPushStatus>, String> {
+    transport.inner().clone().push_status().await
+}
+
 #[tauri::command(rename_all = "snake_case")]
 async fn op_telegram_list_bots(
     transport: State<'_, Transport>,
@@ -1379,6 +1431,12 @@ pub fn run() {
             op_query_logs,
             op_start_log_tail,
             op_stop_log_tail,
+            op_list_alerts,
+            op_get_drift_stats,
+            op_list_refusals,
+            op_list_retention_runs,
+            op_get_coverage,
+            op_get_push_status,
             op_telegram_list_bots,
             op_telegram_add_bot,
             op_telegram_remove_bot,

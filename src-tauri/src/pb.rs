@@ -28,11 +28,42 @@ pub mod telegram {
     tonic::include_proto!("cambrian.premium.telegram");
 }
 
+/// The premium record lane (ADR-0102) — the drift product's own plane.
+///
+/// Compiled in unconditionally, like every other premium plane here. Whether the
+/// SERVER exists is what varies, and it varies on something the manifest cannot
+/// know: the lane needs Postgres, so the plugin declares no capability at
+/// registration and reports [`RECORD_LANE_CAPABILITY`] only after Build finds a
+/// store. A kernel with the plugin and no database is a CORRECT deployment that
+/// never advertises it.
+pub mod records {
+    tonic::include_proto!("cambrian.premium.records");
+}
+
 /// The capability the kernel advertises when the access-policy plugin is active.
 /// The UI renders the policy console only when the handshake carries it
 /// (ADR-0082 D2: the kernel forwards plugin capabilities without interpreting
 /// them, which is what keeps premium vocabulary out of the OSS core).
 pub const ACCESS_POLICY_CAPABILITY: &str = "access-policy";
+
+/// The capability the kernel advertises when the record lane has a store
+/// (ADR-0102, `driftplugin.Capability`).
+///
+/// Its ABSENCE is meaningful and must not be rendered as a fault: a deployment
+/// with no Postgres has no reconciler, which is a complete configuration rather
+/// than a missing piece. This is also distinct from `GetDriftStats.available` —
+/// the capability says the plane is mounted, `available` says there is something
+/// behind it, and a console that conflates them will eventually report "0 issues"
+/// for a detector that was never switched on.
+pub const RECORD_LANE_CAPABILITY: &str = "record-lane";
+
+/// The capability gating `RetentionRunOp` on the operator feed (contract 0084,
+/// ADR-0102 A1).
+///
+/// Separate from [`RECORD_LANE_CAPABILITY`] because the event is SOURCE-AGNOSTIC:
+/// the record compactor and the reactive-journal GC publish the same shape, so a
+/// deployment can have retention events with no record lane at all.
+pub const RETENTION_FEED_CAPABILITY: &str = "retention-feed";
 
 /// The contract version this client is pinned to. Compare against
 /// `SnapshotResponse.contract_version` to detect kernel skew (ADR-0047 D14).
@@ -83,7 +114,7 @@ pub const ACCESS_POLICY_CAPABILITY: &str = "access-policy";
 ///   saw nothing — a console conversation has no delivery address, so the
 ///   snapshot was computed and dropped. Live-only, like `TokenChunkOp`: seq is 0
 ///   and it is never replayed, because a status line is not history.
-pub const PINNED_CONTRACT_VERSION: &str = "0079";
+pub const PINNED_CONTRACT_VERSION: &str = "0085";
 
 /// The plugin versions this console was BUILT against, by plugin id (ADR-0089).
 ///
@@ -97,7 +128,8 @@ pub const PINNED_CONTRACT_VERSION: &str = "0079";
 /// for — reported as unknown rather than assumed compatible. Add an entry when
 /// the console gains a surface for a plugin, and bump it when that surface is
 /// rebuilt against a new plugin major.
-pub const PINNED_PLUGIN_VERSIONS: &[(&str, &str)] = &[("authz", "1.0.0"), ("reactive", "1.0.0")];
+pub const PINNED_PLUGIN_VERSIONS: &[(&str, &str)] =
+    &[("authz", "1.0.0"), ("reactive", "1.0.0"), ("drift", "0.1.0")];
 
 /// How a kernel plugin's version compares to what this console pinned.
 ///
