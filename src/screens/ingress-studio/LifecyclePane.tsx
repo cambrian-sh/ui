@@ -6,6 +6,17 @@ import { ipc } from '@/ipc';
 import type { StudioAck, StudioStatus } from '@/ipc/types';
 
 /**
+ * Revision inputs travel as i32 over the plane. Anything that does not parse
+ * as a positive integer must never leave this component — `Number('r2')` is
+ * NaN, NaN serializes as null, and the kernel refuses with a type error
+ * instead of a named refusal. Parse here, gate the button on it.
+ */
+export function parseRevision(raw: string): number | null {
+  const n = Number.parseInt(raw.trim(), 10);
+  return Number.isNaN(n) || n <= 0 || String(n) !== raw.trim() ? null : n;
+}
+
+/**
  * The lifecycle pane: where a human moves an ingress through the state
  * machine. Buttons appear by state, but LEGALITY is the kernel's call — a
  * refused move renders its named reason right here, never a toast.
@@ -133,14 +144,23 @@ export function LifecyclePane({
                   aria-label="Mapping revision"
                 />
               </div>
+              {(armTransport !== '' && parseRevision(armTransport) === null) ||
+              (armMapping !== '' && parseRevision(armMapping) === null) ? (
+                <p className="text-[12px] text-[var(--status-warn)]">
+                  Revisions are plain numbers — type 2, not r2.
+                </p>
+              ) : null}
               <ReasonField gate={armReasonGate} id="arm-reason" note="Recorded beside the release." />
               <Button
                 size="sm"
-                disabled={!armReasonGate.satisfied || arm.isLoading || armTransport === '' || armMapping === ''}
+                disabled={
+                  !armReasonGate.satisfied || arm.isLoading ||
+                  parseRevision(armTransport) === null || parseRevision(armMapping) === null
+                }
                 onClick={() => {
                   setAck(null);
                   void arm
-                    .mutate(ingressId, Number(armTransport), Number(armMapping), armReasonGate.reason)
+                    .mutate(ingressId, parseRevision(armTransport) ?? 0, parseRevision(armMapping) ?? 0, armReasonGate.reason)
                     .then((res) => {
                       if (res !== undefined) {
                         setAck(res);

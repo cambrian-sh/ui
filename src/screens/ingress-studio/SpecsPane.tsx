@@ -4,6 +4,7 @@ import { useMutation } from '@/lib/useMutation';
 import { errorMessage } from '@/lib/errorMessage';
 import { ipc } from '@/ipc';
 import type { StudioDiff, StudioStatus } from '@/ipc/types';
+import { parseRevision } from './LifecyclePane';
 
 /**
  * Spec authoring: JSON in, strict kernel-side validation, every save an
@@ -149,8 +150,14 @@ function DiffSection({ ingressId, latest }: { ingressId: string; latest: number 
   const run = async () => {
     setError('');
     setDiff(null);
+    const fromRev = parseRevision(from);
+    const toRev = parseRevision(to);
+    if (fromRev === null || toRev === null) {
+      setError('Revisions are plain numbers — type 2, not r2.');
+      return;
+    }
     try {
-      const d = await ipc.studioDiffMapping(ingressId, Number(from), Number(to));
+      const d = await ipc.studioDiffMapping(ingressId, fromRev, toRev);
       if (d.ok) setDiff(d);
       else setError(d.error);
     } catch (e) {

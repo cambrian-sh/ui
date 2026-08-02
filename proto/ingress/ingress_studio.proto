@@ -75,6 +75,21 @@ service IngressStudioAdmin {
   // messages the source's own counter says existed and this deployment never
   // made durable. Durable rows, never only log lines.
   rpc ListGaps(IngressRef) returns (GapFindings);
+
+  // ── Drafting configuration (§15) ──
+  // The drafting model is OPERATOR CONFIGURATION: the choice names a
+  // generator id from the deployment's registry, resolves per draft through
+  // the failover ladder, and takes effect on the next draft — no restart.
+  // Empty means the kernel default generator.
+  rpc GetDraftingConfig(DraftingConfigRequest) returns (DraftingConfig);
+  rpc SetDraftingConfig(DraftingConfig) returns (Ack);
+}
+
+message DraftingConfigRequest {}
+
+message DraftingConfig {
+  // generator_id from the deployment's generator registry ("" = kernel default).
+  string generator_id = 1;
 }
 
 message GapFindings {

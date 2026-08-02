@@ -5,6 +5,7 @@ import { useMutation } from '@/lib/useMutation';
 import { errorMessage } from '@/lib/errorMessage';
 import { ipc } from '@/ipc';
 import type { StudioAck, StudioStatus } from '@/ipc/types';
+import { parseRevision } from './LifecyclePane';
 
 /**
  * Operations: the dry-run preview, the repair loop, and delivery failures —
@@ -131,8 +132,13 @@ function RepairSection({
     setError('');
     setPreview(null);
     setAck(null);
+    const rev = parseRevision(revision);
+    if (rev === null) {
+      setError('Revisions are plain numbers — type 2, not r2.');
+      return;
+    }
     try {
-      const json = await ipc.studioShadowReprocess(ingressId, Number(revision));
+      const json = await ipc.studioShadowReprocess(ingressId, rev);
       setPreview(JSON.parse(json) as RepairPreview);
     } catch (e) {
       setError(errorMessage(e));
@@ -189,9 +195,9 @@ function RepairSection({
               />
               <Button
                 size="sm"
-                disabled={!gate.satisfied || promote.isLoading}
+                disabled={!gate.satisfied || promote.isLoading || parseRevision(revision) === null}
                 onClick={() => {
-                  void promote.mutate(ingressId, Number(revision), gate.reason).then((res) => {
+                  void promote.mutate(ingressId, parseRevision(revision) ?? 0, gate.reason).then((res) => {
                     if (res !== undefined) {
                       setAck(res);
                       if (res.ok) {

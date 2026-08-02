@@ -22,8 +22,20 @@ vi.mock('@/ipc', () => ({
   },
 }));
 
-import { LifecyclePane } from './LifecyclePane';
+import { LifecyclePane, parseRevision } from './LifecyclePane';
 import { StateBadge } from './IngressStudioConsole';
+
+describe('parseRevision', () => {
+  it('accepts plain positive integers and refuses everything else', () => {
+    // `Number('r2')` is NaN, NaN serializes as null, and the kernel answers
+    // a type error instead of a named refusal — the regression this pins.
+    expect(parseRevision('2')).toBe(2);
+    expect(parseRevision(' 2 ')).toBe(2);
+    for (const bad of ['r2', '2.5', '', '0', '-1', 'two', '2x']) {
+      expect(parseRevision(bad)).toBeNull();
+    }
+  });
+});
 
 function status(over: Partial<StudioStatus> = {}): StudioStatus {
   return {
