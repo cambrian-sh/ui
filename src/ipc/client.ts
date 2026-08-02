@@ -299,6 +299,64 @@ export const ipc = {
   telegramRemoveBot: (id: string, reason: string): Promise<t.TelegramAck> =>
     invoke<t.TelegramAck>('op_telegram_remove_bot', { id, reason }),
 
+  // ── Ingress Studio (ADR-0112 §13) ─────────────────────────────────────────
+  studioCreateIngress: (ingressId: string, displayName: string): Promise<t.StudioAck> =>
+    invoke<t.StudioAck>('op_studio_create_ingress', { ingress_id: ingressId, display_name: displayName }),
+  studioListIngresses: (): Promise<t.StudioIngress[]> =>
+    invoke<t.StudioIngress[]>('op_studio_list_ingresses'),
+  studioGetIngress: (ingressId: string): Promise<t.StudioStatus> =>
+    invoke<t.StudioStatus>('op_studio_get_ingress', { ingress_id: ingressId }),
+  /** verb ∈ start_capture | confirm_mapping | start_dry_run | pause | resume | retire.
+   *  The kernel's state machine decides legality; refusals come back named. */
+  studioLifecycle: (verb: string, ingressId: string, reason = ''): Promise<t.StudioAck> =>
+    invoke<t.StudioAck>('op_studio_lifecycle', { verb, ingress_id: ingressId, reason }),
+  /** Mints an immutable release and arms it — the one action a model can never take. */
+  studioArm: (ingressId: string, transportRevision: number, mappingRevision: number, reason: string): Promise<t.StudioAck> =>
+    invoke<t.StudioAck>('op_studio_arm', {
+      ingress_id: ingressId, transport_revision: transportRevision,
+      mapping_revision: mappingRevision, reason,
+    }),
+  /** Re-pins an EXISTING release while paused. Reason is mandatory. */
+  studioRollback: (ingressId: string, releaseId: string, reason: string, resume: boolean): Promise<t.StudioAck> =>
+    invoke<t.StudioAck>('op_studio_rollback', { ingress_id: ingressId, release_id: releaseId, reason, resume }),
+  /** kind ∈ transport | mapping. The kernel's strict parser is the validator. */
+  studioSaveSpec: (kind: string, ingressId: string, specJson: string): Promise<t.StudioSaveResult> =>
+    invoke<t.StudioSaveResult>('op_studio_save_spec', { kind, ingress_id: ingressId, spec_json: specJson }),
+  studioGetRevision: (kind: string, ingressId: string, revision: number): Promise<t.StudioSpec> =>
+    invoke<t.StudioSpec>('op_studio_get_revision', { kind, ingress_id: ingressId, revision }),
+  studioDiffMapping: (ingressId: string, fromRevision: number, toRevision: number): Promise<t.StudioDiff> =>
+    invoke<t.StudioDiff>('op_studio_diff_mapping', {
+      ingress_id: ingressId, from_revision: fromRevision, to_revision: toRevision,
+    }),
+  /** READ-ONLY proposal (plan D1); saving it is a separate human action. */
+  studioDraftMapping: (ingressId: string, guidance: string): Promise<t.StudioDraft> =>
+    invoke<t.StudioDraft>('op_studio_draft_mapping', { ingress_id: ingressId, guidance }),
+  studioCaptureStatus: (ingressId: string): Promise<t.StudioCaptureStatus> =>
+    invoke<t.StudioCaptureStatus>('op_studio_capture_status', { ingress_id: ingressId }),
+  /** The DRY_RUN stage's ephemeral buffer — real deliveries, never preserved. */
+  studioPreview: (ingressId: string): Promise<t.StudioPreviewEntry[]> =>
+    invoke<t.StudioPreviewEntry[]>('op_studio_preview', { ingress_id: ingressId }),
+  /** Evaluates a candidate revision over preserved deliveries, WRITING NOTHING. */
+  studioShadowReprocess: (ingressId: string, mappingRevision: number, limit = 0): Promise<string> =>
+    invoke<string>('op_studio_shadow_reprocess', {
+      ingress_id: ingressId, mapping_revision: mappingRevision, limit,
+    }),
+  /** Applies the reviewed diff. Reason is mandatory. */
+  studioPromoteRepair: (ingressId: string, mappingRevision: number, reason: string, limit = 0): Promise<t.StudioAck> =>
+    invoke<t.StudioAck>('op_studio_promote_repair', {
+      ingress_id: ingressId, mapping_revision: mappingRevision, limit, reason,
+    }),
+  /** Write-only — nothing returns the value, by design. */
+  studioSetCredential: (ingressId: string, name: string, value: string): Promise<t.StudioAck> =>
+    invoke<t.StudioAck>('op_studio_set_credential', { ingress_id: ingressId, name, value }),
+  /** Destructive: deliveries answer 503 until a new credential is set. Reason mandatory. */
+  studioClearCredential: (ingressId: string, name: string, reason: string): Promise<t.StudioAck> =>
+    invoke<t.StudioAck>('op_studio_clear_credential', { ingress_id: ingressId, name, reason }),
+  studioSetEgressPolicy: (ingressId: string, policyJson: string): Promise<t.StudioAck> =>
+    invoke<t.StudioAck>('op_studio_set_egress_policy', { ingress_id: ingressId, policy_json: policyJson }),
+  studioDeliveryFailures: (ingressId: string): Promise<t.StudioFailure[]> =>
+    invoke<t.StudioFailure[]>('op_studio_delivery_failures', { ingress_id: ingressId }),
+
   // ── The record lane (ADR-0102) — the drift product ────────────────────────
   // Reads on the premium plane, gated on `record-lane`. These are request/
   // response rather than projection because alerts are NOT on the operator event

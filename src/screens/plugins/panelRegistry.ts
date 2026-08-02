@@ -14,6 +14,7 @@
 /** Plugin id -> the route that configures it. */
 export const PLUGIN_ROUTES: Record<string, string> = {
   telegram: '/telegram',
+  'ingress-studio': '/ingress-studio',
 };
 
 export function pluginRoute(pluginId: string): string | undefined {

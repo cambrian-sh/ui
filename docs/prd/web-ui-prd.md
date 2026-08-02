@@ -108,6 +108,7 @@ The stories are organised by the audiences defined in the requirements document.
 36. As an **Operator**, I want **every mutating action to require a confirmation that names its consequence**, so that I cannot delete a memory or revoke a grant by accident.
 37. As an **Operator**, I want every mutating action to be **recorded with actor, target, before / after, timestamp, and a reason** that I provide.
 38. As an **Operator**, I want to **bulk-tag or bulk-supersede** a selection of memory documents, with a single confirmation and a single audit entry, when the operation is conceptually one action.
+39. As an **Operator**, I want to take an external data source from a description to an **armed ingress** through the Ingress Studio (ADR-0112) — create it, author its transport and credential (write-only), capture its shape, review a drafted mapping with its coverage report, confirm, watch a dry run against real traffic, and arm — with every gate a human action and every refusal named by the kernel's state machine. When a mapping was wrong, I want to **shadow a repair, read the diff, and promote it with a reason**, and I want **pause, resume, rollback-to-release, and retire** available for the running ingress.
 
 ### Health, audit, and resilience
 

@@ -1197,6 +1197,110 @@ export interface TelegramAck {
   detail: string;
 }
 
+// ── Ingress Studio (ADR-0112 §13) ──────────────────────────────────────────
+
+/** Result of a studio write. Refusals are authoring outcomes carried in `error`. */
+export interface StudioAck {
+  ok: boolean;
+  error: string;
+  /** What succeeded and what it left undone. */
+  detail: string;
+}
+
+/** One ingress row for the rail. */
+export interface StudioIngress {
+  ingress_id: string;
+  display_name: string;
+  /** DRAFT | CAPTURING | MAPPED | DRY_RUN | ARMED | PAUSED | RETIRED */
+  state: string;
+  /** ok | degraded | error — orthogonal to state by design. */
+  health: string;
+  pinned_release: string;
+}
+
+export interface StudioCredential {
+  name: string;
+  configured: boolean;
+  /** Presence indicator only — never the value. */
+  last_four: string;
+}
+
+/** The operator's whole picture of one ingress. */
+export interface StudioStatus {
+  summary: StudioIngress;
+  latest_transport_revision: number;
+  latest_mapping_revision: number;
+  release_id: string;
+  armed_transport_revision: number;
+  armed_mapping_revision: number;
+  capture_samples: number;
+  failure_count: number;
+  credentials: StudioCredential[];
+  egress_policy_json: string;
+}
+
+export interface StudioSaveResult {
+  ok: boolean;
+  error: string;
+  revision: number;
+}
+
+export interface StudioSpec {
+  ok: boolean;
+  error: string;
+  revision: number;
+  spec_json: string;
+}
+
+export interface StudioFieldChange {
+  target: string;
+  from: string;
+  to: string;
+}
+
+export interface StudioDiff {
+  ok: boolean;
+  error: string;
+  added: StudioFieldChange[];
+  removed: StudioFieldChange[];
+  changed: StudioFieldChange[];
+}
+
+/** A draft is a PROPOSAL: saving it is a separate human action. */
+export interface StudioDraft {
+  ok: boolean;
+  error: string;
+  spec_json: string;
+  /** Non-empty when the model declined — a first-class outcome, not a failure. */
+  abstained: string;
+  corrections: number;
+  first_draft_accepted: boolean;
+  coverage_json: string;
+}
+
+export interface StudioCaptureStatus {
+  samples: number;
+  profile_json: string;
+}
+
+/** One dry-run evaluation: a real delivery, evaluated, never preserved. */
+export interface StudioPreviewEntry {
+  delivery_ref: string;
+  received_at: string;
+  outcome: string;
+  detail: string;
+  envelopes_json: string;
+}
+
+export interface StudioFailure {
+  evidence_id: string;
+  delivery_ref: string;
+  mapping_revision: number;
+  outcome: string;
+  detail: string;
+  finished_at: string;
+}
+
 export interface EffectRule {
   /** Empty means every effect (subject to `deny`). */
   allow: string[];

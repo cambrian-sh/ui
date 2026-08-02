@@ -4,6 +4,7 @@
 //! owns the client-side state of record (`state`), the Operator Transport Plane
 //! client (`transport`), and the Tauri command/event bridge to the webview.
 
+mod ingress_studio;
 pub mod logs;
 pub mod pb;
 pub mod policy;
@@ -976,6 +977,184 @@ async fn op_get_push_status(
     transport.inner().clone().push_status().await
 }
 
+// ── Ingress Studio (ADR-0112 §13) ──
+// Thin pass-throughs; every rule lives kernel-side. `op_studio_set_credential`
+// follows the write-only discipline: the value crosses these functions and is
+// never retained, echoed, or logged.
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_studio_create_ingress(
+    transport: State<'_, Transport>,
+    ingress_id: String,
+    display_name: String,
+) -> Result<crate::ingress_studio::StudioAck, String> {
+    transport.inner().clone().studio_create_ingress(ingress_id, display_name).await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_studio_list_ingresses(
+    transport: State<'_, Transport>,
+) -> Result<Vec<crate::ingress_studio::StudioIngress>, String> {
+    transport.inner().clone().studio_list_ingresses().await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_studio_get_ingress(
+    transport: State<'_, Transport>,
+    ingress_id: String,
+) -> Result<crate::ingress_studio::StudioStatus, String> {
+    transport.inner().clone().studio_get_ingress(ingress_id).await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_studio_lifecycle(
+    transport: State<'_, Transport>,
+    verb: String,
+    ingress_id: String,
+    reason: String,
+) -> Result<crate::ingress_studio::StudioAck, String> {
+    transport.inner().clone().studio_lifecycle(verb, ingress_id, reason).await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_studio_arm(
+    transport: State<'_, Transport>,
+    ingress_id: String,
+    transport_revision: i32,
+    mapping_revision: i32,
+    reason: String,
+) -> Result<crate::ingress_studio::StudioAck, String> {
+    transport
+        .inner()
+        .clone()
+        .studio_arm(ingress_id, transport_revision, mapping_revision, reason)
+        .await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_studio_rollback(
+    transport: State<'_, Transport>,
+    ingress_id: String,
+    release_id: String,
+    reason: String,
+    resume: bool,
+) -> Result<crate::ingress_studio::StudioAck, String> {
+    transport.inner().clone().studio_rollback(ingress_id, release_id, reason, resume).await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_studio_save_spec(
+    transport: State<'_, Transport>,
+    kind: String,
+    ingress_id: String,
+    spec_json: String,
+) -> Result<crate::ingress_studio::StudioSaveResult, String> {
+    transport.inner().clone().studio_save_spec(kind, ingress_id, spec_json).await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_studio_get_revision(
+    transport: State<'_, Transport>,
+    kind: String,
+    ingress_id: String,
+    revision: i32,
+) -> Result<crate::ingress_studio::StudioSpec, String> {
+    transport.inner().clone().studio_get_revision(kind, ingress_id, revision).await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_studio_diff_mapping(
+    transport: State<'_, Transport>,
+    ingress_id: String,
+    from_revision: i32,
+    to_revision: i32,
+) -> Result<crate::ingress_studio::StudioDiff, String> {
+    transport.inner().clone().studio_diff_mapping(ingress_id, from_revision, to_revision).await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_studio_draft_mapping(
+    transport: State<'_, Transport>,
+    ingress_id: String,
+    guidance: String,
+) -> Result<crate::ingress_studio::StudioDraft, String> {
+    transport.inner().clone().studio_draft_mapping(ingress_id, guidance).await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_studio_capture_status(
+    transport: State<'_, Transport>,
+    ingress_id: String,
+) -> Result<crate::ingress_studio::StudioCaptureStatus, String> {
+    transport.inner().clone().studio_capture_status(ingress_id).await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_studio_preview(
+    transport: State<'_, Transport>,
+    ingress_id: String,
+) -> Result<Vec<crate::ingress_studio::StudioPreviewEntry>, String> {
+    transport.inner().clone().studio_preview(ingress_id).await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_studio_shadow_reprocess(
+    transport: State<'_, Transport>,
+    ingress_id: String,
+    mapping_revision: i32,
+    limit: i32,
+) -> Result<String, String> {
+    transport.inner().clone().studio_shadow_reprocess(ingress_id, mapping_revision, limit).await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_studio_promote_repair(
+    transport: State<'_, Transport>,
+    ingress_id: String,
+    mapping_revision: i32,
+    limit: i32,
+    reason: String,
+) -> Result<crate::ingress_studio::StudioAck, String> {
+    transport.inner().clone().studio_promote_repair(ingress_id, mapping_revision, limit, reason).await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_studio_set_credential(
+    transport: State<'_, Transport>,
+    ingress_id: String,
+    name: String,
+    value: String,
+) -> Result<crate::ingress_studio::StudioAck, String> {
+    transport.inner().clone().studio_set_credential(ingress_id, name, value).await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_studio_clear_credential(
+    transport: State<'_, Transport>,
+    ingress_id: String,
+    name: String,
+    reason: String,
+) -> Result<crate::ingress_studio::StudioAck, String> {
+    transport.inner().clone().studio_clear_credential(ingress_id, name, reason).await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_studio_set_egress_policy(
+    transport: State<'_, Transport>,
+    ingress_id: String,
+    policy_json: String,
+) -> Result<crate::ingress_studio::StudioAck, String> {
+    transport.inner().clone().studio_set_egress_policy(ingress_id, policy_json).await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_studio_delivery_failures(
+    transport: State<'_, Transport>,
+    ingress_id: String,
+) -> Result<Vec<crate::ingress_studio::StudioFailure>, String> {
+    transport.inner().clone().studio_delivery_failures(ingress_id).await
+}
+
 #[tauri::command(rename_all = "snake_case")]
 async fn op_telegram_list_bots(
     transport: State<'_, Transport>,
@@ -1440,6 +1619,24 @@ pub fn run() {
             op_telegram_list_bots,
             op_telegram_add_bot,
             op_telegram_remove_bot,
+            op_studio_create_ingress,
+            op_studio_list_ingresses,
+            op_studio_get_ingress,
+            op_studio_lifecycle,
+            op_studio_arm,
+            op_studio_rollback,
+            op_studio_save_spec,
+            op_studio_get_revision,
+            op_studio_diff_mapping,
+            op_studio_draft_mapping,
+            op_studio_capture_status,
+            op_studio_preview,
+            op_studio_shadow_reprocess,
+            op_studio_promote_repair,
+            op_studio_set_credential,
+            op_studio_clear_credential,
+            op_studio_set_egress_policy,
+            op_studio_delivery_failures,
             op_register_ingress,
             op_deregister_ingress,
             op_list_principals,

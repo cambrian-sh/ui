@@ -50,6 +50,8 @@ const KERNEL_ADVERTISES = [
   'watch-condition-guard',
   'watch-observability',
   'watch-schedule',
+  // plugin: ingress-studio
+  'ingress-studio',
 ];
 
 describe('describeCapabilities', () => {

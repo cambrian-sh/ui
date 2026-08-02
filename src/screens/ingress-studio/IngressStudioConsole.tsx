@@ -1,0 +1,303 @@
+import { useCallback, useMemo, useState } from 'react';
+import { useNavigate, useSearch } from '@tanstack/react-router';
+import { PluginSurface } from '@/components/PluginSurface';
+import { Badge, Button, Input } from '@/design-system/components';
+import { ScrollArea } from '@/design-system/components/ui/scroll-area';
+import { useStore } from '@/store/useStore';
+import { projectionStore } from '@/store/projection';
+import { useKernelQuery } from '@/lib/useKernelQuery';
+import { useMutation } from '@/lib/useMutation';
+import { ipc } from '@/ipc';
+import type { StudioIngress } from '@/ipc/types';
+import { cn } from '@/design-system/lib/utils';
+import { LifecyclePane } from './LifecyclePane';
+import { SpecsPane } from './SpecsPane';
+import { DraftPane } from './DraftPane';
+import { OperationsPane } from './OperationsPane';
+
+/** The capability the kernel advertises when the studio is live (ADR-0112). */
+const STUDIO_CAPABILITY = 'ingress-studio';
+
+/**
+ * The studio has no feed lane — `IngressStudioAdmin` is request/response only —
+ * so the list and status poll EXPLICITLY, the drift convention: nothing here
+ * pretends to be live, and the panes state their own age where it matters.
+ */
+const POLL_MS = 15_000;
+
+const TABS = [
+  { id: 'overview', label: 'Lifecycle' },
+  { id: 'specs', label: 'Specs' },
+  { id: 'draft', label: 'Draft' },
+  { id: 'operations', label: 'Operations' },
+] as const;
+type TabID = (typeof TABS)[number]['id'];
+
+/**
+ * The Ingress Studio (ADR-0112 §13, plan D8): describe → secure+capture →
+ * draft → confirm → dry-run → arm, with three human gates on purpose. Every
+ * rule this screen appears to enforce actually lives kernel-side — the panes
+ * render NAMED refusals inline rather than pre-empting them, so the state
+ * machine on the server stays the single authority.
+ */
+export function IngressStudioConsole() {
+  return (
+    <PluginSurface pluginId="ingress-studio" capability={STUDIO_CAPABILITY}>
+      <StudioSurfaces />
+    </PluginSurface>
+  );
+}
+
+function StudioSurfaces() {
+  const projection = useStore(projectionStore);
+  const readOnly = (projection.state?.role ?? null) !== 'operator';
+
+  const search = useSearch({ strict: false }) as { ingress?: string; tab?: string };
+  const navigate = useNavigate();
+  const tab: TabID = (TABS.find((t) => t.id === search.tab)?.id ?? 'overview') as TabID;
+  const selected = search.ingress ?? '';
+
+  const setTab = useCallback(
+    (next: TabID) =>
+      void navigate({ to: '/ingress-studio', search: { ingress: selected || undefined, tab: next }, replace: true }),
+    [navigate, selected],
+  );
+  const setSelected = useCallback(
+    (id: string) =>
+      void navigate({ to: '/ingress-studio', search: { ingress: id || undefined, tab }, replace: true }),
+    [navigate, tab],
+  );
+
+  const listQuery = useKernelQuery(['studio', 'ingresses'], ipc.studioListIngresses, {
+    refetchInterval: POLL_MS,
+    staleTime: 0,
+  });
+  const ingresses = useMemo(() => listQuery.data ?? [], [listQuery.data]);
+  const current = ingresses.find((i) => i.ingress_id === selected) ?? null;
+
+  const statusQuery = useKernelQuery(
+    ['studio', 'status', selected],
+    () => ipc.studioGetIngress(selected),
+    { enabled: selected !== '', refetchInterval: POLL_MS, staleTime: 0 },
+  );
+
+  const refresh = useCallback(() => {
+    void listQuery.refetch();
+    void statusQuery.refetch();
+  }, [listQuery, statusQuery]);
+
+  return (
+    <ScrollArea className="h-full">
+      <div className="mx-auto max-w-[1080px] px-6 py-6">
+        <header className="mb-4">
+          <h1 className="text-[18px] font-semibold text-[var(--fg-primary)]">Ingress Studio</h1>
+          <p className="text-[12px] text-[var(--fg-muted)]">
+            Describe a source, secure it, capture its shape, confirm the mapping, dry-run against
+            real traffic — then arm. Three of those are human gates, on purpose.
+          </p>
+        </header>
+
+        <div className="flex gap-5">
+          <IngressRail
+            ingresses={ingresses}
+            selected={selected}
+            onSelect={setSelected}
+            readOnly={readOnly}
+            onCreated={refresh}
+            loadError={listQuery.error ? String(listQuery.error.message ?? listQuery.error) : null}
+          />
+
+          <main className="min-w-0 flex-1">
+            {current === null ? (
+              <p className="mt-8 text-[13px] text-[var(--fg-muted)]">
+                {ingresses.length === 0
+                  ? 'No ingresses yet. Create one to begin — it starts in DRAFT, where you author its transport and credential before anything can arrive.'
+                  : 'Select an ingress.'}
+              </p>
+            ) : (
+              <>
+                <div className="mb-3 flex items-center gap-3">
+                  <h2 className="text-[15px] font-semibold text-[var(--fg-primary)]">
+                    {current.display_name || current.ingress_id}
+                  </h2>
+                  <StateBadge state={current.state} />
+                  {current.health !== 'ok' && (
+                    <Badge variant={current.health === 'error' ? 'err' : 'warn'}>
+                      {current.health}
+                    </Badge>
+                  )}
+                  {readOnly && (
+                    <span className="text-[11px] text-[var(--fg-muted)]">read-only access</span>
+                  )}
+                </div>
+
+                <nav className="mb-4 flex gap-1 border-b border-[var(--border-subtle)]">
+                  {TABS.map((t) => (
+                    <button
+                      key={t.id}
+                      onClick={() => setTab(t.id)}
+                      aria-current={tab === t.id ? 'page' : undefined}
+                      className={cn(
+                        'px-3 py-1.5 text-[13px] text-[var(--fg-secondary)]',
+                        tab === t.id &&
+                          'border-b-2 border-[var(--color-accent-400)] font-medium text-[var(--fg-primary)]',
+                      )}
+                    >
+                      {t.label}
+                    </button>
+                  ))}
+                </nav>
+
+                {tab === 'overview' && (
+                  <LifecyclePane
+                    ingressId={current.ingress_id}
+                    state={current.state}
+                    status={statusQuery.data ?? null}
+                    readOnly={readOnly}
+                    onChanged={refresh}
+                  />
+                )}
+                {tab === 'specs' && (
+                  <SpecsPane
+                    ingressId={current.ingress_id}
+                    status={statusQuery.data ?? null}
+                    readOnly={readOnly}
+                    onChanged={refresh}
+                  />
+                )}
+                {tab === 'draft' && (
+                  <DraftPane ingressId={current.ingress_id} readOnly={readOnly} onSaved={refresh} />
+                )}
+                {tab === 'operations' && (
+                  <OperationsPane
+                    ingressId={current.ingress_id}
+                    state={current.state}
+                    status={statusQuery.data ?? null}
+                    readOnly={readOnly}
+                    onChanged={refresh}
+                  />
+                )}
+              </>
+            )}
+          </main>
+        </div>
+      </div>
+    </ScrollArea>
+  );
+}
+
+const STATE_TINT: Record<string, string> = {
+  DRAFT: 'var(--fg-muted)',
+  CAPTURING: 'var(--color-accent-400)',
+  MAPPED: 'var(--color-accent-400)',
+  DRY_RUN: 'var(--status-warn)',
+  ARMED: 'var(--status-live)',
+  PAUSED: 'var(--status-warn)',
+  RETIRED: 'var(--fg-muted)',
+};
+
+export function StateBadge({ state }: { state: string }) {
+  return (
+    <span
+      className="rounded-full border border-[var(--border-subtle)] px-2 py-0.5 text-[10px] font-medium tracking-wide"
+      style={{ color: STATE_TINT[state] ?? 'var(--fg-secondary)' }}
+    >
+      {state}
+    </span>
+  );
+}
+
+function IngressRail({
+  ingresses,
+  selected,
+  onSelect,
+  readOnly,
+  onCreated,
+  loadError,
+}: {
+  ingresses: StudioIngress[];
+  selected: string;
+  onSelect: (id: string) => void;
+  readOnly: boolean;
+  onCreated: () => void;
+  loadError: string | null;
+}) {
+  const [newId, setNewId] = useState('');
+  const [newName, setNewName] = useState('');
+  const [ack, setAck] = useState('');
+  const create = useMutation(ipc.studioCreateIngress);
+
+  const submit = async () => {
+    setAck('');
+    const res = await create.mutate(newId.trim(), newName.trim());
+    if (res === undefined) return;
+    if (res.ok) {
+      setAck(res.detail);
+      setNewId('');
+      setNewName('');
+      onSelect(newId.trim());
+      onCreated();
+    } else {
+      setAck(res.error);
+    }
+  };
+
+  return (
+    <aside className="w-[236px] shrink-0">
+      <ul className="space-y-1">
+        {ingresses.map((i) => (
+          <li key={i.ingress_id}>
+            <button
+              onClick={() => onSelect(i.ingress_id)}
+              className={cn(
+                'flex w-full items-center justify-between rounded-[var(--radius-lg)] px-2.5 py-2 text-left text-[13px]',
+                selected === i.ingress_id
+                  ? 'bg-[var(--bg-surface)] text-[var(--fg-primary)]'
+                  : 'text-[var(--fg-secondary)] hover:bg-[var(--bg-surface)]',
+              )}
+            >
+              <span className="truncate">{i.display_name || i.ingress_id}</span>
+              <StateBadge state={i.state} />
+            </button>
+          </li>
+        ))}
+      </ul>
+      {loadError !== null && (
+        <p className="mt-2 text-[12px] text-[var(--status-err)]">{loadError}</p>
+      )}
+
+      {!readOnly && (
+        <div className="mt-4 space-y-2 rounded-[var(--radius-lg)] border border-[var(--border-subtle)] p-3">
+          <p className="text-[12px] font-medium text-[var(--fg-primary)]">New ingress</p>
+          <Input
+            value={newId}
+            onChange={(e) => setNewId(e.target.value)}
+            placeholder="id, e.g. github-main"
+            aria-label="Ingress id"
+          />
+          <Input
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            placeholder="Display name"
+            aria-label="Display name"
+          />
+          <Button
+            size="sm"
+            onClick={() => void submit()}
+            disabled={create.isLoading || newId.trim() === ''}
+          >
+            Create
+          </Button>
+          {create.error !== null && (
+            <p className="text-[12px] text-[var(--status-err)]">{create.error}</p>
+          )}
+          {ack !== '' && (
+            <p role="status" className="text-[12px] text-[var(--fg-secondary)]">
+              {ack}
+            </p>
+          )}
+        </div>
+      )}
+    </aside>
+  );
+}

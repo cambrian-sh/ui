@@ -22,6 +22,7 @@ import { Route as MemoryRouteImport } from './routes/memory'
 import { Route as McpRouteImport } from './routes/mcp'
 import { Route as LogsRouteImport } from './routes/logs'
 import { Route as LifecycleRouteImport } from './routes/lifecycle'
+import { Route as IngressStudioRouteImport } from './routes/ingress-studio'
 import { Route as InboxRouteImport } from './routes/inbox'
 import { Route as DriftRouteImport } from './routes/drift'
 import { Route as CostRouteImport } from './routes/cost'
@@ -97,6 +98,11 @@ const LifecycleRoute = LifecycleRouteImport.update({
   path: '/lifecycle',
   getParentRoute: () => rootRouteImport,
 } as any)
+const IngressStudioRoute = IngressStudioRouteImport.update({
+  id: '/ingress-studio',
+  path: '/ingress-studio',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const InboxRoute = InboxRouteImport.update({
   id: '/inbox',
   path: '/inbox',
@@ -151,6 +157,7 @@ export interface FileRoutesByFullPath {
   '/cost': typeof CostRoute
   '/drift': typeof DriftRoute
   '/inbox': typeof InboxRoute
+  '/ingress-studio': typeof IngressStudioRoute
   '/lifecycle': typeof LifecycleRoute
   '/logs': typeof LogsRoute
   '/mcp': typeof McpRoute
@@ -175,6 +182,7 @@ export interface FileRoutesByTo {
   '/cost': typeof CostRoute
   '/drift': typeof DriftRoute
   '/inbox': typeof InboxRoute
+  '/ingress-studio': typeof IngressStudioRoute
   '/lifecycle': typeof LifecycleRoute
   '/logs': typeof LogsRoute
   '/mcp': typeof McpRoute
@@ -200,6 +208,7 @@ export interface FileRoutesById {
   '/cost': typeof CostRoute
   '/drift': typeof DriftRoute
   '/inbox': typeof InboxRoute
+  '/ingress-studio': typeof IngressStudioRoute
   '/lifecycle': typeof LifecycleRoute
   '/logs': typeof LogsRoute
   '/mcp': typeof McpRoute
@@ -226,6 +235,7 @@ export interface FileRouteTypes {
     | '/cost'
     | '/drift'
     | '/inbox'
+    | '/ingress-studio'
     | '/lifecycle'
     | '/logs'
     | '/mcp'
@@ -250,6 +260,7 @@ export interface FileRouteTypes {
     | '/cost'
     | '/drift'
     | '/inbox'
+    | '/ingress-studio'
     | '/lifecycle'
     | '/logs'
     | '/mcp'
@@ -274,6 +285,7 @@ export interface FileRouteTypes {
     | '/cost'
     | '/drift'
     | '/inbox'
+    | '/ingress-studio'
     | '/lifecycle'
     | '/logs'
     | '/mcp'
@@ -299,6 +311,7 @@ export interface RootRouteChildren {
   CostRoute: typeof CostRoute
   DriftRoute: typeof DriftRoute
   InboxRoute: typeof InboxRoute
+  IngressStudioRoute: typeof IngressStudioRoute
   LifecycleRoute: typeof LifecycleRoute
   LogsRoute: typeof LogsRoute
   McpRoute: typeof McpRoute
@@ -409,6 +422,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LifecycleRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/ingress-studio': {
+      id: '/ingress-studio'
+      path: '/ingress-studio'
+      fullPath: '/ingress-studio'
+      preLoaderRoute: typeof IngressStudioRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/inbox': {
       id: '/inbox'
       path: '/inbox'
@@ -483,6 +503,7 @@ const rootRouteChildren: RootRouteChildren = {
   CostRoute: CostRoute,
   DriftRoute: DriftRoute,
   InboxRoute: InboxRoute,
+  IngressStudioRoute: IngressStudioRoute,
   LifecycleRoute: LifecycleRoute,
   LogsRoute: LogsRoute,
   McpRoute: McpRoute,

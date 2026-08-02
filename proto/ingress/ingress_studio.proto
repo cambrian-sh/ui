@@ -1,0 +1,289 @@
+syntax = "proto3";
+
+package cambrian.premium.ingress;
+
+option go_package = "github.com/cambrian-sh/cambrian-premium/api/proto/ingress;ingresspb";
+
+// IngressStudioAdmin is the Ingress Studio's operator plane (ADR-0112 §13,
+// plan D8): the FULL lifecycle, not just creation, over the server-enforced
+// state machine. Premium-owned proto mounted via AddGRPCService behind the
+// kernel's operator auth — no operator-contract bump (the ADR-0073 pattern).
+//
+// Conventions (the telegram_admin precedent):
+//   - credentials are WRITE-ONLY: no RPC returns a secret value, ever;
+//   - destructive or history-rewriting calls carry a mandatory reason;
+//   - Ack.detail says what happened AND what was left undone;
+//   - mapping/transport specs travel as JSON and are validated by the SAME
+//     strict parser hand-written specs go through — the wire adds no second
+//     grammar.
+service IngressStudioAdmin {
+  // ── Inventory & lifecycle ──
+  rpc CreateIngress(CreateIngressRequest) returns (Ack);
+  rpc ListIngresses(ListIngressesRequest) returns (ListIngressesResponse);
+  rpc GetIngress(IngressRef) returns (IngressStatus);
+  // StartCapture opens the door in CAPTURING (DRAFT → CAPTURING).
+  rpc StartCapture(TransitionRequest) returns (Ack);
+  // ConfirmMapping is the human confirm on field meaning (CAPTURING → MAPPED).
+  rpc ConfirmMapping(TransitionRequest) returns (Ack);
+  // StartDryRun moves MAPPED → DRY_RUN; live deliveries are then evaluated
+  // into the ephemeral preview buffer, never projected.
+  rpc StartDryRun(TransitionRequest) returns (Ack);
+  // Arm mints an immutable release from the named revisions, pins it, and
+  // moves DRY_RUN → ARMED. The model cannot call this plane; a human arms.
+  rpc Arm(ArmRequest) returns (Ack);
+  rpc Pause(TransitionRequest) returns (Ack);
+  rpc Resume(TransitionRequest) returns (Ack);
+  // Retire is terminal and requires a reason.
+  rpc Retire(TransitionRequest) returns (Ack);
+  // Rollback re-pins an EXISTING release while paused (reason required),
+  // optionally resuming — an armed door always runs an immutable pairing,
+  // so rolling back is pinning older, never editing in place.
+  rpc Rollback(RollbackRequest) returns (Ack);
+
+  // ── Specs & revisions ──
+  rpc SaveTransportSpec(SaveSpecRequest) returns (SaveSpecResponse);
+  rpc SaveMappingSpec(SaveSpecRequest) returns (SaveSpecResponse);
+  rpc GetMappingRevision(RevisionRef) returns (SpecResponse);
+  rpc GetTransportRevision(RevisionRef) returns (SpecResponse);
+  // DiffMappingRevisions compares two revisions field-by-field.
+  rpc DiffMappingRevisions(DiffRequest) returns (DiffResponse);
+
+  // ── Drafting, capture & preview ──
+  // DraftMapping is READ-ONLY (plan D1): it returns a proposal + coverage;
+  // saving it is a separate human action (SaveMappingSpec).
+  rpc DraftMapping(DraftRequest) returns (DraftResponse);
+  rpc GetCaptureStatus(IngressRef) returns (CaptureStatus);
+  // GetPreview returns the DRY_RUN stage's ephemeral evaluation buffer:
+  // real deliveries, evaluated, never canonical (plan D6).
+  rpc GetPreview(IngressRef) returns (PreviewResponse);
+
+  // ── Repair (plan D11/D14) ──
+  rpc ShadowReprocess(ReprocessRequest) returns (RepairPreviewResponse);
+  // PromoteRepair applies the reviewed diff; reason required.
+  rpc PromoteRepair(ReprocessRequest) returns (Ack);
+
+  // ── Credentials & egress ──
+  // SetCredential stores ingress:<ingress_id>:<name> encrypted; the caller
+  // never names raw store refs and nothing ever returns the value.
+  rpc SetCredential(SetCredentialRequest) returns (Ack);
+  rpc ClearCredential(ClearCredentialRequest) returns (Ack);
+  rpc SetEgressPolicy(SetEgressPolicyRequest) returns (Ack);
+
+  // ── Failures ──
+  rpc ListDeliveryFailures(IngressRef) returns (DeliveryFailures);
+  // ListGaps returns a sequenced stream's recorded gap findings (plan D5):
+  // messages the source's own counter says existed and this deployment never
+  // made durable. Durable rows, never only log lines.
+  rpc ListGaps(IngressRef) returns (GapFindings);
+}
+
+message GapFindings {
+  repeated GapFinding gaps = 1;
+}
+
+message GapFinding {
+  int32 transport_revision = 1;
+  int64 from_seq = 2;
+  int64 to_seq = 3;
+  string detected_at = 4;
+}
+
+message Ack {
+  bool ok = 1;
+  string error = 2;
+  // detail says what succeeded and what it left undone.
+  string detail = 3;
+}
+
+message IngressRef {
+  string ingress_id = 1;
+}
+
+message CreateIngressRequest {
+  string ingress_id = 1;
+  string display_name = 2;
+}
+
+message ListIngressesRequest {}
+
+message ListIngressesResponse {
+  repeated IngressSummary ingresses = 1;
+}
+
+message IngressSummary {
+  string ingress_id = 1;
+  string display_name = 2;
+  string state = 3;
+  string health = 4;
+  string pinned_release = 5;
+}
+
+message IngressStatus {
+  IngressSummary summary = 1;
+  int32 latest_transport_revision = 2;
+  int32 latest_mapping_revision = 3;
+  // Release currently pinned (empty until first arm).
+  string release_id = 4;
+  int32 armed_transport_revision = 5;
+  int32 armed_mapping_revision = 6;
+  int32 capture_samples = 7;
+  int32 failure_count = 8;
+  repeated CredentialStatus credentials = 9;
+  string egress_policy_json = 10;
+}
+
+message CredentialStatus {
+  string name = 1;
+  bool configured = 2;
+  // last_four only — a presence indicator, never the value.
+  string last_four = 3;
+}
+
+message TransitionRequest {
+  string ingress_id = 1;
+  // reason is mandatory on Retire and recorded for the others.
+  string reason = 2;
+}
+
+message ArmRequest {
+  string ingress_id = 1;
+  int32 transport_revision = 2;
+  int32 mapping_revision = 3;
+  string reason = 4;
+}
+
+message RollbackRequest {
+  string ingress_id = 1;
+  string release_id = 2;
+  string reason = 3;
+  // resume re-arms immediately after the pin.
+  bool resume = 4;
+}
+
+message SaveSpecRequest {
+  string ingress_id = 1;
+  // spec_json is validated by the strict ingress-mapping/v1 or TransportSpec
+  // parser; a refused spec never becomes a revision.
+  string spec_json = 2;
+}
+
+message SaveSpecResponse {
+  bool ok = 1;
+  string error = 2;
+  int32 revision = 3;
+}
+
+message RevisionRef {
+  string ingress_id = 1;
+  int32 revision = 2;
+}
+
+message SpecResponse {
+  bool ok = 1;
+  string error = 2;
+  int32 revision = 3;
+  string spec_json = 4;
+}
+
+message DiffRequest {
+  string ingress_id = 1;
+  int32 from_revision = 2;
+  int32 to_revision = 3;
+}
+
+message DiffResponse {
+  bool ok = 1;
+  string error = 2;
+  // Field-level target → descriptor changes.
+  repeated FieldChange added = 3;
+  repeated FieldChange removed = 4;
+  repeated FieldChange changed = 5;
+}
+
+message FieldChange {
+  string target = 1;
+  string from = 2;
+  string to = 3;
+}
+
+message DraftRequest {
+  string ingress_id = 1;
+  string guidance = 2;
+}
+
+message DraftResponse {
+  bool ok = 1;
+  string error = 2;
+  // Exactly one of spec_json / abstained is set on success.
+  string spec_json = 3;
+  string abstained = 4;
+  int32 corrections = 5;
+  bool first_draft_accepted = 6;
+  string coverage_json = 7;
+}
+
+message CaptureStatus {
+  int32 samples = 1;
+  // profile_json is the accumulated schema profile — the D13 coverage data.
+  string profile_json = 2;
+}
+
+message PreviewResponse {
+  repeated PreviewEntry entries = 1;
+}
+
+message PreviewEntry {
+  string delivery_ref = 1;
+  string received_at = 2;
+  // outcome: projected | refused | discarded.
+  string outcome = 3;
+  string detail = 4;
+  // envelopes_json holds the evaluated output for projected deliveries.
+  // Ephemeral by design: never written anywhere durable.
+  string envelopes_json = 5;
+}
+
+message ReprocessRequest {
+  string ingress_id = 1;
+  int32 mapping_revision = 2;
+  int32 limit = 3;
+  // reason is mandatory on PromoteRepair.
+  string reason = 4;
+}
+
+message RepairPreviewResponse {
+  bool ok = 1;
+  string error = 2;
+  string preview_json = 3;
+}
+
+message SetCredentialRequest {
+  string ingress_id = 1;
+  string name = 2;
+  // value is write-only; no RPC returns it.
+  string value = 3;
+}
+
+message ClearCredentialRequest {
+  string ingress_id = 1;
+  string name = 2;
+  string reason = 3;
+}
+
+message SetEgressPolicyRequest {
+  string ingress_id = 1;
+  string policy_json = 2;
+}
+
+message DeliveryFailures {
+  repeated DeliveryFailure failures = 1;
+}
+
+message DeliveryFailure {
+  string evidence_id = 1;
+  string delivery_ref = 2;
+  int32 mapping_revision = 3;
+  string outcome = 4;
+  string detail = 5;
+  string finished_at = 6;
+}

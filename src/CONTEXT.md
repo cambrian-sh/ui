@@ -84,6 +84,29 @@ The Rust core tells the webview the `role` (`operator`/`viewer`) and the `capabi
 
 No marketing site, no end-user chat product, no agent IDE, no marketplace, no full observability/Grafana clone, no mobile-native, no i18n at V1 (externalize strings), light mode is a follow-on (dark-mode-first).
 
+## The Ingress Studio (`screens/ingress-studio/`, route `/ingress-studio`, ADR-0112)
+
+Where external sources become armed ingresses: describe → secure+capture → draft →
+confirm → dry-run → arm, three human gates on purpose. Mounted inside `PluginSurface`
+(`pluginId="ingress-studio"`, capability `ingress-studio`, reported post-Build). Rules:
+
+1. **The kernel's state machine is the only authority.** Buttons appear by state as a
+   courtesy, but legality is decided server-side and a refused move renders its NAMED
+   reason inline — the screen never pre-empts or paraphrases a guard.
+2. **Credentials are write-only.** Password inputs clear on both outcomes; the only
+   render-back is `configured` + last four. An unconfigured binding says the consequence
+   ("deliveries answer 503"), not just the fact.
+3. **An abstention is a result.** The drafter declining renders with the model's reason
+   and next steps, styled as information — a drafter that cannot say "I don't know"
+   would be guessing.
+4. **The coverage report is the confirm gate's artifact** (plan D13): mapped, unmapped
+   ("check each is intentional"), named discards, absence rates. Review is meaningful
+   only when the omissions are visible.
+5. **The dry-run preview says it is ephemeral** — memory-only, capped, gone on restart —
+   and polls fast (5 s) because it is the pane an operator watches while sending test
+   traffic. Everything else polls at 15 s; there is no feed lane and nothing pretends
+   to be live.
+
 ## The drift surfaces (`screens/drift/`, route `/drift`, ADR-0102)
 
 The drift product's own output. Mounted inside `PluginSurface` (`pluginId="drift"`, capability `record-lane`) so contract skew is reported by construction and an absent plugin renders as a *complete deployment*, not a fault. Four surfaces behind `?tab=`: **Alerts**, **Ledger**, **Coverage**, **Retention**; `?alert=` selects one alert's evidence, which fills the **inspector slot** rather than a permanent aside.

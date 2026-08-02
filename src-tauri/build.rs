@@ -37,6 +37,12 @@ fn main() {
                 // feature should not become a permanent commitment on it. Same
                 // reasoning, and the same mounting, as authz above.
                 "../proto/records/records.proto",
+                // ADR-0112: the Ingress Studio's operator plane (plan D8) —
+                // the full ingress lifecycle over the server-enforced state
+                // machine. Premium-owned for the ADR-0073 reason; the client
+                // compiles unconditionally and the surface is gated on the
+                // "ingress-studio" capability, reported post-Build.
+                "../proto/ingress/ingress_studio.proto",
             ],
             &["../proto"],
         )
@@ -47,6 +53,7 @@ fn main() {
     println!("cargo:rerun-if-changed=../proto/telegram/telegram_admin.proto");
     println!("cargo:rerun-if-changed=../proto/telemetry/telemetry_admin.proto");
     println!("cargo:rerun-if-changed=../proto/records/records.proto");
+    println!("cargo:rerun-if-changed=../proto/ingress/ingress_studio.proto");
 
     tauri_build::build();
 }

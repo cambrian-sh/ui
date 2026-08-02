@@ -188,6 +188,13 @@ const KNOWN: Record<string, Omit<CapabilitySurface, 'capability'>> = {
     consequence: 'debounce, rate limits and shed order',
     gatesSurface: true,
   },
+  // ── plugin: ingress-studio (ADR-0112) ────────────────────────────────────
+  'ingress-studio': {
+    surface: 'Ingress Studio',
+    consequence:
+      'describe → secure+capture → draft → confirm → dry-run → arm for external data sources; reported only when the studio found Postgres and evidence capture',
+    gatesSurface: true,
+  },
 };
 
 /** Map the handshake's capability list onto the surfaces they gate. */

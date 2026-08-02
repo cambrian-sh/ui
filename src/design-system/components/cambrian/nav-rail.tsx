@@ -98,6 +98,19 @@ export const NAV_GROUPS: readonly NavGroup[] = [
         count: "watches",
         requires: "watches-read",
       },
+      {
+        // The Ingress Studio (ADR-0112): where external sources become armed
+        // ingresses. Execution because it answers "what arrives here and how"
+        // — a door into the substrate, not a record of what happened.
+        //
+        // Gated on `ingress-studio`, reported only after the plugin's Build
+        // finds Postgres and evidence capture: a deployment without either is
+        // CORRECT and the entry stays absent rather than leading to a refusal.
+        path: "/ingress-studio",
+        label: "Ingress Studio",
+        icon: Workflow,
+        requires: "ingress-studio",
+      },
       { path: "/verifier", label: "Verifier Pool", icon: Gavel },
       { path: "/lifecycle", label: "Lifecycle", icon: Activity },
     ],

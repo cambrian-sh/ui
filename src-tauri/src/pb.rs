@@ -40,6 +40,17 @@ pub mod records {
     tonic::include_proto!("cambrian.premium.records");
 }
 
+/// The premium Ingress Studio plane (ADR-0112 §13) — the full ingress
+/// lifecycle: capture, draft, confirm, dry-run, arm, pause, repair, retire.
+///
+/// Compiled in unconditionally like every premium plane here. The capability
+/// is reported post-Build (the record-lane precedent): a kernel without
+/// Postgres or evidence capture is a CORRECT deployment that never advertises
+/// it, and the surface stays hidden rather than broken.
+pub mod ingress {
+    tonic::include_proto!("cambrian.premium.ingress");
+}
+
 /// The capability the kernel advertises when the access-policy plugin is active.
 /// The UI renders the policy console only when the handshake carries it
 /// (ADR-0082 D2: the kernel forwards plugin capabilities without interpreting
@@ -56,6 +67,11 @@ pub const ACCESS_POLICY_CAPABILITY: &str = "access-policy";
 /// behind it, and a console that conflates them will eventually report "0 issues"
 /// for a detector that was never switched on.
 pub const RECORD_LANE_CAPABILITY: &str = "record-lane";
+
+/// The capability the kernel advertises when the Ingress Studio is live
+/// (ADR-0112; reported via `LiveCapabilities` after Build finds Postgres and
+/// evidence capture). Absence is a complete configuration, never a fault.
+pub const INGRESS_STUDIO_CAPABILITY: &str = "ingress-studio";
 
 /// The capability gating `RetentionRunOp` on the operator feed (contract 0084,
 /// ADR-0102 A1).
