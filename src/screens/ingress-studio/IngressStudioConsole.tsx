@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useState } from 'react';
 import { useNavigate, useSearch } from '@tanstack/react-router';
 import { PluginSurface } from '@/components/PluginSurface';
-import { Badge, Button, Input } from '@/design-system/components';
+import { Button, Input } from '@/design-system/components';
 import { ScrollArea } from '@/design-system/components/ui/scroll-area';
 import { useStore } from '@/store/useStore';
 import { projectionStore } from '@/store/projection';
@@ -12,7 +12,7 @@ import type { StudioIngress } from '@/ipc/types';
 import { cn } from '@/design-system/lib/utils';
 import { LifecyclePane } from './LifecyclePane';
 import { SpecsPane } from './SpecsPane';
-import { DraftPane } from './DraftPane';
+import { StudioColumn } from './StudioColumn';
 import { OperationsPane } from './OperationsPane';
 
 /** The capability the kernel advertises when the studio is live (ADR-0112). */
@@ -25,13 +25,22 @@ const STUDIO_CAPABILITY = 'ingress-studio';
  */
 const POLL_MS = 15_000;
 
-const TABS = [
-  { id: 'overview', label: 'Lifecycle' },
-  { id: 'specs', label: 'Specs' },
-  { id: 'draft', label: 'Draft' },
+/**
+ * The four tabs are gone (turn 17 §1).
+ *
+ * They were four STATES of one thing, not four screens, and the server-side
+ * lifecycle already enforces their order — so three were always unreachable and
+ * a tab strip promised the opposite. What is left is one column plus the two
+ * surfaces that are genuinely orthogonal to the flow: the transport/mapping
+ * source text, and day-to-day operations on something already armed. Those are
+ * reached from the column's own receipts rather than from a peer-looking strip.
+ */
+const SIDE_PANELS = [
+  { id: 'specs', label: 'Source text' },
+  { id: 'overview', label: 'Lifecycle & arming' },
   { id: 'operations', label: 'Operations' },
 ] as const;
-type TabID = (typeof TABS)[number]['id'];
+type PanelID = (typeof SIDE_PANELS)[number]['id'];
 
 /**
  * The Ingress Studio (ADR-0112 §13, plan D8): describe → secure+capture →
@@ -54,18 +63,29 @@ function StudioSurfaces() {
 
   const search = useSearch({ strict: false }) as { ingress?: string; tab?: string };
   const navigate = useNavigate();
-  const tab: TabID = (TABS.find((t) => t.id === search.tab)?.id ?? 'overview') as TabID;
+  // `tab` now names an OPTIONAL side panel, not one of four peers. Absent means
+  // the column itself, which is the normal case.
+  const panel: PanelID | null =
+    (SIDE_PANELS.find((t) => t.id === search.tab)?.id as PanelID | undefined) ?? null;
   const selected = search.ingress ?? '';
 
-  const setTab = useCallback(
-    (next: TabID) =>
-      void navigate({ to: '/ingress-studio', search: { ingress: selected || undefined, tab: next }, replace: true }),
+  const setPanel = useCallback(
+    (next: PanelID | null) =>
+      void navigate({
+        to: '/ingress-studio',
+        search: { ingress: selected || undefined, tab: next ?? undefined },
+        replace: true,
+      }),
     [navigate, selected],
   );
   const setSelected = useCallback(
     (id: string) =>
-      void navigate({ to: '/ingress-studio', search: { ingress: id || undefined, tab }, replace: true }),
-    [navigate, tab],
+      void navigate({
+        to: '/ingress-studio',
+        search: { ingress: id || undefined, tab: undefined },
+        replace: true,
+      }),
+    [navigate],
   );
 
   const listQuery = useKernelQuery(['studio', 'ingresses'], ipc.studioListIngresses, {
@@ -86,103 +106,96 @@ function StudioSurfaces() {
     void statusQuery.refetch();
   }, [listQuery, statusQuery]);
 
+
   return (
-    <ScrollArea className="h-full">
-      <div className="mx-auto max-w-[1080px] px-6 py-6">
-        <header className="mb-4">
-          <h1 className="text-[18px] font-semibold text-[var(--fg-primary)]">Ingress Studio</h1>
-          <p className="text-[12px] text-[var(--fg-muted)]">
-            Describe a source, secure it, capture its shape, confirm the mapping, dry-run against
-            real traffic — then arm. Three of those are human gates, on purpose.
-          </p>
-        </header>
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="flex-none px-6 pt-5 pb-3">
+        <h1 className="text-[18px] font-semibold text-[var(--fg-primary)]">Ingress Studio</h1>
+        <p className="text-[12px] text-[var(--fg-muted)]">
+          Describe a source, capture its shape, confirm the mapping, dry-run against real traffic —
+          then arm. Three of those are human gates, on purpose, and the order is enforced by the
+          kernel rather than by this screen.
+        </p>
+      </div>
 
-        <div className="flex gap-5">
-          <IngressRail
-            ingresses={ingresses}
-            selected={selected}
-            onSelect={setSelected}
-            readOnly={readOnly}
-            onCreated={refresh}
-            loadError={listQuery.error ? String(listQuery.error.message ?? listQuery.error) : null}
-          />
+      <div className="flex min-h-0 flex-1 gap-4 px-6 pb-5">
+        <IngressRail
+          ingresses={ingresses}
+          selected={selected}
+          onSelect={setSelected}
+          readOnly={readOnly}
+          onCreated={refresh}
+          loadError={listQuery.error ? String(listQuery.error.message ?? listQuery.error) : null}
+        />
 
-          <main className="min-w-0 flex-1">
-            {current === null ? (
-              <p className="mt-8 text-[13px] text-[var(--fg-muted)]">
-                {ingresses.length === 0
-                  ? 'No ingresses yet. Create one to begin — it starts in DRAFT, where you author its transport and credential before anything can arrive.'
-                  : 'Select an ingress.'}
-              </p>
-            ) : (
-              <>
-                <div className="mb-3 flex items-center gap-3">
-                  <h2 className="text-[15px] font-semibold text-[var(--fg-primary)]">
-                    {current.display_name || current.ingress_id}
-                  </h2>
-                  <StateBadge state={current.state} />
-                  {current.health !== 'ok' && (
-                    <Badge variant={current.health === 'error' ? 'err' : 'warn'}>
-                      {current.health}
-                    </Badge>
+        <main className="flex min-w-0 flex-1 flex-col overflow-hidden rounded-[var(--radius-lg)] bg-[var(--bg-base)] shadow-[var(--elevation-1)]">
+          {current === null ? (
+            <p className="p-8 text-[13px] leading-[1.6] text-[var(--fg-muted)]">
+              {ingresses.length === 0
+                ? 'No ingresses yet. Create one to begin — it starts in DRAFT, where you author its transport and credential before anything can arrive.'
+                : 'Select an ingress.'}
+            </p>
+          ) : panel !== null ? (
+            /* A side panel: source text or operations. Reached from the column,
+               and it says so — it is not a peer of the stages, it is a detour
+               with a way back. */
+            <div className="flex h-full min-h-0 flex-col">
+              <div className="flex flex-none items-center gap-3 border-b border-[var(--border-subtle)] px-5 py-3">
+                <h2 className="text-[15px] font-medium">
+                  {SIDE_PANELS.find((p) => p.id === panel)?.label}
+                </h2>
+                <span className="font-mono text-[11px] text-[var(--fg-muted)]">
+                  {current.display_name || current.ingress_id}
+                </span>
+                <StateBadge state={current.state} />
+                <Button size="sm" variant="ghost" className="ml-auto" onClick={() => setPanel(null)}>
+                  Back to the stages
+                </Button>
+              </div>
+              <ScrollArea className="min-h-0 flex-1">
+                <div className="p-5">
+                  {panel === 'overview' && (
+                    <LifecyclePane
+                      ingressId={current.ingress_id}
+                      state={current.state}
+                      status={statusQuery.data ?? null}
+                      readOnly={readOnly}
+                      onChanged={refresh}
+                    />
                   )}
-                  {readOnly && (
-                    <span className="text-[11px] text-[var(--fg-muted)]">read-only access</span>
+                  {panel === 'specs' && (
+                    <SpecsPane
+                      ingressId={current.ingress_id}
+                      status={statusQuery.data ?? null}
+                      readOnly={readOnly}
+                      onChanged={refresh}
+                    />
+                  )}
+                  {panel === 'operations' && (
+                    <OperationsPane
+                      ingressId={current.ingress_id}
+                      state={current.state}
+                      status={statusQuery.data ?? null}
+                      readOnly={readOnly}
+                      onChanged={refresh}
+                    />
                   )}
                 </div>
-
-                <nav className="mb-4 flex gap-1 border-b border-[var(--border-subtle)]">
-                  {TABS.map((t) => (
-                    <button
-                      key={t.id}
-                      onClick={() => setTab(t.id)}
-                      aria-current={tab === t.id ? 'page' : undefined}
-                      className={cn(
-                        'px-3 py-1.5 text-[13px] text-[var(--fg-secondary)]',
-                        tab === t.id &&
-                          'border-b-2 border-[var(--color-accent-400)] font-medium text-[var(--fg-primary)]',
-                      )}
-                    >
-                      {t.label}
-                    </button>
-                  ))}
-                </nav>
-
-                {tab === 'overview' && (
-                  <LifecyclePane
-                    ingressId={current.ingress_id}
-                    state={current.state}
-                    status={statusQuery.data ?? null}
-                    readOnly={readOnly}
-                    onChanged={refresh}
-                  />
-                )}
-                {tab === 'specs' && (
-                  <SpecsPane
-                    ingressId={current.ingress_id}
-                    status={statusQuery.data ?? null}
-                    readOnly={readOnly}
-                    onChanged={refresh}
-                  />
-                )}
-                {tab === 'draft' && (
-                  <DraftPane ingressId={current.ingress_id} readOnly={readOnly} onSaved={refresh} />
-                )}
-                {tab === 'operations' && (
-                  <OperationsPane
-                    ingressId={current.ingress_id}
-                    state={current.state}
-                    status={statusQuery.data ?? null}
-                    readOnly={readOnly}
-                    onChanged={refresh}
-                  />
-                )}
-              </>
-            )}
-          </main>
-        </div>
+              </ScrollArea>
+            </div>
+          ) : (
+            <StudioColumn
+              summary={current}
+              status={statusQuery.data ?? null}
+              readOnly={readOnly}
+              onChanged={refresh}
+              onOpenPanel={setPanel}
+              health={current.health}
+            />
+          )}
+        </main>
       </div>
-    </ScrollArea>
+    </div>
   );
 }
 

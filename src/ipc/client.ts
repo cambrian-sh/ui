@@ -196,6 +196,55 @@ export const ipc = {
   listWatches: (): Promise<t.WatchConfigSummary[]> =>
     invoke<t.WatchConfigSummary[]>('op_list_watches'),
 
+  /**
+   * Authored reactive pipelines (kernel contract 0087).
+   *
+   * Empty on a kernel with no pipeline runtime — the RPC answers with a list,
+   * not an error, so the console renders an empty panel rather than a failure.
+   */
+  listPipelines: (): Promise<t.PipelineSummary[]> =>
+    invoke<t.PipelineSummary[]>('op_list_pipelines'),
+
+  /**
+   * Shadow-run a pipeline over its captured deliveries (kernel contract 0088).
+   *
+   * Performs nothing. A refusal arrives in `refused` rather than as a thrown
+   * error, because "nothing has been captured yet" and "the graph does not
+   * compile" are different problems with different fixes and both would
+   * otherwise reduce to one red box.
+   */
+  /** One authored revision plus its current refusals (kernel contract 0089). */
+  getPipeline: (pipelineId: string, revision = 0): Promise<t.PipelineGraph> =>
+    invoke<t.PipelineGraph>('op_get_pipeline', { pipeline_id: pipelineId, revision }),
+
+  /**
+   * Compile a graph document without storing it (kernel contract 0089).
+   *
+   * Safe to call on every change: the RPC has no power to store or transition,
+   * which is why the editor is given this one and not Publish.
+   */
+  validatePipeline: (graphJson: string): Promise<t.PipelineValidation> =>
+    invoke<t.PipelineValidation>('op_validate_pipeline', { graph_json: graphJson }),
+
+  /**
+   * Store an edited graph as a new draft revision (kernel contract 0090).
+   *
+   * Creates a draft and nothing further — publishing and arming are separate
+   * acts on the lifecycle, each with its own gate.
+   */
+  savePipeline: (graphJson: string, commandId = ''): Promise<t.PipelineSaved> =>
+    invoke<t.PipelineSaved>('op_save_pipeline', {
+      graph_json: graphJson,
+      command_id: commandId,
+    }),
+
+  dryRunPipeline: (pipelineId: string, revision = 0, sampleLimit = 0): Promise<t.PipelineDryRun> =>
+    invoke<t.PipelineDryRun>('op_dry_run_pipeline', {
+      pipeline_id: pipelineId,
+      revision,
+      sample_limit: sampleLimit,
+    }),
+
   // ----- Memory (kernel contract 0057) -----
 
   /** Ingest one document. See `IngestMemoryParams` for the two body lanes. */
@@ -333,6 +382,12 @@ export const ipc = {
     invoke<t.StudioDraft>('op_studio_draft_mapping', { ingress_id: ingressId, guidance }),
   studioCaptureStatus: (ingressId: string): Promise<t.StudioCaptureStatus> =>
     invoke<t.StudioCaptureStatus>('op_studio_capture_status', { ingress_id: ingressId }),
+  /** Real captured deliveries, redacted at capture, newest first. */
+  studioCaptureSamples: (ingressId: string, limit = 10): Promise<t.StudioCaptureSamples> =>
+    invoke<t.StudioCaptureSamples>('op_studio_capture_samples', {
+      ingress_id: ingressId,
+      limit,
+    }),
   /** The DRY_RUN stage's ephemeral buffer — real deliveries, never preserved. */
   studioPreview: (ingressId: string): Promise<t.StudioPreviewEntry[]> =>
     invoke<t.StudioPreviewEntry[]>('op_studio_preview', { ingress_id: ingressId }),

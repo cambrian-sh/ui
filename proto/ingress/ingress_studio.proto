@@ -53,6 +53,17 @@ service IngressStudioAdmin {
   // saving it is a separate human action (SaveMappingSpec).
   rpc DraftMapping(DraftRequest) returns (DraftResponse);
   rpc GetCaptureStatus(IngressRef) returns (CaptureStatus);
+  // ListCaptureSamples returns real deliveries, REDACTED, newest first.
+  //
+  // The mapping review is evidence before it is a form: every field the drafter
+  // claims has to be checkable against something that actually arrived, and a
+  // schema profile alone cannot do that — it says `array[3] · unlabelled` where
+  // the payload says `[-173.9, -15.4, 41.2]`, and only the second makes it
+  // obvious why guessing an order would be silently wrong half the time.
+  //
+  // Redaction happens at capture, not here: these rows were written redacted
+  // (ADR-0112 §12), so this RPC cannot leak what was never stored.
+  rpc ListCaptureSamples(CaptureSamplesRequest) returns (CaptureSamples);
   // GetPreview returns the DRY_RUN stage's ephemeral evaluation buffer:
   // real deliveries, evaluated, never canonical (plan D6).
   rpc GetPreview(IngressRef) returns (PreviewResponse);
@@ -235,12 +246,40 @@ message DraftResponse {
   int32 corrections = 5;
   bool first_draft_accepted = 6;
   string coverage_json = 7;
+  // field_abstentions are per-field decisions the drafter declined to make
+  // while still proposing a mapping for the rest. They arrive WITH a spec,
+  // unlike `abstained`, which is the whole draft.
+  repeated FieldAbstentionOp field_abstentions = 8;
+}
+
+// FieldAbstentionOp is one field the drafter would not guess at.
+message FieldAbstentionOp {
+  string path = 1;
+  // reason is the drafter's own words, shown verbatim on the review row.
+  string reason = 2;
+  // options are the readings it was choosing between; they become the
+  // operator's buttons.
+  repeated string options = 3;
 }
 
 message CaptureStatus {
   int32 samples = 1;
   // profile_json is the accumulated schema profile — the D13 coverage data.
   string profile_json = 2;
+}
+
+message CaptureSamplesRequest {
+  string ingress_id = 1;
+  // limit bounds what crosses the wire; 0 means the server's default.
+  int32 limit = 2;
+}
+
+message CaptureSamples {
+  // bodies_json are redacted deliveries, newest first.
+  repeated string bodies_json = 1;
+  // total is how many deliveries were captured in all, which is what lets the
+  // console say "delivery 198 of 214" rather than "one of the ones we sent".
+  int32 total = 2;
 }
 
 message PreviewResponse {

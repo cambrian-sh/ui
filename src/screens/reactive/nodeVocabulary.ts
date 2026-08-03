@@ -1,0 +1,286 @@
+import type { GraphNode } from "@/ipc/types";
+
+/**
+ * The node vocabulary, mirrored from the kernel.
+ *
+ * This file tracks `cambrian-premium/pipeline/graph.go` — `classOf`,
+ * `OutputPorts` and the kind constants. It is a mirror rather than a fetch
+ * because the palette must render before any kernel call returns, and because
+ * the vocabulary is CLOSED: there is no code node and there never will be, so
+ * this list is finite by design and cannot drift by a plugin adding a kind at
+ * runtime.
+ *
+ * What it must never do is decide anything. Every rule — what may connect to
+ * what, whether a graph compiles — belongs to the compiler, and the console asks
+ * it. This is presentation: names, families, the ports to draw.
+ */
+
+/** The runtime class, which is what decides whether a node can touch the world. */
+export type NodeFamily = "gate" | "transform" | "effect" | "control" | "trigger";
+
+export interface NodeSpec {
+  kind: string;
+  label: string;
+  family: NodeFamily;
+  /** One sentence: what this node is for, in the operator's terms. */
+  lead: string;
+}
+
+/**
+ * Four families — Gate, Transform, Effect, Control — plus the trigger, which is
+ * not one of them: a pipeline has exactly one and it is never dragged from a
+ * palette.
+ *
+ * The names are the design's, and they are load-bearing: the family tells you
+ * what a node can do to the world, and nothing else does. "Flow" and "join"
+ * described the shape of the graph instead, which is the thing an operator can
+ * already see.
+ */
+export const NODE_SPECS: NodeSpec[] = [
+  {
+    kind: "trigger",
+    label: "Trigger",
+    family: "trigger",
+    lead: "Where items enter. Exactly one per pipeline, and it is bound to an ingress, a stream or a schedule rather than chosen here.",
+  },
+
+  // ── Gate ──────────────────────────────────────────────────────────────────
+  {
+    kind: "choice",
+    label: "Choice",
+    family: "gate",
+    lead: "Sends each item down `true` or `false` by a closed expression. Both ports must go somewhere or be terminated with a reason.",
+  },
+  {
+    kind: "switch",
+    label: "Switch",
+    family: "gate",
+    lead: "One port per declared case, plus `default`. A switch with no cases is refused — it would be a filter wearing a router's name.",
+  },
+  // ── Transform ─────────────────────────────────────────────────────────────
+  {
+    kind: "map",
+    label: "Map",
+    family: "transform",
+    lead: "Rewrites fields on one item. A map that changes nothing is refused, because it reads as a step that does something.",
+  },
+  {
+    kind: "split",
+    label: "Split",
+    family: "transform",
+    lead: "One item becomes many. This is the fan-out point, and where a save key that does not separate the pieces starts collapsing them.",
+  },
+
+  // ── Transform (continued) ─────────────────────────────────────────────────
+  {
+    kind: "aggregate",
+    label: "Aggregate",
+    family: "transform",
+    lead: "Many items become one, or become groups. It waits, so it is where a pipeline can stall if a branch never arrives.",
+  },
+  {
+    kind: "merge",
+    label: "Merge",
+    family: "transform",
+    lead: "Joins branches explicitly. Two inputs into anything else is refused — merging is a decision with ordering and completion semantics, not something to infer from the wiring.",
+  },
+
+  // ── Effect · touches the world ────────────────────────────────────────────
+  {
+    kind: "save_to_memory",
+    label: "Save to memory",
+    family: "effect",
+    lead: "Writes knowledge. Idempotent on a derived key, which is the key a dry run checks for collisions.",
+  },
+  {
+    kind: "notify",
+    label: "Notify",
+    family: "effect",
+    lead: "Tells someone. Its `ambiguous` outcome is not an error: reporting it as failure invites a duplicate send by hand, which is the actual damage.",
+  },
+  {
+    kind: "emit_event",
+    label: "Emit event",
+    family: "effect",
+    lead: "Puts an event on the bus, where other pipelines and watches can see it.",
+  },
+  {
+    kind: "dispatch_agent",
+    label: "Dispatch agent",
+    family: "effect",
+    lead: "Hands work to an agent. External: it can take arbitrarily long and can fail in ways the graph does not model.",
+  },
+  {
+    kind: "start_plan",
+    label: "Start plan",
+    family: "effect",
+    lead: "Starts a plan. This is the only node that reaches the planner, and it draws from a plane-wide budget.",
+  },
+  {
+    kind: "decide",
+    label: "Decide (LLM)",
+    family: "effect",
+    lead: "Asks a model to classify, route or extract. It changes the world in the sense that matters here: it costs money per item and reads text it did not write.",
+  },
+  {
+    kind: "fetch",
+    label: "Fetch",
+    family: "effect",
+    lead: "Retrieves something over the network. What it fetches is archived as evidence before anything interprets it.",
+  },
+  {
+    kind: "run_turn",
+    label: "Run turn",
+    family: "effect",
+    lead: "Answers a conversational turn. Its `refused` port is a decision the chat lane made, kept separate from `error`, which is a failure to decide.",
+  },
+
+  // ── Control ───────────────────────────────────────────────────────────────
+  {
+    kind: "foreach",
+    label: "For each",
+    family: "control",
+    lead: "Runs a nested scope once per element. It owns its body rather than closing a cycle, which is what keeps every scope a DAG.",
+  },
+  {
+    kind: "repeat_until",
+    label: "Repeat until",
+    family: "control",
+    lead: "Runs its body until a condition holds. It cannot be saved without a stated end — not because loops are risky, but because this one would have none.",
+  },
+];
+
+export const SPEC_BY_KIND: Record<string, NodeSpec> = Object.fromEntries(
+  NODE_SPECS.map((s) => [s.kind, s]),
+);
+
+export const FAMILY_LABEL: Record<NodeFamily, string> = {
+  trigger: "Trigger",
+  gate: "Gate",
+  transform: "Transform",
+  // The one heading that states a capability rather than a category, because
+  // that is what an operator needs to see before arming.
+  effect: "Effect · touches the world",
+  control: "Control",
+};
+
+export const FAMILY_TONE: Record<NodeFamily, string> = {
+  trigger: "var(--fg-muted)",
+  gate: "var(--color-accent-400)",
+  transform: "var(--color-accent-400)",
+  effect: "var(--status-warn)",
+  control: "var(--color-accent-400)",
+};
+
+/** Whether this kind can change something outside the process. */
+export function touchesWorld(kind: string): boolean {
+  return SPEC_BY_KIND[kind]?.family === "effect";
+}
+
+/**
+ * The output ports of a node, mirroring `Node.OutputPorts()`.
+ *
+ * A switch's ports depend on its configuration, which is why this takes the
+ * node and not just the kind.
+ */
+export function outputPorts(node: GraphNode): string[] {
+  switch (node.kind) {
+    case "trigger":
+    case "map":
+    case "split":
+    case "aggregate":
+    case "merge":
+      return ["out"];
+    case "choice":
+      return ["true", "false"];
+    case "switch": {
+      const cases = Array.isArray(node.config?.cases)
+        ? (node.config!.cases as unknown[])
+        : [];
+      return [...cases.map((_, i) => `case:${i}`), "default"];
+    }
+    case "save_to_memory":
+    case "notify":
+    case "emit_event":
+    case "dispatch_agent":
+    case "start_plan":
+    case "decide":
+    case "fetch":
+      return ["out", "error"];
+    case "run_turn":
+      return ["out", "refused", "error"];
+    case "foreach":
+    case "repeat_until":
+      // No `body` port: the body is a nested scope, not an edge.
+      return ["done", "exhausted", "error"];
+    default:
+      return [];
+  }
+}
+
+/**
+ * What a port means, as colour.
+ *
+ * Ports are the one place on this canvas where colour carries information
+ * rather than decoration, so the mapping is explicit and shared.
+ */
+export function portTone(port: string, opts: { unwired: boolean }): string {
+  if (opts.unwired) return "var(--status-err)";
+  if (port === "error") return "var(--status-err)";
+  if (port === "refused" || port === "exhausted") return "var(--status-warn)";
+  if (port === "false" || port === "default") return "var(--fg-muted)";
+  return "var(--color-accent-400)";
+}
+
+/**
+ * What a node's delivery guarantee is, mirroring the kernel's runtime classes.
+ *
+ * Shown on the card because it decides how an operator has to reason about a
+ * failure. `exactly-once` is only claimable where the effect writes Cambrian's
+ * own store under an idempotency key it controls; everything reaching outside
+ * the process is `at-least-once`, and saying otherwise would be a promise the
+ * runtime cannot keep.
+ */
+export function deliveryMode(kind: string): string | null {
+  switch (kind) {
+    // ClassInternalTxn: our own store, keyed, so a retry lands on the same row.
+    case "save_to_memory":
+    case "run_turn":
+      return "exactly-once";
+    // ClassExternal: someone else's system, which may have applied the effect
+    // before the acknowledgement was lost.
+    case "notify":
+    case "emit_event":
+    case "dispatch_agent":
+    case "start_plan":
+    case "fetch":
+      return "at-least-once";
+    // ClassDecision: it costs money per attempt, and a repeat is a new answer.
+    case "decide":
+      return "at-most-once";
+    default:
+      return null;
+  }
+}
+
+/**
+ * The action that resolves a refusal, keyed by CONSTRAINT rather than wording.
+ *
+ * Every refusal is phrased as the thing to do next, and where that thing is a
+ * single move the console offers it as a control. Keying on the constraint is
+ * what keeps this working when a sentence is improved.
+ */
+export function refusalAction(constraint: string): string | null {
+  switch (constraint) {
+    case "unwired-port":
+      return "Wire it to a node";
+    case "unnamed-discard":
+      return "Give it a reason";
+    case "unbounded-loop":
+      return "Set a cap";
+    case "port-conflict":
+      return "Remove one of the two";
+    default:
+      return null;
+  }
+}

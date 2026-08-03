@@ -109,12 +109,37 @@ pub struct StudioDraft {
     pub corrections: i32,
     pub first_draft_accepted: bool,
     pub coverage_json: String,
+    /// Per-field decisions the drafter declined to make while still proposing a
+    /// mapping for the rest. These arrive WITH a spec, unlike `abstained`,
+    /// which is the whole draft.
+    pub field_abstentions: Vec<StudioFieldAbstention>,
+}
+
+/// One field the drafter would not guess at.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StudioFieldAbstention {
+    pub path: String,
+    /// The drafter's own words, shown verbatim on the review row.
+    pub reason: String,
+    /// The readings it was choosing between; these become the operator's buttons.
+    pub options: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StudioCaptureStatus {
     pub samples: i32,
     pub profile_json: String,
+}
+
+/// Real deliveries, redacted at capture, newest first.
+///
+/// `total` is the whole capture window rather than `bodies.len()`: the list is
+/// capped for transport, and reporting the cap as the total would quietly shrink
+/// the evidence base the operator is being asked to trust.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StudioCaptureSamples {
+    pub bodies_json: Vec<String>,
+    pub total: i32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -371,6 +396,15 @@ impl Transport {
             corrections: d.corrections,
             first_draft_accepted: d.first_draft_accepted,
             coverage_json: d.coverage_json,
+            field_abstentions: d
+                .field_abstentions
+                .into_iter()
+                .map(|f| StudioFieldAbstention {
+                    path: f.path,
+                    reason: f.reason,
+                    options: f.options,
+                })
+                .collect(),
         })
     }
 
@@ -382,6 +416,23 @@ impl Transport {
             .map_err(map_status)?
             .into_inner();
         Ok(StudioCaptureStatus { samples: c.samples, profile_json: c.profile_json })
+    }
+
+    pub async fn studio_capture_samples(
+        &self,
+        ingress_id: String,
+        limit: i32,
+    ) -> Result<StudioCaptureSamples, String> {
+        let mut client = self.studio_client().await?;
+        let c = client
+            .list_capture_samples(Request::new(pb::ingress::CaptureSamplesRequest {
+                ingress_id,
+                limit,
+            }))
+            .await
+            .map_err(map_status)?
+            .into_inner();
+        Ok(StudioCaptureSamples { bodies_json: c.bodies_json, total: c.total })
     }
 
     pub async fn studio_preview(&self, ingress_id: String) -> Result<Vec<StudioPreviewEntry>, String> {

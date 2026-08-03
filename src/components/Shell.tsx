@@ -11,6 +11,7 @@ import { projectionStore } from "@/store/projection";
 import { shellStore } from "@/store/shell";
 import { useStore } from "@/store/useStore";
 import { ipc, onKernelState } from "@/ipc";
+import { useRefetchOnReconnect } from "@/lib/useRefetchOnReconnect";
 import { autoConnectOnce } from "@/lib/autoConnect";
 import { useBreakpoint } from "@/lib/useBreakpoint";
 
@@ -83,6 +84,11 @@ export function Shell() {
 
   const state = projection.state;
   const connection = state?.connection.status ?? "down";
+  // Kernel-side configuration — authored pipelines, watches, vocabulary — is
+  // read through `useKernelQuery`, which never refetches. When the kernel comes
+  // back it may hold different configuration than when those reads ran, so they
+  // are invalidated on that one edge.
+  useRefetchOnReconnect(connection);
   const role = state?.role ?? null;
   const isHydrating = projection.isHydrating;
 

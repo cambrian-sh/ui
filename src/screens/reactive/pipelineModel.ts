@@ -1,4 +1,4 @@
-import type { WatchBacktestVerdict, WatchConfigFull, WatchMetrics } from '@/ipc/types';
+import type { PipelineSummary, WatchBacktestVerdict, WatchConfigFull, WatchMetrics } from '@/ipc/types';
 
 /**
  * A pipeline's mode.
@@ -7,7 +7,14 @@ import type { WatchBacktestVerdict, WatchConfigFull, WatchMetrics } from '@/ipc/
  * never fire, and it looks exactly like coverage from every other screen. It is
  * worse than `paused`, because paused is a decision and broken is an accident.
  */
-export type PipelineMode = 'draft' | 'dry_run' | 'armed' | 'paused' | 'broken';
+export type PipelineMode =
+  | 'draft'
+  | 'dry_run'
+  | 'armed'
+  | 'published'
+  | 'paused'
+  | 'orphaned'
+  | 'broken';
 
 export function pipelineMode(config: WatchConfigFull): PipelineMode {
   if (!config.source_stream_id && config.source_type !== 'schedule') return 'broken';
@@ -32,6 +39,16 @@ export const MODE_COPY: Record<PipelineMode, { label: string; tone: string; why:
     label: 'armed',
     tone: 'var(--status-live)',
     why: 'Live. A passing gate runs its arm.',
+  },
+  orphaned: {
+    label: 'orphaned',
+    tone: 'var(--status-err)',
+    why: 'Armed for an entry organ that no longer exists. It can never fire.',
+  },
+  published: {
+    label: 'published',
+    tone: 'var(--status-idle)',
+    why: 'Reviewed and ready, and doing nothing. Arming is a separate act.',
   },
   paused: {
     label: 'paused',
@@ -195,4 +212,44 @@ export function emptyPipeline(): WatchConfigFull {
     source_timezone: '',
     missed_fire_policy: 'skip',
   };
+}
+
+/**
+ * The mode of an authored pipeline (kernel contract 0087).
+ *
+ * Derived from the LIFECYCLE state rather than from a pair of booleans: `armed`
+ * is the only live state, so "is it running" has one answer instead of two flags
+ * that can disagree.
+ */
+export function pipelineModeOf(p: PipelineSummary): PipelineMode {
+  if (!p.trigger_ref && p.trigger_type !== 'schedule' && p.trigger_type !== 'manual') {
+    return 'broken';
+  }
+  // Dry run is reported ahead of armed, exactly as it was for a watch: a
+  // dry-running pipeline is live in every respect except that it acts, and
+  // showing it as plain `armed` is the one reading that misleads.
+  if (p.dry_run) return 'dry_run';
+  switch (p.state) {
+    // Armed for an ingress that was DELETED. Not paused, not broken-by-wiring:
+    // the entry organ is gone, so nothing will ever arrive. Left as `armed` it
+    // was the most misleading row on the page — a bot that does not exist,
+    // reading as live coverage.
+    case 'orphaned':
+      return 'orphaned';
+    case 'armed':
+      return 'armed';
+    case 'draft':
+    case 'validated':
+      return 'draft';
+    case 'retired':
+      return 'paused';
+    case 'published':
+      // Published is NOT paused, by the same rule that keeps broken out of
+      // paused: paused is something an operator did to a pipeline that was
+      // running, published is a pipeline that has never run. They call for
+      // different actions, and from one row they looked identical.
+      return 'published';
+    default:
+      return 'paused';
+  }
 }

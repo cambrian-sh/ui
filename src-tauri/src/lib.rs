@@ -25,7 +25,7 @@ use state::{
     AuthoredStep, ClassifiedInput, ConfigSchema, ConfigWriteResult, ConversationMessage,
     ConversationSummary,
     GeneratorSpec, GeneratorTestResult, PlanProposalResponse, RoleAssignment, SkillSummary,
-    StateOfRecord, SubmitPlanResult, ToolSummary, WatchConfigSummary,
+    PipelineSummary, StateOfRecord, SubmitPlanResult, ToolSummary, WatchConfigSummary,
 };
 use transport::{DocumentPage, MemoryQueryResult, Transport};
 
@@ -700,6 +700,65 @@ async fn op_list_watches(
     transport.inner().clone().list_watches(&app).await
 }
 
+#[tauri::command(rename_all = "snake_case")]
+async fn op_list_pipelines(
+    transport: State<'_, Transport>,
+) -> Result<Vec<PipelineSummary>, String> {
+    transport.inner().clone().list_pipelines().await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_get_pipeline(
+    transport: State<'_, Transport>,
+    pipeline_id: String,
+    revision: Option<i32>,
+) -> Result<crate::state::PipelineGraph, String> {
+    transport
+        .inner()
+        .clone()
+        .get_pipeline(pipeline_id, revision.unwrap_or_default())
+        .await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_validate_pipeline(
+    transport: State<'_, Transport>,
+    graph_json: String,
+) -> Result<crate::state::PipelineValidation, String> {
+    transport.inner().clone().validate_pipeline(graph_json).await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_save_pipeline(
+    transport: State<'_, Transport>,
+    graph_json: String,
+    command_id: Option<String>,
+) -> Result<crate::state::PipelineSaved, String> {
+    transport
+        .inner()
+        .clone()
+        .save_pipeline(graph_json, command_id.unwrap_or_default())
+        .await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_dry_run_pipeline(
+    transport: State<'_, Transport>,
+    pipeline_id: String,
+    revision: Option<i32>,
+    sample_limit: Option<i32>,
+) -> Result<crate::state::PipelineDryRun, String> {
+    transport
+        .inner()
+        .clone()
+        .dry_run_pipeline(
+            pipeline_id,
+            revision.unwrap_or_default(),
+            sample_limit.unwrap_or_default(),
+        )
+        .await
+}
+
 // ---- Access policy (ADR-0085/0086/0087) ---------------------------------
 //
 // The first premium UI surface. `op_explain_access` and
@@ -1087,6 +1146,15 @@ async fn op_studio_capture_status(
     ingress_id: String,
 ) -> Result<crate::ingress_studio::StudioCaptureStatus, String> {
     transport.inner().clone().studio_capture_status(ingress_id).await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_studio_capture_samples(
+    transport: State<'_, Transport>,
+    ingress_id: String,
+    limit: i32,
+) -> Result<crate::ingress_studio::StudioCaptureSamples, String> {
+    transport.inner().clone().studio_capture_samples(ingress_id, limit).await
 }
 
 #[tauri::command(rename_all = "snake_case")]
@@ -1577,6 +1645,11 @@ pub fn run() {
             op_list_tools,
             op_list_skills,
             op_list_watches,
+            op_list_pipelines,
+            op_dry_run_pipeline,
+            op_get_pipeline,
+            op_validate_pipeline,
+            op_save_pipeline,
             op_ingest_memory,
             op_ingest_file,
             op_stat_file,
@@ -1630,6 +1703,7 @@ pub fn run() {
             op_studio_diff_mapping,
             op_studio_draft_mapping,
             op_studio_capture_status,
+            op_studio_capture_samples,
             op_studio_preview,
             op_studio_shadow_reprocess,
             op_studio_promote_repair,

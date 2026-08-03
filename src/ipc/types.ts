@@ -458,6 +458,75 @@ export interface StateOfRecord {
    * deletion is not evidence of it.
    */
   retention_runs?: RetentionRunEvent[];
+  /**
+   * Live per-node readings, keyed by pipeline (ADR-0114 D37).
+   *
+   * Absolute state per pipeline: a new reading replaces the last. Cleared on
+   * resync, because these describe what the kernel is doing NOW and a reading
+   * that survived a reconnect would claim continuity the runtime does not have.
+   *
+   * `undefined` means this core predates the op — "cannot tell" — which is not
+   * the same as an empty map, meaning "connected, and nothing has run".
+   */
+  pipeline_meters?: Record<string, PipelineMeters>;
+  /**
+   * The most recent pipeline steps, newest last, bounded (ADR-0114 D38).
+   *
+   * An ordered ring rather than a map: this is a TRACE, and its value is the
+   * order. Cleared on resync, like the meters — it describes motion happening
+   * now, and a replayed step would show movement that is not occurring.
+   */
+  pipeline_steps?: PipelineStep[];
+}
+
+/** One item passing through one node. */
+export interface PipelineStep {
+  pipeline_id: string;
+  revision: number;
+  run_id: string;
+  /**
+   * Identifies the item ACROSS steps, which is what makes a sequence of these a
+   * trace rather than a list.
+   */
+  item_key: string;
+  node: string;
+  kind: string;
+  port: string;
+  /** "routed" | "terminated" | "failed" */
+  outcome: string;
+  reason: string;
+  duration_ms: number;
+  /** A bounded preview of what the item carried; empty unless tracing is on. */
+  payload: string;
+  /** The UNTRUNCATED size, so a clipped payload is never mistaken for whole. */
+  payload_bytes: number;
+  /** Steps skipped by the kernel's rate cap since the last one sent. */
+  dropped: number;
+  at_unix_ms: number;
+}
+
+/** One pipeline's live per-node reading. */
+export interface PipelineMeters {
+  pipeline_id: string;
+  revision: number;
+  nodes: PipelineNodeMeter[];
+}
+
+/** One node's live reading. */
+export interface PipelineNodeMeter {
+  node: string;
+  entered: number;
+  /**
+   * How many items are inside this node right now — the bottleneck signal, and
+   * the one figure that cannot be reconstructed afterwards.
+   */
+  in_flight: number;
+  /** Items the node could not process. Kept apart from an `error` port. */
+  failed: number;
+  /** Items that completed and were routed onward — the ordinary path. */
+  passed_on: number;
+  ports: Record<string, number>;
+  mean_latency_ms: number;
 }
 
 /**
@@ -614,6 +683,54 @@ export interface WatchConfigSummary {
   last_fire_at: string | null; // ISO 8601
   last_fire_status: string; // "ok" | "error" | "pending"
   error_count: number;
+}
+
+/**
+ * One authored reactive-pipeline revision (kernel contract 0087).
+ *
+ * NOT a `WatchConfigSummary`. A watch is one condition and a list of arms; a
+ * pipeline is a versioned graph with typed ports, declared discards and a
+ * durable execution store. They are listed from separate RPCs because widening
+ * either shape to cover both would make one of them lie — a watch has no
+ * revisions and no nodes, a pipeline has no single condition.
+ *
+ * Every ingress created through the Ingress Studio owns one, generated from its
+ * mapping and armed with the ingress. An ingress that has not been armed has no
+ * `armed` revision, and that is a normal state, not a fault.
+ */
+export interface PipelineSummary {
+  pipeline_id: string;
+  revision: number;
+  name: string;
+  /** `draft` | `validated` | `published` | `armed` | `retired` */
+  state: string;
+  /** `ingress` | `stream` | `schedule` | `manual` */
+  trigger_type: string;
+  /** The ingress id, stream id or cron expression the trigger names. */
+  trigger_ref: string;
+  node_count: number;
+  edge_count: number;
+  /** Nodes that can change something outside the process. */
+  effect_node_count: number;
+  /** The ingress mapping this graph was generated for; 0 when hand-authored. */
+  mapping_revision: number;
+  plan_checksum: string;
+  /** Revision-independent, so cosmetic-only edits compare equal. */
+  semantics_checksum: string;
+  /** True when the Ingress Studio authored it rather than an operator. */
+  generated: boolean;
+  /** Evaluates everything and performs no effect (REACT-05). */
+  dry_run: boolean;
+  approved: boolean;
+  /**
+   * Whether the daemon feeding this pipeline is running.
+   *
+   * Three-valued. `undefined`/`null` means nobody can tell, which is a different
+   * claim from `false` — an armed pipeline whose entry organ is switched off
+   * looks identical to a working one in the store, and that difference is the
+   * whole question when a bot stops answering.
+   */
+  entry_live?: boolean | null;
 }
 
 /** One arm's action — what a pipeline arm does when the gate passes. */
@@ -1276,11 +1393,40 @@ export interface StudioDraft {
   corrections: number;
   first_draft_accepted: boolean;
   coverage_json: string;
+  /**
+   * Per-field decisions the drafter declined to make while still proposing a
+   * mapping for the rest. These arrive WITH a spec, unlike `abstained`, which
+   * is the whole draft.
+   */
+  field_abstentions: StudioFieldAbstention[];
+}
+
+/** One field the drafter would not guess at. */
+export interface StudioFieldAbstention {
+  path: string;
+  /** The drafter's own words, shown verbatim on the review row. */
+  reason: string;
+  /** The readings it was choosing between; these become the operator's buttons. */
+  options: string[];
 }
 
 export interface StudioCaptureStatus {
   samples: number;
   profile_json: string;
+}
+
+/**
+ * Real deliveries, as stored: REDACTED at capture (ADR-0112 §12).
+ *
+ * Values arrive as type tokens — `"<string:place>"`, `"<number:plain>"` — not as
+ * the source's originals, because the originals were never persisted. The
+ * structure is intact, which is the part the mapping review needs: an
+ * unlabelled three-element array is just as visibly unlabelled once redacted.
+ */
+export interface StudioCaptureSamples {
+  bodies_json: string[];
+  /** The whole capture window, not `bodies_json.length`, which is capped. */
+  total: number;
 }
 
 /** One dry-run evaluation: a real delivery, evaluated, never preserved. */
@@ -2217,4 +2363,198 @@ export interface KindPushStatus {
   received_at: string;
   /** Un-superseded rows — "our open orders", not every version ever pushed. */
   live_records: number;
+}
+
+// ── Pipeline dry run (kernel contract 0088) ─────────────────────────────────
+
+/**
+ * What a shadow run observed: everything the pipeline would have done, and
+ * nothing it did.
+ *
+ * Four lists rather than one outcome per item. "47 would be saved" and "3
+ * skipped because under the reporting threshold" answer different questions, and
+ * folding them into a single stream leaves an operator counting rows to learn
+ * what a heading could have told them.
+ */
+export interface PipelineDryRun {
+  /**
+   * The named constraint when the run could not happen at all. When this is set
+   * every other field is empty, and the console must render THIS — an empty
+   * report looks exactly like a clean one and means the opposite.
+   */
+  refused: string;
+  run_id: string;
+  samples: number;
+  effects: ShadowEffect[];
+  duplicates: DuplicateEffectKey[];
+  terminations: PipelineTermination[];
+  /**
+   * Items a node could not process. Deliberately not "unrouted": the compiler
+   * refuses a graph with an unwired port, so an item reaching no port at all is
+   * structurally impossible.
+   */
+  failures: PipelineFailure[];
+  /**
+   * How long the replay took. Shown because a dry run is something an operator
+   * waits for, and "4.1 s over 52 items" says whether running it over more is
+   * worth doing.
+   */
+  elapsed_ms: number;
+}
+
+/** One effect that would have been carried out. */
+export interface ShadowEffect {
+  node: string;
+  kind: string;
+  /** The real derived key, not a placeholder. */
+  effect_key: string;
+  item_key: string;
+  summary: string;
+}
+
+/** One key that more than one effect would have used. */
+export interface DuplicateEffectKey {
+  effect_key: string;
+  count: number;
+  nodes: string[];
+}
+
+/** One declared discard and how many items took it. */
+export interface PipelineTermination {
+  node: string;
+  port: string;
+  /** The operator's own words from the spec. */
+  reason: string;
+  count: number;
+}
+
+/** One item a node could not process. */
+export interface PipelineFailure {
+  node: string;
+  item_key: string;
+  err: string;
+}
+
+// ── Pipeline authoring (kernel contract 0089) ───────────────────────────────
+
+/**
+ * One constraint a graph broke, and where it broke it.
+ *
+ * The target is what makes a refusal actionable rather than merely readable:
+ * the canvas draws it on the port it concerns and offers to jump to it.
+ */
+export interface PipelineRefusal {
+  /**
+   * The stable rule identifier. Behaviour keys off THIS, never the wording —
+   * which refusals offer "wire it", which offer "terminate it with a reason".
+   */
+  constraint: string;
+  /** Empty when the refusal is about the pipeline or a whole scope. */
+  node: string;
+  port: string;
+  /** Names the constraint, then the action. Never a validity verdict. */
+  message: string;
+}
+
+/** One authored revision, plus what the compiler says about it right now. */
+export interface PipelineGraph {
+  /** Set when the revision cannot be read at all. */
+  refused: string;
+  summary: PipelineSummary;
+  /** The ADR-0114 pipeline document. */
+  graph_json: string;
+  refusals: PipelineRefusal[];
+  /**
+   * Per node, the payload paths its expressions read — taken from the compiled
+   * AST, so it cannot disagree with what the runtime will read.
+   */
+  reads: NodeReads[];
+}
+
+/** One node and the payload paths it reads. */
+export interface NodeReads {
+  node: string;
+  /** Qualified by root: `item.x`, `signal.y`. `item.*` is the whole payload. */
+  paths: string[];
+}
+
+/** The compiler's answer about a graph being edited and not yet stored. */
+export interface PipelineValidation {
+  /**
+   * The DOCUMENT could not be read — malformed JSON, say. Distinct from a
+   * refusal list, which means it WAS read and broke rules.
+   */
+  refused: string;
+  refusals: PipelineRefusal[];
+  node_count: number;
+  effect_node_count: number;
+  plan_checksum: string;
+  semantics_checksum: string;
+}
+
+// ── The graph document, as the canvas reads it ──────────────────────────────
+//
+// Mirrors the ADR-0114 pipeline JSON. Read-only here: the canvas renders it and
+// the kernel remains the only thing that interprets it.
+
+export interface GraphNode {
+  id: string;
+  kind: string;
+  name?: string;
+  config?: Record<string, unknown>;
+  /** A structured-control node owns a nested scope. */
+  body?: GraphScope;
+}
+
+export interface GraphEdge {
+  from: string;
+  from_port: string;
+  to: string;
+}
+
+/** An operator's DECLARED discard of an output port. The reason is required. */
+export interface GraphTermination {
+  node: string;
+  port: string;
+  reason: string;
+}
+
+export interface GraphScope {
+  nodes: GraphNode[];
+  edges: GraphEdge[];
+  terminations?: GraphTermination[];
+}
+
+export interface GraphTrigger {
+  type: string;
+  ingress?: string;
+  stream_id?: string;
+  cron?: string;
+  timezone?: string;
+}
+
+export interface GraphDocument {
+  id: string;
+  revision: number;
+  name?: string;
+  state?: string;
+  trigger: GraphTrigger;
+  scope: GraphScope;
+}
+
+/** The outcome of storing an edited graph (kernel contract 0090). */
+export interface PipelineSaved {
+  /** Set when nothing was stored at all. */
+  refused: string;
+  pipeline_id: string;
+  /**
+   * The DRAFT revision created. Editing never overwrites a published, armed or
+   * retired revision — a run pins a revision.
+   */
+  revision: number;
+  /**
+   * What the compiler said. Present and non-blocking: refusals hold Publish,
+   * not Save.
+   */
+  refusals: PipelineRefusal[];
 }

@@ -433,6 +433,32 @@ class MockIPC {
     return this.state.watch_configs;
   }
 
+  /**
+   * One generated ingress pipeline, mirroring what the Ingress Studio produces:
+   * trigger → save_to_memory, bound to a mapping revision, armed.
+   */
+  async listPipelines(): Promise<t.PipelineSummary[]> {
+    return [
+      {
+        pipeline_id: 'ingress:acme-webhook',
+        revision: 1,
+        name: 'Acme webhook',
+        state: 'armed',
+        trigger_type: 'ingress',
+        trigger_ref: 'acme-webhook',
+        node_count: 2,
+        edge_count: 1,
+        effect_node_count: 1,
+        mapping_revision: 1,
+        plan_checksum: 'a1b2c3d4e5f6',
+        semantics_checksum: 'f6e5d4c3b2a1',
+        generated: true,
+        dry_run: false,
+        approved: true,
+      },
+    ];
+  }
+
   async getSkill(skillId: string): Promise<t.SkillDetail> {
     const summary = this.state.skills.find((s) => s.id === skillId);
     if (!summary) throw new Error(`Skill not found: ${skillId}`);

@@ -21,6 +21,14 @@ fn now_iso() -> String {
 /// The webview treats "" as "unknown" and renders an em-dash. That matters: five of the
 /// eight SessionSummary fields used to be structurally blank because the kernel had no way
 /// to send them, and the time-range filter silently discarded every session as a result.
+/// Milliseconds since the epoch, for a trace the console orders by time.
+pub(crate) fn ts_millis(ts: &Option<::prost_types::Timestamp>) -> i64 {
+    match ts {
+        Some(t) => t.seconds * 1000 + i64::from(t.nanos) / 1_000_000,
+        None => 0,
+    }
+}
+
 pub(crate) fn ts_iso(ts: &Option<::prost_types::Timestamp>) -> String {
     match ts {
         Some(t) => chrono::DateTime::from_timestamp(t.seconds, t.nanos as u32)
@@ -330,6 +338,43 @@ pub struct WatchConfigSummary {
     pub last_fire_at: Option<String>,
     pub last_fire_status: String,
     pub error_count: i32,
+}
+
+/// One authored reactive-pipeline revision (contract 0087, ADR-0114 D33/D34).
+///
+/// Distinct from `WatchConfigSummary` because a pipeline is a different thing: a
+/// watch is one condition plus a list of arms; a pipeline is a versioned GRAPH
+/// with typed ports and a durable execution store. Widening the watch DTO until
+/// it fitted both would make one of them lie.
+///
+/// Every ingress created through the Ingress Studio owns one, generated from its
+/// mapping and armed with the ingress. An ingress that has not been armed has no
+/// ARMED pipeline, and that is a normal state.
+#[derive(Clone, Serialize, Deserialize, Default)]
+pub struct PipelineSummary {
+    pub pipeline_id: String,
+    pub revision: i32,
+    pub name: String,
+    /// draft | validated | published | armed | retired
+    pub state: String,
+    pub trigger_type: String,
+    pub trigger_ref: String,
+    pub node_count: i32,
+    pub edge_count: i32,
+    /// Nodes that can change something outside the process — the number worth
+    /// checking before arming.
+    pub effect_node_count: i32,
+    pub mapping_revision: i32,
+    pub plan_checksum: String,
+    pub semantics_checksum: String,
+    pub generated: bool,
+    /// Evaluates everything and performs no effect (REACT-05).
+    pub dry_run: bool,
+    pub approved: bool,
+    /// Whether the daemon feeding this pipeline is running. `None` means nobody
+    /// can tell — a different claim from "not running", and only one of the two
+    /// is a problem.
+    pub entry_live: Option<bool>,
 }
 
 /// One `WatchActionOp` — what an arm of a pipeline does.
@@ -715,6 +760,78 @@ pub struct StateOfRecord {
     /// Folded rather than polled because a FAILED pass means erasure has stopped
     /// happening, and that is not something to discover on the next refresh.
     pub retention_runs: Vec<RetentionRunEvent>,
+    /// Live per-node readings, keyed by pipeline (ADR-0114 D37).
+    ///
+    /// A MAP rather than a list: each reading is absolute state for one
+    /// pipeline, so a new one replaces the last. Appending would grow without
+    /// bound and would let a console add two readings of the same number.
+    ///
+    /// Process-local in the kernel and cleared on resync here, for the same
+    /// reason: these describe what the kernel is doing NOW, and a reading that
+    /// survived a reconnect would claim continuity across a boundary the
+    /// runtime does not have.
+    pub pipeline_meters: std::collections::HashMap<String, PipelineMeters>,
+    /// The most recent steps, newest last, bounded (ADR-0114 D38).
+    ///
+    /// A ring rather than a map: this is a TRACE, and its value is the order.
+    /// Cleared on resync for the same reason as the meters — it describes motion
+    /// happening now.
+    pub pipeline_steps: Vec<PipelineStep>,
+}
+
+/// One item passing through one node.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct PipelineStep {
+    pub pipeline_id: String,
+    pub revision: i32,
+    pub run_id: String,
+    /// Identifies the item ACROSS steps, which is what makes a sequence of these
+    /// a trace rather than a list.
+    pub item_key: String,
+    pub node: String,
+    pub kind: String,
+    pub port: String,
+    /// "routed", "terminated" or "failed".
+    pub outcome: String,
+    pub reason: String,
+    pub duration_ms: i64,
+    /// A bounded preview of what the item carried; empty unless tracing is on.
+    pub payload: String,
+    /// The UNTRUNCATED size, so a clipped payload is never mistakable for whole.
+    pub payload_bytes: i32,
+    /// Steps skipped by the rate cap since the last one sent.
+    pub dropped: i64,
+    pub at_unix_ms: i64,
+}
+
+/// How many steps the console keeps.
+///
+/// Bounded because a trace is a window, not a log: the kernel already caps the
+/// rate, and an unbounded list would grow for as long as the tab is open.
+const PIPELINE_STEPS_MAX: usize = 500;
+
+/// One pipeline's live per-node reading.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct PipelineMeters {
+    pub pipeline_id: String,
+    pub revision: i32,
+    pub nodes: Vec<PipelineNodeMeter>,
+}
+
+/// One node's live reading.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct PipelineNodeMeter {
+    pub node: String,
+    pub entered: i64,
+    /// How many items are inside this node right now — the bottleneck signal,
+    /// and the one figure that cannot be reconstructed afterwards.
+    pub in_flight: i64,
+    /// Items the node could not process. Kept apart from an `error` port.
+    pub failed: i64,
+    /// Items that completed and were routed onward — the ordinary path.
+    pub passed_on: i64,
+    pub ports: std::collections::HashMap<String, i64>,
+    pub mean_latency_ms: i64,
 }
 
 const AUDIT_TAIL_MAX: usize = 200;
@@ -743,6 +860,10 @@ impl StateOfRecord {
         self.skills.clear();
         self.mcp_servers.clear();
         self.scope.clear();
+        // Live readings do not survive a resync: they describe what is
+        // happening now, and the kernel republishes a full snapshot on connect.
+        self.pipeline_meters.clear();
+        self.pipeline_steps.clear();
         self.watch_configs.clear();
         self.lifecycle = LifecycleState::default();
         self.verifier_pool = VerifierPoolState::default();
@@ -1092,6 +1213,56 @@ impl StateOfRecord {
                         },
                     );
                 }
+            }
+
+            Payload::PipelineStep(st) => {
+                self.pipeline_steps.push(PipelineStep {
+                    pipeline_id: st.pipeline_id.clone(),
+                    revision: st.revision,
+                    run_id: st.run_id.clone(),
+                    item_key: st.item_key.clone(),
+                    node: st.node.clone(),
+                    kind: st.kind.clone(),
+                    port: st.port.clone(),
+                    outcome: st.outcome.clone(),
+                    reason: st.reason.clone(),
+                    duration_ms: st.duration_ms,
+                    payload: st.payload.clone(),
+                    payload_bytes: st.payload_bytes,
+                    dropped: st.dropped,
+                    at_unix_ms: ts_millis(&ev.ts),
+                });
+                if self.pipeline_steps.len() > PIPELINE_STEPS_MAX {
+                    let drop = self.pipeline_steps.len() - PIPELINE_STEPS_MAX;
+                    self.pipeline_steps.drain(0..drop);
+                }
+            }
+
+            Payload::PipelineMeters(m) => {
+                // ABSOLUTE state, keyed by pipeline — the reading replaces the
+                // previous one rather than accumulating beside it. A live
+                // counter that appended would grow without bound and, worse,
+                // would let a console add two readings of the same number.
+                self.pipeline_meters.insert(
+                    m.pipeline_id.clone(),
+                    PipelineMeters {
+                        pipeline_id: m.pipeline_id.clone(),
+                        revision: m.revision,
+                        nodes: m
+                            .nodes
+                            .iter()
+                            .map(|n| PipelineNodeMeter {
+                                node: n.node.clone(),
+                                entered: n.entered,
+                                in_flight: n.in_flight,
+                                failed: n.failed,
+                                passed_on: n.passed_on,
+                                ports: n.ports.clone(),
+                                mean_latency_ms: n.mean_latency_ms,
+                            })
+                            .collect(),
+                    },
+                );
             }
 
             Payload::RetentionRun(r) => {
@@ -1795,4 +1966,140 @@ pub struct SubmitPlanResult {
     /// The topological order the executor would really use — the question a DAG
     /// author is asking once the graph passes a handful of nodes.
     pub execution_order: Vec<i32>,
+}
+
+// ---- Pipeline dry run (contract 0088) --------------------------------------
+
+/// What a shadow run observed: everything the pipeline would have done, and
+/// nothing it did.
+///
+/// Four lists rather than one outcome per item, on purpose. "47 would be saved"
+/// and "3 skipped because under the reporting threshold" answer different
+/// questions, and folding them into a single stream leaves an operator counting
+/// rows to learn what a heading could have told them.
+#[derive(Clone, Serialize, Deserialize, Default)]
+pub struct PipelineDryRun {
+    /// The named constraint when the run could not happen at all. Set means
+    /// every other field is empty — and a console must render THIS, because an
+    /// empty report looks exactly like a clean one and means the opposite.
+    pub refused: String,
+    pub run_id: String,
+    pub samples: i32,
+    pub effects: Vec<ShadowEffect>,
+    pub duplicates: Vec<DuplicateEffectKey>,
+    pub terminations: Vec<PipelineTermination>,
+    /// Items a node could not process. Deliberately not "unrouted": the compiler
+    /// refuses a graph with an unwired port, so an item reaching no port at all
+    /// is structurally impossible.
+    pub failures: Vec<PipelineFailure>,
+    /// How long the replay took — the figure that says whether running it over
+    /// more deliveries is worth doing.
+    pub elapsed_ms: i64,
+}
+
+/// One effect that would have been carried out.
+#[derive(Clone, Serialize, Deserialize, Default)]
+pub struct ShadowEffect {
+    pub node: String,
+    pub kind: String,
+    /// The real derived key, not a placeholder — which is what makes a collision
+    /// detectable here rather than weeks later.
+    pub effect_key: String,
+    pub item_key: String,
+    pub summary: String,
+}
+
+/// One key that more than one effect would have used.
+#[derive(Clone, Serialize, Deserialize, Default)]
+pub struct DuplicateEffectKey {
+    pub effect_key: String,
+    pub count: i32,
+    pub nodes: Vec<String>,
+}
+
+/// One declared discard and how many items took it.
+#[derive(Clone, Serialize, Deserialize, Default)]
+pub struct PipelineTermination {
+    pub node: String,
+    pub port: String,
+    /// The operator's own words from the spec.
+    pub reason: String,
+    pub count: i32,
+}
+
+/// One item a node could not process.
+#[derive(Clone, Serialize, Deserialize, Default)]
+pub struct PipelineFailure {
+    pub node: String,
+    pub item_key: String,
+    pub err: String,
+}
+
+// ---- Pipeline authoring (contract 0089) ------------------------------------
+
+/// One constraint a graph broke, and where it broke it.
+///
+/// The target is what makes a refusal actionable rather than merely readable: a
+/// console draws it on the port it concerns and offers to jump to it.
+#[derive(Clone, Serialize, Deserialize, Default)]
+pub struct Refusal {
+    /// The STABLE rule identifier. The console keys behaviour off it — which
+    /// refusals offer "wire it", which offer "terminate it with a reason" — so
+    /// it must not change when the wording does.
+    pub constraint: String,
+    /// Empty when the refusal is about the pipeline or a whole scope. The
+    /// console offers "take me there" only when `node` is set.
+    pub node: String,
+    pub port: String,
+    /// Names the constraint, then the action. Never a validity verdict.
+    pub message: String,
+}
+
+/// One authored revision, as authored, plus what the compiler says about it now.
+#[derive(Clone, Serialize, Deserialize, Default)]
+pub struct PipelineGraph {
+    /// Set when the revision cannot be read at all.
+    pub refused: String,
+    pub summary: PipelineSummary,
+    /// The ADR-0114 pipeline document.
+    pub graph_json: String,
+    pub refusals: Vec<Refusal>,
+    /// Per node, the payload paths its expressions read — from the compiled AST,
+    /// so it cannot disagree with what the runtime will read.
+    pub reads: Vec<NodeReads>,
+}
+
+/// One node and the payload paths it reads.
+#[derive(Clone, Serialize, Deserialize, Default)]
+pub struct NodeReads {
+    pub node: String,
+    /// Qualified by root: `item.x`, `signal.y`. `item.*` means the whole payload.
+    pub paths: Vec<String>,
+}
+
+/// The compiler's answer about a graph being edited and not yet stored.
+#[derive(Clone, Serialize, Deserialize, Default)]
+pub struct PipelineValidation {
+    /// The DOCUMENT could not be read. Distinct from a refusal list, which means
+    /// it was read and broke rules.
+    pub refused: String,
+    pub refusals: Vec<Refusal>,
+    pub node_count: i32,
+    pub effect_node_count: i32,
+    pub plan_checksum: String,
+    pub semantics_checksum: String,
+}
+
+/// The outcome of storing an edited graph (contract 0090).
+#[derive(Clone, Serialize, Deserialize, Default)]
+pub struct PipelineSaved {
+    /// Set when nothing was stored at all.
+    pub refused: String,
+    pub pipeline_id: String,
+    /// The DRAFT revision created. Editing never overwrites a published, armed
+    /// or retired revision — a run pins a revision.
+    pub revision: i32,
+    /// What the compiler said. Present and non-blocking: refusals hold Publish,
+    /// not Save.
+    pub refusals: Vec<Refusal>,
 }

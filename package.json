@@ -17,6 +17,7 @@
     "build:design-system": "echo 'design system build (placeholder for codegen)'"
   },
   "dependencies": {
+    "@phosphor-icons/react": "^2.1.10",
     "@radix-ui/react-checkbox": "^1.3.11",
     "@radix-ui/react-collapsible": "^1.1.20",
     "@radix-ui/react-dialog": "^1.1.17",

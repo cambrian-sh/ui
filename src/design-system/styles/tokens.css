@@ -298,3 +298,114 @@
 @utility tint-ring {
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--tint) 30%, transparent);
 }
+
+/* ---------------------------------------------------------------------------
+ * 16a — the live layer.
+ *
+ * Motion is information here, not decoration: a wire with a dot on it has
+ * traffic, and a wire without one does not. So every animation below is applied
+ * ONLY when there is something to say — never as an ambient property of the
+ * canvas — and all of it stops under `prefers-reduced-motion`, where the static
+ * state each animation resolves to is still fully legible.
+ * --------------------------------------------------------------------------- */
+
+@keyframes flow-mark-in {
+  from {
+    opacity: 0;
+    transform: scaleY(0.3);
+  }
+  to {
+    opacity: 1;
+    transform: scaleY(1);
+  }
+}
+
+@keyframes flow-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+/* The dot travelling a wire. Cheap — one keyframe on a pseudo-element — and it
+   is what makes the topology legible at a glance rather than read node by node. */
+@keyframes flow-travel {
+  from {
+    top: -6px;
+    opacity: 0;
+  }
+  15% {
+    opacity: 1;
+  }
+  85% {
+    opacity: 1;
+  }
+  to {
+    top: 100%;
+    opacity: 0;
+  }
+}
+
+@keyframes flow-travel-x {
+  from {
+    left: -6px;
+    opacity: 0;
+  }
+  15% {
+    opacity: 1;
+  }
+  85% {
+    opacity: 1;
+  }
+  to {
+    left: 100%;
+    opacity: 0;
+  }
+}
+
+.flow-mark {
+  animation: flow-mark-in 220ms ease-out;
+}
+
+.flow-pulse {
+  animation: flow-pulse 1.4s ease-in-out infinite;
+}
+
+/* Applied to a connector that carried traffic recently. The rail itself stays
+   drawn underneath, so removing the motion removes nothing but the motion. */
+.flow-wire {
+  position: relative;
+}
+
+.flow-wire::after {
+  content: "";
+  position: absolute;
+  left: -2px;
+  width: 5px;
+  height: 5px;
+  border-radius: 9999px;
+  background: var(--color-accent-400);
+  animation: flow-travel 1.6s linear infinite;
+}
+
+.flow-wire-x::after {
+  left: auto;
+  top: -2px;
+  animation: flow-travel-x 1.6s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .flow-mark,
+  .flow-pulse,
+  .flow-wire::after {
+    animation: none;
+  }
+  /* The dot would otherwise sit frozen at the top of the wire, reading as a
+     stuck item rather than as motion that was turned off. */
+  .flow-wire::after {
+    display: none;
+  }
+}

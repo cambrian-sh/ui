@@ -15,7 +15,10 @@ use tonic::{Request, Status};
 
 use crate::pb;
 use crate::pb::operator_console_client::OperatorConsoleClient;
-use crate::state::{
+use crate::state::{DuplicateEffectKey, NodeReads, PipelineDryRun, PipelineFailure, PipelineGraph,
+    PipelineSaved,
+    PipelineSummary, PipelineValidation, Refusal,
+    PipelineTermination, ShadowEffect, 
     AuthoredStep, ClassifiedInput, ConfigSchema, ConfigWriteOutcome, ConfigWriteResult,
     ConnectionStatus, ConversationMessage,
     ConversationSummary, GeneratorSpec, GeneratorTestResult, InterviewOption, InterviewQuestion,
@@ -1350,6 +1353,193 @@ impl Transport {
         })
     }
 
+    /// Contract 0087: the authored reactive pipelines.
+    ///
+    /// Returns an empty list rather than an error when the kernel has no
+    /// pipeline runtime — "this build authors none" is a true answer, and a
+    /// console that has to special-case an error to render an empty panel will
+    /// eventually render the error instead.
+    pub async fn list_pipelines(&self) -> Result<Vec<PipelineSummary>, String> {
+        let mut client = self.client().await?;
+        let resp = client
+            .list_pipelines(Request::new(pb::ListPipelinesOpRequest {
+                armed_only: false,
+                ingress_id: String::new(),
+            }))
+            .await
+            .map_err(map_status)?
+            .into_inner();
+        Ok(resp
+            .pipelines
+            .into_iter()
+            .map(|p| PipelineSummary {
+                pipeline_id: p.pipeline_id,
+                revision: p.revision,
+                name: p.name,
+                state: p.state,
+                trigger_type: p.trigger_type,
+                trigger_ref: p.trigger_ref,
+                node_count: p.node_count,
+                edge_count: p.edge_count,
+                effect_node_count: p.effect_node_count,
+                mapping_revision: p.mapping_revision,
+                plan_checksum: p.plan_checksum,
+                semantics_checksum: p.semantics_checksum,
+                generated: p.generated,
+                dry_run: p.dry_run,
+                approved: p.approved,
+                entry_live: p.entry_live,
+            })
+            .collect())
+    }
+
+    /// Read one authored revision plus its current refusals (contract 0089).
+    pub async fn get_pipeline(
+        &self,
+        pipeline_id: String,
+        revision: i32,
+    ) -> Result<PipelineGraph, String> {
+        let mut client = self.client().await?;
+        let resp = client
+            .get_pipeline(Request::new(pb::GetPipelineOpRequest {
+                pipeline_id,
+                revision,
+            }))
+            .await
+            .map_err(map_status)?
+            .into_inner();
+        Ok(PipelineGraph {
+            refused: resp.refused,
+            summary: resp.summary.map(pipeline_summary_from).unwrap_or_default(),
+            graph_json: resp.graph_json,
+            refusals: resp.refusals.into_iter().map(refusal_from).collect(),
+            reads: resp
+                .reads
+                .into_iter()
+                .map(|r| NodeReads { node: r.node, paths: r.paths })
+                .collect(),
+        })
+    }
+
+    /// Compile a graph document WITHOUT storing it (contract 0089).
+    ///
+    /// Safe to call on every change: the RPC has no power to store or
+    /// transition, which is why an editor is given this one and not Publish.
+    pub async fn validate_pipeline(
+        &self,
+        graph_json: String,
+    ) -> Result<PipelineValidation, String> {
+        let mut client = self.client().await?;
+        let resp = client
+            .validate_pipeline(Request::new(pb::ValidatePipelineOpRequest { graph_json }))
+            .await
+            .map_err(map_status)?
+            .into_inner();
+        Ok(PipelineValidation {
+            refused: resp.refused,
+            refusals: resp.refusals.into_iter().map(refusal_from).collect(),
+            node_count: resp.node_count,
+            effect_node_count: resp.effect_node_count,
+            plan_checksum: resp.plan_checksum,
+            semantics_checksum: resp.semantics_checksum,
+        })
+    }
+
+    /// Store an edited graph as a new draft revision (contract 0090).
+    ///
+    /// Creates a draft and nothing further. Publishing and arming stay on the
+    /// lifecycle, where each is an explicit act with its own gate.
+    pub async fn save_pipeline(
+        &self,
+        graph_json: String,
+        command_id: String,
+    ) -> Result<PipelineSaved, String> {
+        let mut client = self.client().await?;
+        let resp = client
+            .save_pipeline(Request::new(pb::SavePipelineOpRequest {
+                graph_json,
+                command_id,
+            }))
+            .await
+            .map_err(map_status)?
+            .into_inner();
+        Ok(PipelineSaved {
+            refused: resp.refused,
+            pipeline_id: resp.pipeline_id,
+            revision: resp.revision,
+            refusals: resp.refusals.into_iter().map(refusal_from).collect(),
+        })
+    }
+
+    /// Shadow-run a pipeline over its captured deliveries (contract 0088).
+    ///
+    /// A refusal comes back INSIDE the response, not as a transport error: it is
+    /// a named constraint the console renders verbatim, and an error status
+    /// would flatten "nothing has been captured yet" and "the graph does not
+    /// compile" into the same red box.
+    pub async fn dry_run_pipeline(
+        &self,
+        pipeline_id: String,
+        revision: i32,
+        sample_limit: i32,
+    ) -> Result<PipelineDryRun, String> {
+        let mut client = self.client().await?;
+        let resp = client
+            .dry_run_pipeline(Request::new(pb::DryRunPipelineOpRequest {
+                pipeline_id,
+                revision,
+                sample_limit,
+            }))
+            .await
+            .map_err(map_status)?
+            .into_inner();
+        Ok(PipelineDryRun {
+            refused: resp.refused,
+            run_id: resp.run_id,
+            samples: resp.samples,
+            effects: resp
+                .effects
+                .into_iter()
+                .map(|e| ShadowEffect {
+                    node: e.node,
+                    kind: e.kind,
+                    effect_key: e.effect_key,
+                    item_key: e.item_key,
+                    summary: e.summary,
+                })
+                .collect(),
+            duplicates: resp
+                .duplicates
+                .into_iter()
+                .map(|d| DuplicateEffectKey {
+                    effect_key: d.effect_key,
+                    count: d.count,
+                    nodes: d.nodes,
+                })
+                .collect(),
+            terminations: resp
+                .terminations
+                .into_iter()
+                .map(|t| PipelineTermination {
+                    node: t.node,
+                    port: t.port,
+                    reason: t.reason,
+                    count: t.count,
+                })
+                .collect(),
+            failures: resp
+                .failures
+                .into_iter()
+                .map(|f| PipelineFailure {
+                    node: f.node,
+                    item_key: f.item_key,
+                    err: f.err,
+                })
+                .collect(),
+            elapsed_ms: resp.elapsed_ms,
+        })
+    }
+
     pub async fn list_watches(&self, app: &AppHandle) -> Result<Vec<WatchConfigSummary>, String> {
         let mut client = self.client().await?;
         let resp = client
@@ -2117,4 +2307,34 @@ fn jittered(base: Duration) -> Duration {
     let offset = (nanos as u64 % spread) as i64 - (spread / 2) as i64;
     let millis = (base.as_millis() as i64 + offset).max(1) as u64;
     Duration::from_millis(millis)
+}
+
+fn refusal_from(r: pb::RefusalOp) -> Refusal {
+    Refusal {
+        constraint: r.constraint,
+        node: r.node,
+        port: r.port,
+        message: r.message,
+    }
+}
+
+fn pipeline_summary_from(p: pb::PipelineOp) -> PipelineSummary {
+    PipelineSummary {
+        pipeline_id: p.pipeline_id,
+        revision: p.revision,
+        name: p.name,
+        state: p.state,
+        trigger_type: p.trigger_type,
+        trigger_ref: p.trigger_ref,
+        node_count: p.node_count,
+        edge_count: p.edge_count,
+        effect_node_count: p.effect_node_count,
+        mapping_revision: p.mapping_revision,
+        plan_checksum: p.plan_checksum,
+        semantics_checksum: p.semantics_checksum,
+        generated: p.generated,
+        dry_run: p.dry_run,
+        approved: p.approved,
+        entry_live: p.entry_live,
+    }
 }
