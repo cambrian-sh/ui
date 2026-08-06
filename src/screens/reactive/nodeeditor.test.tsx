@@ -21,9 +21,10 @@ function choiceNode(condition = ""): GraphNode {
 
 describe("the editor registry", () => {
   it("covers every kind in the palette except the ones with nothing to author", () => {
-    // A trigger is bound by the studio, and a merge's whole configuration is
-    // its wiring — the runtime reads no config key on either.
-    const unconfigured = new Set(["trigger", "merge"]);
+    // A trigger is bound by the studio; a merge's whole configuration is its
+    // wiring; an apply_mapping's config is the transform's pinned IDENTITY,
+    // which changes through the studio lifecycle and must never be a form.
+    const unconfigured = new Set(["trigger", "merge", "apply_mapping"]);
     for (const spec of NODE_SPECS) {
       if (unconfigured.has(spec.kind)) continue;
       expect(

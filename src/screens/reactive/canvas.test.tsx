@@ -120,7 +120,7 @@ describe("the node vocabulary", () => {
     expect(SPEC_BY_KIND.repeat_until.family).toBe("control");
   });
 
-  it("classes exactly the kinds that can change the world as effects", () => {
+  it("classes exactly the kinds that ride the intent protocol as effects", () => {
     for (const k of [
       "save_to_memory",
       "notify",
@@ -130,6 +130,9 @@ describe("the node vocabulary", () => {
       "decide",
       "fetch",
       "run_turn",
+      // A transform to the operator, journaled like an effect by the runtime
+      // — the mirror follows the kernel's ChangesTheWorld, not the palette.
+      "apply_mapping",
     ]) {
       expect(touchesWorld(k)).toBe(true);
     }

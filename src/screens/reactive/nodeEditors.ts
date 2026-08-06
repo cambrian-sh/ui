@@ -11,11 +11,12 @@ import type { GraphNode } from "@/ipc/types";
  *
  * What is deliberately NOT here is as load-bearing as what is:
  *
- * - `save_to_memory`'s `ingress_id` and `mapping_revision` name WHICH mapping
- *   the save applies — the identity of the transform, pinned at arm time. A
- *   free-text box over them would let a typo silently apply a different
- *   transform to live data. They stay visible in the inspector and change
- *   through the studio's lifecycle, not through a form.
+ * - `apply_mapping` (and the legacy identity keys on `save_to_memory`):
+ *   `ingress_id` + `mapping_revision` name WHICH transform runs — pinned at
+ *   arm time. A free-text box over them would let a typo silently apply a
+ *   different transform to live data. They stay visible in the inspector and
+ *   change through the studio's lifecycle, not through a form — which is why
+ *   `apply_mapping` has NO editable surface at all.
  * - `decide`'s prompt edits reset approval kernel-side; the form carries the
  *   key anyway because authoring it IS the point — the reset is the kernel's
  *   rule to enforce, not this file's to pre-empt.

@@ -85,8 +85,14 @@ export function configLines(node: GraphNode): ConfigLine[] {
       push("window", str("window"));
       break;
 
+    case "apply_mapping":
+      push("mapping of", str("ingress_id"));
+      push("revision", num("mapping_revision"));
+      break;
+
     case "save_to_memory":
       push("stream", str("stream"));
+      push("writes", str("input") === "envelopes" ? "the mapping's envelopes" : null);
       push("key", str("key") ?? str("projection_key"), true);
       push("tags", joinList(c.tags));
       break;
@@ -132,6 +138,8 @@ export function configLines(node: GraphNode): ConfigLine[] {
   // bottom. A key nobody rendered is a key an operator cannot review, and the
   // whole point of this surface is that nothing about a pipeline is invisible.
   const named = new Set(namedKeys(node.kind));
+  // The save's `input` marker is presentation-handled above; the mapping
+  // identity keys are named per kind below.
   for (const [k, v] of Object.entries(c)) {
     if (named.has(k)) continue;
     push(k, typeof v === "string" ? v : JSON.stringify(v));
@@ -161,8 +169,10 @@ function namedKeys(kind: string): string[] {
       return ["until", "max_iterations", "next_state_from", "initial_state"];
     case "aggregate":
       return ["group_by", "by", "window"];
+    case "apply_mapping":
+      return ["ingress_id", "mapping_revision"];
     case "save_to_memory":
-      return ["stream", "key", "projection_key", "tags"];
+      return ["stream", "key", "projection_key", "tags", "input", "ingress_id", "mapping_revision"];
     case "notify":
       return ["channel", "to", "target", "template", "message"];
     case "emit_event":
