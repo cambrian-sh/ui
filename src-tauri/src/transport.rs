@@ -15,8 +15,8 @@ use tonic::{Request, Status};
 
 use crate::pb;
 use crate::pb::operator_console_client::OperatorConsoleClient;
-use crate::state::{DuplicateEffectKey, NodeReads, PipelineDryRun, PipelineFailure, PipelineGraph,
-    PipelineSaved,
+use crate::state::{DuplicateEffectKey, NodeItem, NodeReads, PipelineDryRun, PipelineFailure, PipelineGraph,
+    PipelineNodeExample, PipelineSaved, PipelineTransitioned,
     PipelineSummary, PipelineValidation, Refusal,
     PipelineTermination, ShadowEffect, 
     AuthoredStep, ClassifiedInput, ConfigSchema, ConfigWriteOutcome, ConfigWriteResult,
@@ -1359,6 +1359,45 @@ impl Transport {
     /// pipeline runtime — "this build authors none" is a true answer, and a
     /// console that has to special-case an error to render an empty panel will
     /// eventually render the error instead.
+    /// What actually reached one node, newest first.
+    ///
+    /// The inspector could report that a node RAN and never what ran through
+    /// it — an operator watching their own data saw "effect confirmed" and not
+    /// one value that landed.
+    pub async fn list_node_items(
+        &self,
+        pipeline_id: String,
+        node_id: String,
+        limit: i32,
+    ) -> Result<Vec<NodeItem>, String> {
+        let mut client = self.client().await?;
+        let resp = client
+            .list_node_items(Request::new(pb::ListNodeItemsOpRequest {
+                pipeline_id,
+                node_id,
+                limit,
+            }))
+            .await
+            .map_err(map_status)?
+            .into_inner();
+        Ok(resp
+            .items
+            .into_iter()
+            .map(|i| NodeItem {
+                run_id: i.run_id,
+                item_key: i.item_key,
+                state: i.state,
+                attempt: i.attempt,
+                input_json: i.input_json,
+                result_json: i.result_json,
+                error: i.error,
+                evidence_ref: i.evidence_ref,
+                updated_at: i.updated_at,
+                iter_path: i.iter_path,
+            })
+            .collect())
+    }
+
     pub async fn list_pipelines(&self) -> Result<Vec<PipelineSummary>, String> {
         let mut client = self.client().await?;
         let resp = client
@@ -1418,6 +1457,7 @@ impl Transport {
                 .into_iter()
                 .map(|r| NodeReads { node: r.node, paths: r.paths })
                 .collect(),
+            field_schema_json: resp.field_schema_json,
         })
     }
 
@@ -1442,6 +1482,7 @@ impl Transport {
             effect_node_count: resp.effect_node_count,
             plan_checksum: resp.plan_checksum,
             semantics_checksum: resp.semantics_checksum,
+            field_schema_json: resp.field_schema_json,
         })
     }
 
@@ -1468,6 +1509,37 @@ impl Transport {
             pipeline_id: resp.pipeline_id,
             revision: resp.revision,
             refusals: resp.refusals.into_iter().map(refusal_from).collect(),
+        })
+    }
+
+    /// Move one revision along its lifecycle (contract 0093): publish, arm,
+    /// pause, retire. Refusals name the gate that held, in the registry's own
+    /// words, inside the response.
+    pub async fn transition_pipeline(
+        &self,
+        pipeline_id: String,
+        revision: i32,
+        to_state: String,
+        command_id: String,
+        reason: String,
+    ) -> Result<PipelineTransitioned, String> {
+        let mut client = self.client().await?;
+        let resp = client
+            .transition_pipeline(Request::new(pb::TransitionPipelineOpRequest {
+                pipeline_id,
+                revision,
+                to_state,
+                command_id,
+                reason,
+            }))
+            .await
+            .map_err(map_status)?
+            .into_inner();
+        Ok(PipelineTransitioned {
+            refused: resp.refused,
+            pipeline_id: resp.pipeline_id,
+            revision: resp.revision,
+            state: resp.state,
         })
     }
 
@@ -1537,6 +1609,17 @@ impl Transport {
                 })
                 .collect(),
             elapsed_ms: resp.elapsed_ms,
+            source: resp.source,
+            node_examples: resp
+                .node_examples
+                .into_iter()
+                .map(|ex| PipelineNodeExample {
+                    node: ex.node,
+                    item_key: ex.item_key,
+                    value_json: ex.value_json,
+                    result_json: ex.result_json,
+                })
+                .collect(),
         })
     }
 

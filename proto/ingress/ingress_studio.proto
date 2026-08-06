@@ -87,6 +87,57 @@ service IngressStudioAdmin {
   // made durable. Durable rows, never only log lines.
   rpc ListGaps(IngressRef) returns (GapFindings);
 
+  // ── Source Discovery (ADR-0115) ──
+  //
+  // One sentence and one endpoint instead of a transport form. Discovery
+  // PROPOSES a transport spec and never executes one: accepting it is a
+  // separate operator command that enters the ordinary capture lifecycle, so
+  // the three human gates are untouched.
+  //
+  // The five calls are split along the capability boundary of D-Q4 rather than
+  // by convenience. `approve_origin` is not implied by `run`, and
+  // `accept_proposal` is not implied by `answer`, so they cannot be collapsed
+  // into one "do the discovery thing" RPC without losing that.
+  rpc StartDiscovery(StartDiscoveryRequest) returns (DiscoverySession);
+  rpc GetDiscoverySession(DiscoverySessionRef) returns (DiscoverySession);
+  rpc AnswerDiscoveryQuestion(AnswerDiscoveryQuestionRequest) returns (Ack);
+  // AskOperator is called BY THE AGENT, mid-run, as an ordinary tool.
+  //
+  // It is the whole human-in-the-loop mechanism: the agent asks a question in
+  // plain language, the console shows it, and the operator's reply comes back as
+  // the tool's result. Nothing about a field, a path or a typed decision — the
+  // agent asked a person something and got told.
+  //
+  // Blocks for `wait_seconds`, then returns unanswered so the agent can wind
+  // down deliberately rather than being cut off. A caller that waits forever
+  // holds an agent subprocess for as long as a human takes to read.
+  rpc AskOperator(AskOperatorRequest) returns (AskOperatorResponse);
+  // The discovery TOOLS. Called by the agent mid-run, over this same service.
+  //
+  // The security boundary is unchanged and lives here, not in a Go loop: every
+  // call is validated against origin policy, budgets, handle provenance and
+  // credential placement before anything touches a socket. What went away is the
+  // turn-by-turn orchestration around it — the agent runs ONE ReAct loop in the
+  // SDK and calls these as it needs them, which is what every other agent in the
+  // kernel already does.
+  rpc DiscoveryLook(DiscoveryLookRequest) returns (DiscoveryLookResponse);
+  rpc DiscoveryProbe(DiscoveryProbeRequest) returns (DiscoveryProbeResponse);
+  rpc DiscoveryProposePoller(DiscoveryProposePollerRequest) returns (Ack);
+  rpc DiscoveryProposeStream(DiscoveryProposeStreamRequest) returns (Ack);
+  // CommentOnProposal lets the operator say what is wrong with a proposal
+  // instead of only accepting or rejecting it.
+  //
+  // "The cadence should be hourly, not 5 seconds" is the most useful thing an
+  // operator can say, and until now there was nowhere to say it: accept took the
+  // proposal as-is, and rejecting it threw away everything the run had learned.
+  // The comment reaches the agent as text and the run resumes to revise.
+  rpc CommentOnProposal(CommentOnProposalRequest) returns (Ack);
+  // ApproveOrigin widens where probes may go. Its own call because it is its
+  // own right: a newly discovered origin is never pre-approved (D-Q3).
+  rpc ApproveDiscoveryOrigin(ApproveDiscoveryOriginRequest) returns (Ack);
+  // AcceptDiscoveryProposal writes the transport revision and enters CAPTURING.
+  rpc AcceptDiscoveryProposal(DiscoverySessionRef) returns (SaveSpecResponse);
+
   // ── Drafting configuration (§15) ──
   // The drafting model is OPERATOR CONFIGURATION: the choice names a
   // generator id from the deployment's registry, resolves per draft through
@@ -266,6 +317,273 @@ message CaptureStatus {
   int32 samples = 1;
   // profile_json is the accumulated schema profile — the D13 coverage data.
   string profile_json = 2;
+}
+
+message StartDiscoveryRequest {
+  string ingress_id = 1;
+  // intent is the operator's sentence, verbatim. Not a spec — the thing the
+  // proposal is judged against, and the reason a later reader gets for why the
+  // transport looks as it does.
+  string intent = 2;
+  // endpoint is the one string in this design a human typed. Every other target
+  // the planner may name is a handle derived from recorded evidence.
+  string endpoint = 3;
+}
+
+message CommentOnProposalRequest {
+  string ingress_id = 1;
+  string session_id = 2;
+  // What the operator wants changed, in their own words.
+  string comment = 3;
+}
+
+message DiscoveryLookRequest { string session_token = 1; }
+
+// What the agent knows so far. The same redacted view the fenced prompt used to
+// carry, now fetched when the agent wants it rather than re-rendered every turn.
+message DiscoveryLookResponse {
+  string intent = 1;
+  string endpoint = 2;
+  repeated DiscoveryFinding findings = 3;
+  repeated DiscoveryGap gaps = 4;
+  // Handles it may name. Never URLs: a handle is issued from recorded evidence,
+  // which is what stops a planner composing an address out of page text.
+  repeated string targets = 5;
+  repeated string documents = 6;
+  int32 requests_left = 7;
+  string error = 8;
+}
+
+message DiscoveryProbeRequest {
+  // A PATH under this handle's origin, discovered from the source's own
+  // documentation. Empty probes the handle as issued.
+  //
+  // An operator gives a domain and the endpoint that serves data is somewhere
+  // under it. Without this the agent read the docs, worked out the right path,
+  // and had nowhere to put it — it kept sending `path=` as a query parameter,
+  // silently probed the index page, and reasoned about a document it had never
+  // fetched. Scheme, host and port stay the controller's.
+  string path = 10;
+  string session_token = 1;
+  // A handle from `targets`, never a URL.
+  string target_ref = 2;
+  // Query parameters to send with it. The one free-text field, bounded: no
+  // credential-shaped names, no control characters, capped in size.
+  map<string, string> parameters = 3;
+}
+
+message DiscoveryProbeResponse {
+  bool ok = 1;
+  string error = 2;
+  int32 status = 3;
+  string content_type = 4;
+  // A redacted preview, not the raw body. Raw evidence stays restricted.
+  string preview = 5;
+  string evidence_ref = 6;
+  // Findings the classifier could ground from this response.
+  repeated DiscoveryFinding findings = 7;
+  repeated DiscoveryGap gaps = 8;
+}
+
+// One request per transport SHAPE, so a shape can only carry its own fields.
+//
+// There was a single flat DiscoveryProposeRequest with every field for every
+// shape on it: a websocket proposal had a `cadence_seconds` to fill in, and a
+// poller had a `loss_model`. It also carried `archetype`, which named which of
+// the spec's config blocks was present — something the presence of that block
+// already says. The validator's own rule is "exactly one block, and archetype
+// must name it", so the field could only agree with itself or be wrong.
+//
+// Asking the AGENT to choose it made that concrete: it answered
+// "weather_forecast", classifying the subject matter rather than the mechanism,
+// because no closed vocabulary was visible at the point of use. Splitting the
+// message removes the question. Which request arrived IS the archetype, and a
+// cadence on a stream is now unrepresentable rather than merely wrong.
+message DiscoveryProposePollerRequest {
+  string session_token = 1;
+  string target_ref = 2;
+  string format = 3;
+  int32 cadence_seconds = 4;
+  // The operator's OWN WORDS about how fresh the data must be.
+  //
+  // Kept beside the number because the number alone cannot be checked. An
+  // operator was asked "every few minutes, hourly, or once a day", answered, and
+  // the proposal said 10 seconds with nothing on the record to contradict it.
+  // The scheduler still runs on the integer; this is what makes a wrong integer
+  // visible to the person who can recognise it.
+  string cadence_because = 5;
+  string collection_root = 6;
+  string cursor_path = 7;
+  string cursor_param = 8;
+  // Why the agent believes each field. A proposal that cites nothing is refused.
+  string reason = 9;
+}
+
+message DiscoveryProposeStreamRequest {
+  string session_token = 1;
+  string target_ref = 2;
+  string format = 3;
+  // How this stream loses messages. No default: an undeclared loss model hides
+  // losses, so it arrives from an operator decision or nothing is written.
+  string loss_model = 4;
+  string sequence_path = 5;
+  string delivery_ref_path = 6;
+  string reason = 7;
+}
+
+message AskOperatorRequest {
+  // The session the asking agent is working for. It comes from the managed-LLM
+  // token the kernel already threads through every call the agent makes, so the
+  // agent names nothing it could get wrong.
+  string session_token = 1;
+  string question = 2;
+  // Optional choices. Empty means free text.
+  repeated string options = 3;
+  int32 wait_seconds = 4;
+}
+
+message AskOperatorResponse {
+  bool answered = 1;
+  string answer = 2;
+  // Set when the wait elapsed. The question stays open, so the operator can
+  // still answer it and the run picks it up.
+  bool timed_out = 3;
+  string error = 4;
+}
+
+message DiscoverySessionRef {
+  string ingress_id = 1;
+  string session_id = 2;
+}
+
+message AnswerDiscoveryQuestionRequest {
+  string ingress_id = 1;
+  string session_id = 2;
+  string question_id = 3;
+  string answer = 4;
+  // expected_version and proposal_revision carry optimistic concurrency: two
+  // operators on one ingress is the normal case, and the losing write must be
+  // told rather than dropped.
+  int32 expected_version = 5;
+  int32 proposal_revision = 6;
+  string idempotency_key = 7;
+  // rebase accepts an answer aimed at an older proposal, explicitly. Without it
+  // a stale answer is refused rather than silently applied to the latest.
+  bool rebase = 8;
+}
+
+message ApproveDiscoveryOriginRequest {
+  string ingress_id = 1;
+  string session_id = 2;
+  // The exact origin — scheme, host and port. Never a domain suffix: approving
+  // by registrable domain would hand a source that can redirect to a subdomain
+  // it controls a pre-approved origin (D-Q3).
+  string scheme = 3;
+  string host = 4;
+  string port = 5;
+}
+
+message DiscoveryFinding {
+  string field = 1;
+  string proposed_value = 2;
+  // observed | documented | inferred | assumed | operator_confirmed. Five, not
+  // four: a vendor's documented claim is not our own inference (D-Q6).
+  string status = 3;
+  double confidence = 4;
+  string rule_id = 5;
+  repeated string evidence_refs = 6;
+  string explanation = 7;
+  string observed_at = 8;
+  int32 bounds_min = 9;
+  int32 bounds_max = 10;
+}
+
+message DiscoveryGap {
+  string field = 1;
+  string why = 2;
+  // refusal marks a gap no further probing can close, because the transport
+  // schema cannot express the answer. The right outcome is a named refusal.
+  bool refusal = 3;
+}
+
+message DiscoveryQuestion {
+  string id = 1;
+  string shape = 2;
+  string prompt = 3;
+  repeated string options = 4;
+  string path = 5;
+  string status = 6;
+  int32 asked_at_revision = 7;
+  int32 version = 8;
+  // Marks a question generated downstream of content Cambrian did not author,
+  // so "paste your token here" can never look like it originated here.
+  bool from_untrusted = 9;
+  string auth_scheme_ref = 10;
+}
+
+message DiscoveryProposal {
+  int32 revision = 1;
+  string archetype = 2;
+  string protocol = 3;
+  string format = 4;
+  int32 cadence_seconds = 5;
+  // The operator's words the cadence was derived from, so the console can show
+  // the number and its basis together.
+  string cadence_because = 12;
+  string collection_root = 6;
+  string cursor_path = 7;
+  string cursor_param = 8;
+  string auth_scheme_ref = 9;
+}
+
+message DiscoverySession {
+  bool ok = 1;
+  string error = 2;
+  string session_id = 3;
+  // proposed | abstained | budget_exhausted | policy_refused. Every one is a
+  // terminal SUCCESS: the session stopped saying something true.
+  string outcome = 4;
+  string reason = 5;
+  repeated DiscoveryFinding findings = 6;
+  repeated DiscoveryGap gaps = 7;
+  repeated DiscoveryQuestion questions = 8;
+  DiscoveryProposal proposal = 9;
+  // Origins awaiting an operator grant, so the console can offer the decision
+  // rather than the session silently stopping.
+  repeated string pending_origins = 10;
+  int32 requests_used = 11;
+  int32 model_calls_used = 12;
+  // running is true while the loop is still going. A discovery session can take
+  // minutes once it is researching an API, so the console must be able to show
+  // work in progress rather than a frozen button.
+  bool running = 13;
+  // steps is the trajectory SO FAR, appended as the session runs. It is what
+  // makes a long session inspectable while it happens instead of only after it
+  // ends — and what turns a stalled provider call into something visible rather
+  // than a session that appears to have died.
+  repeated DiscoveryStep steps = 14;
+}
+
+// DiscoveryStep is one turn of the loop, as it happened.
+message DiscoveryStep {
+  int32 n = 1;
+  // The action kind the planner proposed — fetch_target, probe_parameters,
+  // ask_questions, abstain. Never a URL: the trajectory carries handles, the
+  // same as everything else the planner touches.
+  string action = 2;
+  // A short human sentence for the console. The console should not have to know
+  // the action vocabulary to render a readable line.
+  string summary = 3;
+  // refusal is set when the controller declined the action, with its reason. A
+  // refusal is not a fault: it is recorded, returned to the planner, and the
+  // loop continues.
+  string refusal = 4;
+  // observed_ref cites the evidence this step produced, when it produced any.
+  string observed_ref = 5;
+  string at = 6;
+  // in_flight marks the step the loop is executing RIGHT NOW. Without it a slow
+  // model call is indistinguishable from a hung session.
+  bool in_flight = 7;
 }
 
 message CaptureSamplesRequest {

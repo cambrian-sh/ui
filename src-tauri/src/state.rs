@@ -350,6 +350,27 @@ pub struct WatchConfigSummary {
 /// Every ingress created through the Ingress Studio owns one, generated from its
 /// mapping and armed with the ingress. An ingress that has not been armed has no
 /// ARMED pipeline, and that is a normal state.
+/// One item's passage through one node.
+///
+/// The console could say a node RAN and never what ran THROUGH it. Every task
+/// already carried its input envelope, its result and its evidence; this is the
+/// shape that finally carries them to a reader.
+#[derive(Clone, Serialize, Deserialize, Default)]
+pub struct NodeItem {
+    pub run_id: String,
+    pub item_key: String,
+    pub state: String,
+    pub attempt: i32,
+    /// The envelope consumed, and what it produced, as JSON. For an effect the
+    /// result carries WHAT it did — the part worth reading.
+    pub input_json: String,
+    pub result_json: String,
+    pub error: String,
+    pub evidence_ref: String,
+    pub updated_at: String,
+    pub iter_path: String,
+}
+
 #[derive(Clone, Serialize, Deserialize, Default)]
 pub struct PipelineSummary {
     pub pipeline_id: String,
@@ -1995,6 +2016,23 @@ pub struct PipelineDryRun {
     /// How long the replay took — the figure that says whether running it over
     /// more deliveries is worth doing.
     pub elapsed_ms: i64,
+    /// What was replayed (contract 0092): the archive's real deliveries, or the
+    /// redacted capture samples. Over redacted samples a numeric gate fails on
+    /// every item — only this field lets a reader blame the source, not the graph.
+    pub source: String,
+    /// Real items observed per node during the replay, bounded kernel-side.
+    pub node_examples: Vec<PipelineNodeExample>,
+}
+
+/// One item as one node saw it during a dry run (contract 0092).
+#[derive(Clone, Serialize, Deserialize, Default)]
+pub struct PipelineNodeExample {
+    pub node: String,
+    pub item_key: String,
+    /// The item's value as the node received it.
+    pub value_json: String,
+    /// What the node recorded (an effect's receipt), when any.
+    pub result_json: String,
 }
 
 /// One effect that would have been carried out.
@@ -2067,6 +2105,11 @@ pub struct PipelineGraph {
     /// Per node, the payload paths its expressions read — from the compiled AST,
     /// so it cannot disagree with what the runtime will read.
     pub reads: Vec<NodeReads>,
+    /// The per-node field schema (contract 0091), as JSON. For every node: the
+    /// fields available to its expressions, what it reads/writes/drops, and —
+    /// where a shape is not statically knowable — the reason, named. Empty
+    /// means "unchecked", never "no fields".
+    pub field_schema_json: String,
 }
 
 /// One node and the payload paths it reads.
@@ -2088,6 +2131,21 @@ pub struct PipelineValidation {
     pub effect_node_count: i32,
     pub plan_checksum: String,
     pub semantics_checksum: String,
+    /// The per-node field schema of the DRAFT being validated — same shape as
+    /// `PipelineGraph::field_schema_json`, so the picker tracks the edit.
+    pub field_schema_json: String,
+}
+
+/// The outcome of moving a revision along its lifecycle (contract 0093).
+#[derive(Clone, Serialize, Deserialize, Default)]
+pub struct PipelineTransitioned {
+    /// The gate that held, in the registry's own words. The revision is
+    /// untouched when set.
+    pub refused: String,
+    pub pipeline_id: String,
+    pub revision: i32,
+    /// Where the revision IS now — the store's answer, never an echo.
+    pub state: String,
 }
 
 /// The outcome of storing an edited graph (contract 0090).

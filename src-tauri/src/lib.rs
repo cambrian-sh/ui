@@ -701,6 +701,16 @@ async fn op_list_watches(
 }
 
 #[tauri::command(rename_all = "snake_case")]
+async fn op_list_node_items(
+    transport: State<'_, Transport>,
+    pipeline_id: String,
+    node_id: String,
+    limit: i32,
+) -> Result<Vec<crate::state::NodeItem>, String> {
+    transport.inner().clone().list_node_items(pipeline_id, node_id, limit).await
+}
+
+#[tauri::command(rename_all = "snake_case")]
 async fn op_list_pipelines(
     transport: State<'_, Transport>,
 ) -> Result<Vec<PipelineSummary>, String> {
@@ -738,6 +748,28 @@ async fn op_save_pipeline(
         .inner()
         .clone()
         .save_pipeline(graph_json, command_id.unwrap_or_default())
+        .await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_transition_pipeline(
+    transport: State<'_, Transport>,
+    pipeline_id: String,
+    revision: Option<i32>,
+    to_state: String,
+    command_id: Option<String>,
+    reason: Option<String>,
+) -> Result<crate::state::PipelineTransitioned, String> {
+    transport
+        .inner()
+        .clone()
+        .transition_pipeline(
+            pipeline_id,
+            revision.unwrap_or(0),
+            to_state,
+            command_id.unwrap_or_default(),
+            reason.unwrap_or_default(),
+        )
         .await
 }
 
@@ -1146,6 +1178,86 @@ async fn op_studio_capture_status(
     ingress_id: String,
 ) -> Result<crate::ingress_studio::StudioCaptureStatus, String> {
     transport.inner().clone().studio_capture_status(ingress_id).await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_studio_start_discovery(
+    transport: State<'_, Transport>,
+    ingress_id: String,
+    intent: String,
+    endpoint: String,
+) -> Result<crate::ingress_studio::DiscoverySession, String> {
+    transport.inner().clone().studio_start_discovery(ingress_id, intent, endpoint).await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_studio_get_discovery(
+    transport: State<'_, Transport>,
+    ingress_id: String,
+    session_id: String,
+) -> Result<crate::ingress_studio::DiscoverySession, String> {
+    transport.inner().clone().studio_get_discovery(ingress_id, session_id).await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_studio_answer_discovery(
+    transport: State<'_, Transport>,
+    ingress_id: String,
+    session_id: String,
+    question_id: String,
+    answer: String,
+    expected_version: i32,
+    proposal_revision: i32,
+    idempotency_key: String,
+) -> Result<crate::ingress_studio::StudioAck, String> {
+    transport
+        .inner()
+        .clone()
+        .studio_answer_discovery(
+            ingress_id,
+            session_id,
+            question_id,
+            answer,
+            expected_version,
+            proposal_revision,
+            idempotency_key,
+        )
+        .await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_studio_approve_origin(
+    transport: State<'_, Transport>,
+    ingress_id: String,
+    session_id: String,
+    scheme: String,
+    host: String,
+    port: String,
+) -> Result<crate::ingress_studio::StudioAck, String> {
+    transport
+        .inner()
+        .clone()
+        .studio_approve_origin(ingress_id, session_id, scheme, host, port)
+        .await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_studio_accept_discovery(
+    transport: State<'_, Transport>,
+    ingress_id: String,
+    session_id: String,
+) -> Result<crate::ingress_studio::StudioSaveResult, String> {
+    transport.inner().clone().studio_accept_discovery(ingress_id, session_id).await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_studio_comment_discovery(
+    transport: State<'_, Transport>,
+    ingress_id: String,
+    session_id: String,
+    comment: String,
+) -> Result<crate::ingress_studio::StudioAck, String> {
+    transport.inner().clone().studio_comment_discovery(ingress_id, session_id, comment).await
 }
 
 #[tauri::command(rename_all = "snake_case")]
@@ -1646,10 +1758,12 @@ pub fn run() {
             op_list_skills,
             op_list_watches,
             op_list_pipelines,
+            op_list_node_items,
             op_dry_run_pipeline,
             op_get_pipeline,
             op_validate_pipeline,
             op_save_pipeline,
+            op_transition_pipeline,
             op_ingest_memory,
             op_ingest_file,
             op_stat_file,
@@ -1704,6 +1818,12 @@ pub fn run() {
             op_studio_draft_mapping,
             op_studio_capture_status,
             op_studio_capture_samples,
+            op_studio_start_discovery,
+            op_studio_get_discovery,
+            op_studio_answer_discovery,
+            op_studio_approve_origin,
+            op_studio_accept_discovery,
+            op_studio_comment_discovery,
             op_studio_preview,
             op_studio_shadow_reprocess,
             op_studio_promote_repair,

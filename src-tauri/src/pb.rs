@@ -130,7 +130,28 @@ pub const RETENTION_FEED_CAPABILITY: &str = "retention-feed";
 ///   saw nothing — a console conversation has no delivery address, so the
 ///   snapshot was computed and dropped. Live-only, like `TokenChunkOp`: seq is 0
 ///   and it is never replayed, because a status line is not history.
-pub const PINNED_CONTRACT_VERSION: &str = "0085";
+/// - **0086–0090** the reactive-pipeline surface, re-vendored together:
+///   pipeline listing (0087), `DryRunPipeline` (0088), the canvas reads —
+///   `GetPipeline` / `ValidatePipeline` with structured refusals (0089) — and
+///   `SavePipeline` draft writes (0090).
+/// - **0091** `field_schema_json` on `GetPipeline` / `ValidatePipeline`: the
+///   per-node field schema, walked by the kernel from the trigger's capture
+///   profile through each transform. Empty means "unchecked", never "no
+///   fields" — the picker goes unavailable-with-reason, not blank. Advertised
+///   as the `pipeline-field-schema` capability.
+/// - **0092** the dry run carries the DATA: `source` names what was replayed
+///   (the archive's real deliveries vs redacted captures — over redacted
+///   samples a numeric gate fails on every item, and only the label lets a
+///   reader blame the source rather than the graph) and `node_examples` are
+///   real items per node, the value as each node received it plus the node's
+///   own receipt, bounded kernel-side.
+/// - **0093** `TransitionPipeline`: the lifecycle finally has a BUTTON — the
+///   console could draw, edit, validate and rehearse a pipeline and then had
+///   no way to publish or arm it. One RPC, target-state vocabulary
+///   (validated/published/armed/paused/retired); `armed` walks a draft
+///   through its gates so "make this live" is one intent; refusals carry the
+///   registry's own sentence. Capability `pipeline-lifecycle`.
+pub const PINNED_CONTRACT_VERSION: &str = "0093";
 
 /// The plugin versions this console was BUILT against, by plugin id (ADR-0089).
 ///

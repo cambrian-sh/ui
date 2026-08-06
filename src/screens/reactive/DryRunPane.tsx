@@ -150,7 +150,21 @@ function Report({
         Dry run · {report.samples}{" "}
         {report.samples === 1 ? "item" : "items"} · r{pipeline.revision} ·{" "}
         {formatElapsed(report.elapsed_ms)}
+        {/* `?? ""`: a pre-0092 kernel sends no source at all, which must not
+            crash the pane it predates. */}
+        {(report.source ?? "") !== "" && <> · over {report.source}</>}
       </p>
+      {/* Over redacted captures every value is a type token, so a numeric gate
+          fails on every item — a finding about the source, not the graph. Said
+          HERE because the failure count below is where a reader would
+          otherwise blame their pipeline. */}
+      {(report.source ?? "").includes("redacted") && (
+        <p className="text-[11px] leading-[1.5] text-[var(--status-warn)]">
+          This rehearsal ran over redacted samples: values are placeholders, so
+          any step comparing numbers or text will report failures that the live
+          pipeline, which sees real values, will not have.
+        </p>
+      )}
 
       <Collisions duplicates={report.duplicates} totalEffects={report.effects.length} />
 

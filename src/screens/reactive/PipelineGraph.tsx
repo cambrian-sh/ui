@@ -1,11 +1,15 @@
-import { createContext, useContext, useMemo } from "react";
+import { createContext, useContext, useMemo, useRef } from "react";
 import {
   ReactFlow,
   Background,
   Controls,
   Handle,
   Position,
+  type Connection,
+  type Edge,
+  type Node,
   type NodeProps,
+  type ReactFlowInstance,
 } from "@xyflow/react";
 import { cn } from "@/design-system/lib/utils";
 import type {
@@ -62,12 +66,18 @@ export function PipelineGraph({
   editing,
   wiring,
   recentlyMoved,
+  lineage = null,
   onSelect,
   onPortClick,
   onTerminate,
   onUnterminate,
   onRemove,
   onInteract,
+  onWireRequest,
+  onRewire,
+  onDisconnect,
+  onMove,
+  onDropNode,
 }: {
   doc: GraphDocument;
   counts: Counts;
@@ -79,6 +89,8 @@ export function PipelineGraph({
   editing: boolean;
   wiring: { node: string; port: string } | null;
   recentlyMoved: Set<string>;
+  /** node id → how it touches the followed field. null = nothing followed. */
+  lineage?: Map<string, string> | null;
   onSelect: (id: string) => void;
   onPortClick: (node: string, port: string) => void;
   onTerminate: (node: string, port: string) => void;
@@ -86,6 +98,27 @@ export function PipelineGraph({
   onRemove: (node: string) => void;
   /** Any pan, zoom or click — which pauses the live layer (Logs §5). */
   onInteract?: () => void;
+  /** Drag-to-wire: a pipe drawn from one port's dot onto another step. */
+  onWireRequest?: (from: string, port: string, to: string) => void;
+  /** A grabbed pipe re-routed to a different step. */
+  onRewire?: (from: string, port: string, oldTo: string, newTo: string) => void;
+  /** A grabbed pipe dropped on empty canvas, or deleted with the keyboard. */
+  onDisconnect?: (from: string, port: string, to: string) => void;
+  /** A dragged step let go — its landing place, to keep. */
+  onMove?: (node: string, position: { x: number; y: number }) => void;
+  /**
+   * A palette step dropped onto the canvas. `attach` says what the drop point
+   * meant: onto a pipe = splice into it; near a step = continue from it;
+   * empty space = just place it there.
+   */
+  onDropNode?: (
+    kind: string,
+    position: { x: number; y: number },
+    attach:
+      | { type: "splice"; from: string; port: string; to: string }
+      | { type: "after"; node: string }
+      | { type: "none" },
+  ) => void;
 }) {
   const { nodes, edges } = useMemo(
     () =>
@@ -100,6 +133,7 @@ export function PipelineGraph({
         editing,
         wiring,
         recentlyMoved,
+        lineage,
         hasConfigLine: (n) => configSummary(n) !== null,
       }),
     [
@@ -113,6 +147,7 @@ export function PipelineGraph({
       editing,
       wiring,
       recentlyMoved,
+      lineage,
     ],
   );
 
@@ -121,6 +156,58 @@ export function PipelineGraph({
     [onSelect, onPortClick, onTerminate, onUnterminate, onRemove, doc],
   );
 
+  // The instance, for translating a drop's screen point into graph space.
+  const rf = useRef<ReactFlowInstance | null>(null);
+  // Whether a grabbed pipe landed on a handle. onReconnectEnd cannot tell on
+  // its own — this ref is the standard React Flow pattern for "dropped on
+  // nothing means disconnect".
+  const reconnected = useRef(false);
+
+  /** What a drop point means: a pipe under it, a step near it, or nothing. */
+  function attachFor(pos: { x: number; y: number }):
+    | { type: "splice"; from: string; port: string; to: string }
+    | { type: "after"; node: string }
+    | { type: "none" } {
+    // A pipe first: dropping ONTO a connection is the most specific statement.
+    let bestEdge: Edge | null = null;
+    let bestEdgeDist = 30;
+    for (const e of edges) {
+      const s = nodes.find((n) => n.id === e.source);
+      const t = nodes.find((n) => n.id === e.target);
+      if (!s || !t || s.parentId || t.parentId) continue;
+      const a = { x: s.position.x + 250, y: s.position.y + 60 };
+      const b = { x: t.position.x, y: t.position.y + 30 };
+      const d = pointToSegment(pos, a, b);
+      if (d < bestEdgeDist) {
+        bestEdge = e;
+        bestEdgeDist = d;
+      }
+    }
+    if (bestEdge) {
+      const port = (bestEdge.data as { port?: string } | undefined)?.port;
+      // Only a real pipe between steps can be spliced; a pipe into a terminal
+      // is a rendering of "this stops here".
+      if (port && !bestEdge.target.startsWith("stop:")) {
+        return { type: "splice", from: bestEdge.source, port, to: bestEdge.target };
+      }
+    }
+    // Otherwise the nearest step, if one is reasonably close.
+    let bestNode: Node | null = null;
+    let bestDist = 340;
+    for (const n of nodes) {
+      if (n.type !== "step" || n.parentId) continue;
+      const cx = n.position.x + 125;
+      const cy = n.position.y + 60;
+      const d = Math.hypot(pos.x - cx, pos.y - cy);
+      if (d < bestDist) {
+        bestNode = n;
+        bestDist = d;
+      }
+    }
+    if (bestNode) return { type: "after", node: bestNode.id };
+    return { type: "none" };
+  }
+
   return (
     <HandlerContext.Provider value={handlers}>
       <div className="h-full w-full" aria-label="pipeline graph">
@@ -128,6 +215,9 @@ export function PipelineGraph({
           nodes={nodes}
           edges={edges}
           nodeTypes={nodeTypes}
+          onInit={(inst) => {
+            rf.current = inst as unknown as ReactFlowInstance;
+          }}
           fitView
           // fitView with padding is what fixes "two nodes in the top-left
           // eighth of a 2560px canvas": the graph is centred in whatever space
@@ -136,13 +226,78 @@ export function PipelineGraph({
           fitViewOptions={{ padding: 0.22, maxZoom: 1.15 }}
           minZoom={0.3}
           maxZoom={1.6}
-          nodesDraggable={false}
-          nodesConnectable={false}
+          // Editing makes the drawing MANIPULABLE: steps drag (and keep their
+          // place), pipes draw from port dots, and a grabbed pipe re-routes or
+          // disconnects. Read mode stays inert — a viewer must not be able to
+          // shove a diagram out of shape by accident.
+          nodesDraggable={editing}
+          nodesConnectable={editing}
+          edgesReconnectable={editing}
+          deleteKeyCode={editing ? ["Delete", "Backspace"] : null}
           proOptions={{ hideAttribution: true }}
           onMoveStart={onInteract}
           onNodeClick={(_, n) => {
             onInteract?.();
             if (n.type === "step") onSelect(n.id);
+          }}
+          onNodeDragStop={(_, n) => {
+            if (n.type === "step") onMove?.(n.id, n.position);
+          }}
+          onNodesDelete={(deleted) => {
+            for (const n of deleted) {
+              if (n.type === "step") onRemove(n.id);
+            }
+          }}
+          onConnect={(c: Connection) => {
+            if (!c.source || !c.target || !c.sourceHandle) return;
+            if (c.target.startsWith("stop:") || c.target.startsWith("group:")) return;
+            onWireRequest?.(c.source, c.sourceHandle, c.target);
+          }}
+          onReconnectStart={() => {
+            reconnected.current = false;
+          }}
+          onReconnect={(oldEdge: Edge, c: Connection) => {
+            reconnected.current = true;
+            const port = (oldEdge.data as { port?: string } | undefined)?.port;
+            if (!port || !c.target) return;
+            if (c.target.startsWith("stop:") || c.target.startsWith("group:")) return;
+            if (oldEdge.target.startsWith("stop:")) {
+              // Grabbing the loose end of an unwired port's dashed pipe and
+              // landing it on a step IS wiring it.
+              onWireRequest?.(oldEdge.source, port, c.target);
+              return;
+            }
+            if (c.target !== oldEdge.target) {
+              onRewire?.(oldEdge.source, port, oldEdge.target, c.target);
+            }
+          }}
+          onReconnectEnd={(_, edge: Edge) => {
+            if (reconnected.current) return;
+            const port = (edge.data as { port?: string } | undefined)?.port;
+            if (!port || edge.target.startsWith("stop:")) return;
+            // Dropped on nothing: the pipe is disconnected, out loud.
+            onDisconnect?.(edge.source, port, edge.target);
+          }}
+          onEdgesDelete={(deleted) => {
+            for (const e of deleted) {
+              const port = (e.data as { port?: string } | undefined)?.port;
+              if (port && !e.target.startsWith("stop:")) {
+                onDisconnect?.(e.source, port, e.target);
+              }
+            }
+          }}
+          onDragOver={(e) => {
+            if (!editing) return;
+            e.preventDefault();
+            e.dataTransfer.dropEffect = "move";
+          }}
+          onDrop={(e) => {
+            if (!editing || !rf.current) return;
+            const kind = e.dataTransfer.getData("application/cambrian-node-kind");
+            if (!kind) return;
+            e.preventDefault();
+            const pos = rf.current.screenToFlowPosition({ x: e.clientX, y: e.clientY });
+            onDropNode?.(kind, pos, attachFor(pos));
           }}
         >
           <Background gap={18} color="var(--border-subtle)" />
@@ -151,6 +306,19 @@ export function PipelineGraph({
       </div>
     </HandlerContext.Provider>
   );
+}
+
+/** Distance from a point to a line segment, in graph coordinates. */
+function pointToSegment(
+  p: { x: number; y: number },
+  a: { x: number; y: number },
+  b: { x: number; y: number },
+): number {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const len2 = dx * dx + dy * dy;
+  const t = len2 === 0 ? 0 : Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / len2));
+  return Math.hypot(p.x - (a.x + t * dx), p.y - (a.y + t * dy));
 }
 
 /* ── The card ───────────────────────────────────────────────────────────── */
@@ -179,6 +347,11 @@ function StepNode({ data }: NodeProps) {
         d.refusals.length > 0 && "tint-wash tint-ring",
         verdict?.kind === "not-a-target" && "opacity-40",
         verdict?.kind === "ok" && "ring-1 ring-[var(--color-accent-400)]",
+        // Following a field: the nodes that touch it stay lit, the rest
+        // recede. Dimming is the mechanism — a highlight on top of full-
+        // brightness neighbours reads as decoration, not as an answer.
+        d.following && d.lineage == null && "opacity-35",
+        d.following && d.lineage != null && "ring-1 ring-[var(--color-accent-400)]",
       )}
       style={
         d.refusals.length > 0
@@ -191,8 +364,20 @@ function StepNode({ data }: NodeProps) {
       <Handle
         type="target"
         position={Position.Left}
-        className="!h-1.5 !w-1.5 !border-0 !bg-[var(--border-strong)]"
+        title={d.editing ? "drop a pipe here to connect into this step" : undefined}
+        className={cn(
+          "!border-0 !bg-[var(--border-strong)]",
+          d.editing ? "!h-3 !w-3" : "!h-1.5 !w-1.5",
+        )}
       />
+
+      {/* How this node touches the followed field, in one word, where the
+          operator is already looking. */}
+      {d.following && d.lineage != null && (
+        <span className="absolute -top-2 left-2 rounded-[3px] bg-[var(--color-accent-400)] px-1.5 py-px font-mono text-[9px] uppercase tracking-[0.08em] text-[var(--bg-base)]">
+          {d.lineage}
+        </span>
+      )}
 
       <div className="p-3">
         <div className="flex items-baseline justify-between gap-2">
@@ -320,10 +505,20 @@ function StepNode({ data }: NodeProps) {
                 type="source"
                 id={port}
                 position={Position.Right}
-                className="!h-1.5 !w-1.5 !border-0"
+                title={
+                  d.editing
+                    ? `drag from this dot to connect “${port}” to another step`
+                    : undefined
+                }
+                className={cn(
+                  "!border-0",
+                  d.editing
+                    ? "!h-3 !w-3 hover:!ring-2 hover:!ring-[var(--color-accent-400)]"
+                    : "!h-1.5 !w-1.5",
+                )}
                 style={{
                   background: tone,
-                  right: -13,
+                  right: d.editing ? -16 : -13,
                   top: "50%",
                   transform: "translateY(-50%)",
                 }}

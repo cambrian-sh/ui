@@ -204,6 +204,17 @@ export const ipc = {
    */
   listPipelines: (): Promise<t.PipelineSummary[]> =>
     invoke<t.PipelineSummary[]>('op_list_pipelines'),
+  /**
+   * What actually reached one node, newest first.
+   *
+   * The inspector could say a node RAN and never what ran through it: an
+   * operator watching their own data saw "effect confirmed" and not one value
+   * that landed.
+   */
+  listNodeItems: (pipelineId: string, nodeId: string, limit = 25): Promise<t.NodeItem[]> =>
+    invoke<t.NodeItem[]>('op_list_node_items', {
+      pipeline_id: pipelineId, node_id: nodeId, limit,
+    }),
 
   /**
    * Shadow-run a pipeline over its captured deliveries (kernel contract 0088).
@@ -236,6 +247,25 @@ export const ipc = {
     invoke<t.PipelineSaved>('op_save_pipeline', {
       graph_json: graphJson,
       command_id: commandId,
+    }),
+
+  /**
+   * Move one revision along its lifecycle (kernel contract 0093): publish,
+   * arm, pause, retire. `armed` walks a draft through validate and publish on
+   * the way — one intent, every gate still gets its say, and a refusal names
+   * the gate that held.
+   */
+  transitionPipeline: (
+    pipelineId: string,
+    toState: string,
+    revision = 0,
+    reason = '',
+  ): Promise<t.PipelineTransitioned> =>
+    invoke<t.PipelineTransitioned>('op_transition_pipeline', {
+      pipeline_id: pipelineId,
+      revision,
+      to_state: toState,
+      reason,
     }),
 
   dryRunPipeline: (pipelineId: string, revision = 0, sampleLimit = 0): Promise<t.PipelineDryRun> =>
@@ -387,6 +417,52 @@ export const ipc = {
     invoke<t.StudioCaptureSamples>('op_studio_capture_samples', {
       ingress_id: ingressId,
       limit,
+    }),
+  /**
+   * Source Discovery (ADR-0115): a sentence and a URL instead of a form.
+   *
+   * Five calls, not one, because the capabilities behind them are separate:
+   * approving an origin is not implied by running, and accepting a proposal is
+   * not implied by answering.
+   */
+  studioStartDiscovery: (ingressId: string, intent: string, endpoint: string): Promise<t.DiscoverySession> =>
+    invoke<t.DiscoverySession>('op_studio_start_discovery', {
+      ingress_id: ingressId, intent, endpoint,
+    }),
+  studioGetDiscovery: (ingressId: string, sessionId: string): Promise<t.DiscoverySession> =>
+    invoke<t.DiscoverySession>('op_studio_get_discovery', {
+      ingress_id: ingressId, session_id: sessionId,
+    }),
+  studioAnswerDiscovery: (
+    ingressId: string, sessionId: string, questionId: string, answer: string,
+    expectedVersion: number, proposalRevision: number, idempotencyKey: string,
+  ): Promise<t.StudioAck> =>
+    invoke<t.StudioAck>('op_studio_answer_discovery', {
+      ingress_id: ingressId, session_id: sessionId, question_id: questionId,
+      answer, expected_version: expectedVersion,
+      proposal_revision: proposalRevision, idempotency_key: idempotencyKey,
+    }),
+  /** Exact origin — scheme, host AND port. Never a domain suffix. */
+  studioApproveOrigin: (
+    ingressId: string, sessionId: string, scheme: string, host: string, port: string,
+  ): Promise<t.StudioAck> =>
+    invoke<t.StudioAck>('op_studio_approve_origin', {
+      ingress_id: ingressId, session_id: sessionId, scheme, host, port,
+    }),
+  studioAcceptDiscovery: (ingressId: string, sessionId: string): Promise<t.StudioSaveResult> =>
+    invoke<t.StudioSaveResult>('op_studio_accept_discovery', {
+      ingress_id: ingressId, session_id: sessionId,
+    }),
+  /**
+   * Tell the agent what is wrong with a proposal, in the operator's own words.
+   * Neither accept nor reject: the standing proposal survives until the agent
+   * produces a better one.
+   */
+  studioCommentDiscovery: (
+    ingressId: string, sessionId: string, comment: string,
+  ): Promise<t.StudioAck> =>
+    invoke<t.StudioAck>('op_studio_comment_discovery', {
+      ingress_id: ingressId, session_id: sessionId, comment,
     }),
   /** The DRY_RUN stage's ephemeral buffer — real deliveries, never preserved. */
   studioPreview: (ingressId: string): Promise<t.StudioPreviewEntry[]> =>

@@ -13,6 +13,7 @@ const setCredential = vi.fn().mockResolvedValue({ ok: true, error: '', detail: '
 const lifecycle = vi.fn().mockResolvedValue({ ok: false, error: 'lifecycle: no transition ARMED → DRAFT', detail: '' });
 const captureStatus = vi.fn();
 const draftMapping = vi.fn();
+const getRevision = vi.fn();
 const captureSamples = vi.fn();
 
 vi.mock('@/ipc', () => ({
@@ -26,6 +27,7 @@ vi.mock('@/ipc', () => ({
     studioDraftMapping: (...args: unknown[]) => draftMapping(...args),
     studioCaptureSamples: (...args: unknown[]) => captureSamples(...args),
     studioSaveSpec: vi.fn().mockResolvedValue({ ok: true, error: '', revision: 2 }),
+    studioGetRevision: (...args: unknown[]) => getRevision(...args),
   },
 }));
 
@@ -291,6 +293,9 @@ describe('the studio column — abstentions as rows', () => {
 
   beforeEach(() => {
     captureStatus.mockResolvedValue({ samples: 214, profile_json: profile });
+    // A real client resolves; an unstubbed vi.fn() returns undefined and the
+    // query never settles, which is a test artefact rather than a behaviour.
+    getRevision.mockResolvedValue({ ok: true, error: '', revision: 0, spec_json: '' });
     draftMapping.mockResolvedValue(draftWithAbstentions());
   });
 
@@ -326,11 +331,42 @@ describe('the studio column — abstentions as rows', () => {
     await waitFor(() => expect(screen.getByText('revised at')).toBeInTheDocument());
 
     fireEvent.click(screen.getByText('revised at'));
-    const box = screen.getByLabelText(/Anything the samples cannot tell it/) as HTMLInputElement;
+    // Once a mapping is on screen the box asks the question an operator
+    // actually has — what is WRONG with this — rather than for hints about
+    // samples they have already been shown a mapping for.
+    const box = screen.getByLabelText(/What is wrong with this mapping\?/) as HTMLInputElement;
     expect(box.value).toContain('properties.updated: revised at');
+    expect(screen.getByText('Redraft it')).toBeInTheDocument();
     expect(
       screen.getByText(/the drafter cannot edit a mapping, only propose one/),
     ).toBeInTheDocument();
+  });
+
+  // A mapping the operator did not draft in THIS session must still be visible.
+  //
+  // `spec` came only from the in-session draft result, so a mapping produced any
+  // other way showed nothing at all. Once ConfirmMapping began drafting on the
+  // operator's behalf, the pane meant for reviewing it was empty, and the only
+  // way to see what was about to be armed was to read Postgres.
+  it('previews the saved mapping revision, not only one drafted here', async () => {
+    getRevision.mockResolvedValue({
+      ok: true, error: '', revision: 1,
+      spec_json: JSON.stringify({
+        language: 'ingress-mapping/v1', stream: 'weather_current',
+        event_type: { const: 'weather_observation' },
+        observations: [{
+          entity_id: { path: '/station' }, predicate: 'temperature',
+          value_type: 'number', value: { path: '/temp' },
+        }],
+      }),
+    });
+    render(<StudioColumn summary={ingress('saved')} status={status({ latest_mapping_revision: 1 })} readOnly={false} onChanged={() => {}} onOpenPanel={() => {}} />);
+
+    // Nothing was drafted in this session; the stored revision is still shown.
+    await waitFor(() => expect(getRevision).toHaveBeenCalledWith('mapping', 'saved', 1));
+    await waitFor(() => expect(screen.getByText(/temperature/)).toBeInTheDocument());
+    // And the box asks what is wrong with it, because there IS one to comment on.
+    expect(screen.getByText('Redraft it')).toBeInTheDocument();
   });
 
   it('shows a mapped row as a pair, not just a field that was noticed', async () => {
@@ -339,7 +375,12 @@ describe('the studio column — abstentions as rows', () => {
     fireEvent.click(screen.getByText('Propose a mapping'));
     // The arrow is its own element now, so the target is asserted on its own:
     // the pair is `path` → `target`, and the glyph between them is decoration.
-    await waitFor(() => expect(screen.getByText('magnitude')).toBeInTheDocument());
+    //
+    // getAllByText, not getByText: the predicate also appears in the summary of
+    // what the mapping writes, which is a second legitimate mention rather than
+    // a duplicate. Both saying "magnitude" is the point — one names the fact,
+    // the other shows the field it came from.
+    await waitFor(() => expect(screen.getAllByText('magnitude').length).toBeGreaterThan(0));
   });
 
   it('says WHY a field was ignored, from the profile', async () => {
@@ -493,9 +534,18 @@ describe('the studio column — what it throws away', () => {
     // The sticky bar carries the one next action; the header carries the
     // terminal one. Neither is a peer of the other, which is why they are not
     // side by side.
+    //
+    // Named by its CONSEQUENCE, and derived from the stage. It used to be a
+    // hardcoded "Accept & dry run" beside a decorative disabled button, while
+    // confirm / dry-run / arm lived in Lifecycle & History — so a MAPPED
+    // ingress showed an accept it had already passed, and the mapping could
+    // only be created from the last place anyone looks for it.
     await waitFor(() =>
-      expect(screen.getByText('Accept & dry run')).toBeInTheDocument(),
+      expect(screen.getByText('Try it on live arrivals')).toBeInTheDocument(),
     );
+    // And ONE of them: no decorative peer beside the live action.
+    expect(screen.queryByText('Save and come back')).toBeNull();
+    expect(screen.queryByText('Accept & dry run')).toBeNull();
     expect(screen.getByText('Discard this draft')).toBeInTheDocument();
     // The header carries the design's standing claim about who acts, rather
     // than a per-button caption: saving is not something the drafter can do.

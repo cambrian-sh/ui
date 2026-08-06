@@ -28,10 +28,17 @@ import {
   continuationPort,
   insertAfter,
   removeNode,
+  renameNode,
+  setConfig,
+  setNodeLayout,
+  spliceIntoEdge,
   terminate,
   unterminate,
+  unwire,
   wire,
 } from "./pipelineEdit";
+import { lineageOf, lineageSummary, parseFieldSchema } from "./fieldSchema";
+import type { FieldSchema } from "@/ipc/types";
 
 /**
  * 15a — the canvas, read-only.
@@ -86,8 +93,18 @@ export function PipelineCanvas({
   const [terminating, setTerminating] = useState<{ node: string; port: string } | null>(null);
   const [notice, setNotice] = useState("");
   const [saving, setSaving] = useState(false);
+  /** A lifecycle move in flight (contract 0093). */
+  const [transitioning, setTransitioning] = useState(false);
+  /** Where the revision IS after a transition — the kernel's answer. */
+  const [liveState, setLiveState] = useState<string | null>(null);
+  /** The revision a save just created; lifecycle acts on it, not the stale prop. */
+  const [savedRevision, setSavedRevision] = useState<number | null>(null);
   /** Refusals from validating the DRAFT, which replace the stored ones. */
   const [draftRefusals, setDraftRefusals] = useState<PipelineRefusal[] | null>(null);
+  /** The DRAFT's field projection, from the same validate call. */
+  const [draftFields, setDraftFields] = useState<FieldSchema | null>(null);
+  /** A field being followed across the graph, if any. */
+  const [followedField, setFollowedField] = useState<string | null>(null);
 
   const isNew = starter !== null;
   const graph = useKernelQuery(
@@ -141,6 +158,43 @@ export function PipelineCanvas({
   // the draft; otherwise from the read. Showing the stored revision's refusals
   // over an edited graph would point at problems the operator had just fixed.
   const refusals = draftRefusals ?? graph.data?.refusals ?? [];
+
+  // The per-node field schema — what exists at each node, per the kernel's
+  // walk from the trigger's capture profile through every transform (contract
+  // 0091). Same source discipline as refusals: while editing, the draft's own
+  // projection from the validate call; otherwise the stored revision's. null
+  // means UNCHECKED, which the picker says in those words — an old kernel or a
+  // non-compiling draft must not read as "no fields".
+  const storedFields = useMemo(
+    () => parseFieldSchema(graph.data?.field_schema_json),
+    [graph.data?.field_schema_json],
+  );
+  const fieldSchema = editing ? draftFields : storedFields;
+
+  // Which nodes decide with an expression — lineage lights those differently.
+  const gateNodes = useMemo(() => {
+    const out = new Set<string>();
+    const walk = (s: GraphScope) => {
+      for (const n of s.nodes) {
+        if (n.kind === "choice" || n.kind === "switch") out.add(n.id);
+        if (n.body) walk(n.body);
+      }
+    };
+    if (doc) walk(doc.scope);
+    return out;
+  }, [doc]);
+
+  // Every node that touches the followed field, and how. A pure join over
+  // kernel facts — reads from the compiled AST, writes/drops from the
+  // projection — so the highlight can never claim something the runtime
+  // would not do.
+  const lineage = useMemo(
+    () =>
+      followedField !== null && fieldSchema !== null
+        ? lineageOf(fieldSchema, followedField, gateNodes)
+        : null,
+    [followedField, fieldSchema, gateNodes],
+  );
   // Which payload paths each step reads, from the compiled AST.
   const reads = useMemo(() => {
     const m = new Map<string, string[]>();
@@ -240,6 +294,10 @@ export function PipelineCanvas({
               ? [{ constraint: "", node: "", port: "", message: v.refused }]
               : v.refusals,
           );
+          // The projection rides the same answer, so the picker tracks the
+          // EDIT — a picker fed the stored revision would offer fields a map
+          // the operator just deleted used to write.
+          setDraftFields(parseFieldSchema(v.field_schema_json));
         })
         .catch(() => {
           // A validation that could not run must not read as "no refusals" —
@@ -254,6 +312,7 @@ export function PipelineCanvas({
                 "The kernel could not be reached to check this graph, so what you see is unchecked.",
             },
           ]);
+          setDraftFields(null);
         });
     }, 250);
     return () => {
@@ -284,6 +343,75 @@ export function PipelineCanvas({
     setNotice("");
   }
 
+  /** Drag-to-wire and click-to-wire share one verdict path: the compiler's. */
+  function wireRequest(from: string, port: string, to: string) {
+    if (!doc) return;
+    const verdict = canWire(doc, from, port, to);
+    if (verdict.kind === "refused") {
+      setNotice(verdict.reason);
+      return;
+    }
+    if (verdict.kind === "not-a-target") return;
+    edit((d) => wire(d, from, port, to));
+    setNotice("");
+  }
+
+  /** A grabbed pipe re-routed onto a different step. */
+  function rewire(from: string, port: string, oldTo: string, newTo: string) {
+    if (!doc) return;
+    const verdict = canWire(doc, from, port, newTo);
+    if (verdict.kind === "refused") {
+      setNotice(verdict.reason);
+      return;
+    }
+    if (verdict.kind === "not-a-target") return;
+    edit((d) => wire(unwire(d, from, port, oldTo), from, port, newTo));
+    setNotice("");
+  }
+
+  /** A pipe dropped on empty canvas, or deleted. Loud, never silent. */
+  function disconnect(from: string, port: string, to: string) {
+    edit((d) => unwire(d, from, port, to));
+    setNotice(
+      `Disconnected ${port}. Every outgoing port must go somewhere or be closed with a reason — the checker below will hold Publish until this one does.`,
+    );
+  }
+
+  /** A palette step dropped onto the canvas. */
+  function dropNode(
+    kind: string,
+    pos: { x: number; y: number },
+    attach:
+      | { type: "splice"; from: string; port: string; to: string }
+      | { type: "after"; node: string }
+      | { type: "none" },
+  ) {
+    edit((d) => {
+      if (attach.type === "splice") {
+        const { doc: next, id } = spliceIntoEdge(d, attach.from, attach.port, attach.to, kind);
+        setSelected(id);
+        setNotice("");
+        return setNodeLayout(next, id, pos);
+      }
+      if (attach.type === "after") {
+        const target = findNode(d.scope, attach.node);
+        const port = target ? continuationPort(target) : null;
+        if (target && port) {
+          const { doc: next, id } = insertAfter(d, target.id, port, kind);
+          setSelected(id);
+          setNotice("");
+          return setNodeLayout(next, id, pos);
+        }
+      }
+      const { doc: next, id } = addNode(d, kind);
+      setSelected(id);
+      setNotice(
+        "Added where you dropped it, not connected yet — drag a pipe from another step's port dot onto it, and it becomes part of the flow.",
+      );
+      return setNodeLayout(next, id, pos);
+    });
+  }
+
   function onNodeClick(nodeID: string) {
     if (wiring && doc) {
       const verdict = canWire(doc, wiring.node, wiring.port, nodeID);
@@ -311,8 +439,10 @@ export function PipelineCanvas({
         setNotice(res.refused);
         return;
       }
+      setSavedRevision(res.revision);
+      setLiveState("draft");
       setNotice(
-        `Saved as draft revision ${res.revision}. Nothing is live: publishing and arming are separate steps on the lifecycle.`,
+        `Saved as draft revision ${res.revision}. Nothing is live yet — Publish freezes it, Arm makes it live.`,
       );
       if (isNew) {
         // It exists now, so the canvas stops being a scratch surface and
@@ -322,9 +452,38 @@ export function PipelineCanvas({
       }
       setDraft(null);
       setDraftRefusals(null);
+      setDraftFields(null);
       void graph.refetch();
     } finally {
       setSaving(false);
+    }
+  }
+
+  /** Move this pipeline along its lifecycle (contract 0093). */
+  async function transition(toState: string) {
+    setTransitioning(true);
+    try {
+      const res = await ipc.transitionPipeline(
+        pipeline.pipeline_id,
+        toState,
+        savedRevision ?? pipeline.revision,
+      );
+      if (res.refused !== "") {
+        // The gate that held, in the registry's own words.
+        setNotice(res.refused);
+        return;
+      }
+      setLiveState(res.state);
+      setNotice(
+        res.state === "armed"
+          ? `Revision ${res.revision} is LIVE — every new delivery now runs through this graph.`
+          : res.state === "published"
+            ? `Revision ${res.revision} is published: frozen and inspectable, not live. Arm makes it live.`
+            : `Revision ${res.revision} is now ${res.state}.`,
+      );
+      void graph.refetch();
+    } finally {
+      setTransitioning(false);
     }
   }
 
@@ -332,6 +491,9 @@ export function PipelineCanvas({
     <div className="flex h-full min-h-0 flex-col">
       <Header
         pipeline={pipeline}
+        liveState={liveState}
+        transitioning={transitioning}
+        onTransition={(to) => void transition(to)}
         doc={doc}
         refusals={refusals}
         editing={editing}
@@ -348,18 +510,39 @@ export function PipelineCanvas({
           }
           setDraft(null);
           setDraftRefusals(null);
+          setDraftFields(null);
           setWiring(null);
           setNotice("");
         }}
         onSave={() => void save()}
       />
 
-      {(notice !== "" || wiring !== null) && (
+      {(notice !== "" || wiring !== null || followedField !== null) && (
         <div className="flex flex-wrap items-center gap-3 border-b border-[var(--border-subtle)] px-4 py-1.5">
           {wiring && (
             <span className="font-mono text-[11px] text-[var(--color-accent-400)]">
               wiring {wiring.node}.{wiring.port} — click a node to connect, or
               press the port again to cancel
+            </span>
+          )}
+          {followedField !== null && (
+            <span className="flex items-center gap-2 text-[11.5px] text-[var(--fg-secondary)]">
+              following{" "}
+              <span className="font-mono text-[11px] text-[var(--color-accent-400)]">
+                {followedField}
+              </span>
+              {lineage !== null && (
+                <span className="text-[var(--fg-muted)]">
+                  {lineageSummary(lineage)}
+                </span>
+              )}
+              <button
+                type="button"
+                className="rounded-[3px] border border-[var(--border-subtle)] px-1.5 text-[10.5px] text-[var(--fg-muted)] hover:border-[var(--border-strong)]"
+                onClick={() => setFollowedField(null)}
+              >
+                stop following
+              </button>
             </span>
           )}
           {notice !== "" && (
@@ -459,6 +642,7 @@ export function PipelineCanvas({
                   editing={editing}
                   wiring={wiring}
                   recentlyMoved={recentlyMoved}
+                  lineage={lineage}
                   onSelect={onNodeClick}
                   onPortClick={onPortClick}
                   onTerminate={(node, port) => setTerminating({ node, port })}
@@ -470,6 +654,13 @@ export function PipelineCanvas({
                     setSelected(null);
                   }}
                   onInteract={() => setPaused(true)}
+                  onWireRequest={wireRequest}
+                  onRewire={rewire}
+                  onDisconnect={disconnect}
+                  onMove={(node, position) =>
+                    edit((d) => setNodeLayout(d, node, position))
+                  }
+                  onDropNode={dropNode}
                 />
               </div>
 
@@ -503,6 +694,20 @@ export function PipelineCanvas({
           node={selectedNode}
           scope={doc?.scope ?? null}
           refusals={refusals}
+          editing={editing}
+          fields={selected ? fieldSchema?.[selected] : undefined}
+          fieldsUnchecked={fieldSchema === null}
+          onConfig={(nodeID, key, value) =>
+            edit((d) => setConfig(d, nodeID, key, value))
+          }
+          onRename={(nodeID, name) => edit((d) => renameNode(d, nodeID, name))}
+          onFollowField={(path) => setFollowedField(path)}
+          examples={
+            selected
+              ? (dry.data?.node_examples ?? []).filter((ex) => ex.node === selected)
+              : []
+          }
+          exampleSource={dry.data?.source ?? ""}
           counts={counts}
           // True only when the numbers on screen came from the dry run rather
           // than from live traffic. Live wins in the map, so the label has to
@@ -547,11 +752,65 @@ export function PipelineCanvas({
 const LIFECYCLE = ["draft", "validated", "published", "armed"];
 
 /**
+ * The next lifecycle step from where a revision stands, as one button.
+ *
+ * One action, not a menu: a draft's next step is Publish, a published
+ * revision's is Arm, an armed one's is Pause. The kernel walks any skipped
+ * gates itself and refuses by name when one holds; refusals hold Publish
+ * client-side too, because offering a button that will certainly refuse is
+ * noise wearing a control's clothes.
+ */
+function LifecycleButton({
+  state,
+  blocked,
+  refusals,
+  transitioning,
+  onTransition,
+}: {
+  state: string;
+  blocked: boolean;
+  refusals: number;
+  transitioning: boolean;
+  onTransition: (toState: string) => void;
+}) {
+  const next =
+    state === "draft" || state === "validated"
+      ? { label: "Publish", to: "published", holdOnRefusals: true }
+      : state === "published"
+        ? { label: "Arm — make it live", to: "armed", holdOnRefusals: true }
+        : state === "armed"
+          ? { label: "Pause", to: "paused", holdOnRefusals: false }
+          : null;
+  if (next === null) return null; // retired: there is no next step
+
+  const held = next.holdOnRefusals && blocked;
+  return (
+    <Button
+      size="sm"
+      disabled={held || transitioning}
+      title={
+        held
+          ? `${refusals} ${refusals === 1 ? "refusal stands" : "refusals stand"} — fix them and this unlocks`
+          : next.to === "armed"
+            ? "Arming makes this revision the live one: every new delivery runs through it"
+            : undefined
+      }
+      onClick={() => onTransition(next.to)}
+    >
+      {transitioning ? "Working…" : next.label}
+    </Button>
+  );
+}
+
+/**
  * The lifecycle as a visible track, because the operator should never have to
  * guess why Publish is dim.
  */
 function Header({
   pipeline,
+  liveState = null,
+  transitioning = false,
+  onTransition,
   doc,
   refusals,
   editing,
@@ -564,6 +823,10 @@ function Header({
   onSave,
 }: {
   pipeline: PipelineSummary;
+  /** The state after a transition this session — outranks the stale summary. */
+  liveState?: string | null;
+  transitioning?: boolean;
+  onTransition?: (toState: string) => void;
   doc: GraphDocument | null;
   refusals: PipelineRefusal[];
   editing: boolean;
@@ -575,7 +838,7 @@ function Header({
   onDiscard: () => void;
   onSave: () => void;
 }) {
-  const state = (pipeline.state || "draft").toLowerCase();
+  const state = (liveState ?? pipeline.state ?? "draft").toLowerCase();
   const at = LIFECYCLE.indexOf(state);
   const blocked = refusals.length > 0;
   const effects = doc ? countEffects(doc.scope) : pipeline.effect_node_count;
@@ -655,21 +918,20 @@ function Header({
               Edit
             </Button>
           )}
-          {/* Publish is disabled, always, and says which reason applies.
-              Arming what was just drawn would collapse four deliberate
-              lifecycle steps into one click, so it stays where each has its
-              own gate. */}
-          <Button
-            size="sm"
-            disabled
-            title={
-              blocked
-                ? `${refusals.length} ${refusals.length === 1 ? "refusal stands" : "refusals stand"}`
-                : "Publishing and arming are separate steps on the lifecycle, each with its own gate"
-            }
-          >
-            Publish
-          </Button>
+          {/* The lifecycle's own button (contract 0093). One action, phrased
+              as the NEXT step from where this revision stands: a draft
+              publishes, a published revision arms, an armed one pauses.
+              Refusals hold it — a graph that breaks rules cannot move — and
+              the kernel's gates each still get their say server-side. */}
+          {!editing && !isNew && onTransition && (
+            <LifecycleButton
+              state={state}
+              blocked={blocked}
+              refusals={refusals.length}
+              transitioning={transitioning}
+              onTransition={onTransition}
+            />
+          )}
           <Button size="sm" variant="ghost" onClick={onClose}>
             Back
           </Button>

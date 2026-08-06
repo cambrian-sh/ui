@@ -7,6 +7,8 @@ import {
   insertAfter,
   reasonsInUse,
   removeNode,
+  setNodeLayout,
+  spliceIntoEdge,
   terminate,
   unterminate,
   unwiredPorts,
@@ -210,5 +212,37 @@ describe('insertAfter', () => {
     expect(continuationPort(save)).toBe('out');
     const loop = doc().scope.nodes.find((n) => n.id === 'loop')!;
     expect(continuationPort(loop)).toBe('done');
+  });
+});
+
+describe("splice and layout", () => {
+  const doc: GraphDocument = {
+    id: "p",
+    revision: 1,
+    trigger: { type: "ingress", ingress: "usgs" },
+    scope: {
+      nodes: [
+        { id: "t", kind: "trigger" },
+        { id: "s", kind: "save_to_memory" },
+      ],
+      edges: [{ from: "t", from_port: "out", to: "s" }],
+      terminations: [],
+    },
+  };
+
+  it("splices a dropped step INTO a pipe, connected on both sides", () => {
+    const { doc: next, id } = spliceIntoEdge(doc, "t", "out", "s", "choice", () => "gate");
+    expect(id).toBe("gate");
+    expect(next.scope.edges).toContainEqual({ from: "t", from_port: "out", to: "gate" });
+    expect(next.scope.edges).toContainEqual({ from: "gate", from_port: "true", to: "s" });
+    // The original pipe is gone — the new step is IN the flow, not beside it.
+    expect(next.scope.edges).not.toContainEqual({ from: "t", from_port: "out", to: "s" });
+  });
+
+  it("keeps a dragged step where it was dropped", () => {
+    const next = setNodeLayout(doc, "s", { x: 420, y: 80 });
+    expect(next.scope.nodes.find((n) => n.id === "s")?.layout).toEqual({ x: 420, y: 80 });
+    // Nobody else moved.
+    expect(next.scope.nodes.find((n) => n.id === "t")?.layout).toBeUndefined();
   });
 });

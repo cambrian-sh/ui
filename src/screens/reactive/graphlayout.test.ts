@@ -171,3 +171,57 @@ describe("which edges are moving", () => {
     expect(recentlyMovedPorts([s({ port: "" })], "p", now).size).toBe(0);
   });
 });
+
+describe("stored positions and overlap", () => {
+  it("a stored layout wins over the automatic one, and its terminals follow", () => {
+    const doc = JSON.parse(JSON.stringify(GRAPH)) as GraphDocument;
+    doc.scope.nodes.find((n) => n.id === "gate")!.layout = { x: 900, y: 340 };
+    const { nodes } = buildGraph(input({ doc }));
+
+    const gate = nodes.find((n) => n.id === "gate")!;
+    expect(gate.position).toEqual({ x: 900, y: 340 });
+
+    // The gate's false-branch terminal moved with it rather than staying
+    // where the unmoved graph would have put it.
+    const stop = nodes.find((n) => n.id === "stop:gate.false")!;
+    expect(stop.position.x).toBeGreaterThan(900);
+    expect(Math.abs(stop.position.y - 340)).toBeLessThan(200);
+  });
+
+  it("auto-placed nodes are nudged off a stored position rather than overlapping it", () => {
+    const doc = JSON.parse(JSON.stringify(GRAPH)) as GraphDocument;
+    // Park the gate exactly where dagre puts the trigger (0-ish).
+    const { nodes: before } = buildGraph(input());
+    const t = before.find((n) => n.id === "t")!;
+    doc.scope.nodes.find((n) => n.id === "gate")!.layout = { ...t.position };
+
+    const { nodes } = buildGraph(input({ doc }));
+    const gate = nodes.find((n) => n.id === "gate")!;
+    const trigger = nodes.find((n) => n.id === "t")!;
+    // The hand-placed gate stays; the auto-placed trigger moved out of it.
+    expect(gate.position).toEqual(t.position);
+    const apart =
+      Math.abs(trigger.position.y - gate.position.y) > 100 ||
+      Math.abs(trigger.position.x - gate.position.x) > 260;
+    expect(apart).toBe(true);
+  });
+
+  it("editing makes steps draggable and pipes grabbable; reading does not", () => {
+    const editable = buildGraph(input({ editing: true }));
+    const readable = buildGraph(input({ editing: false }));
+
+    const step = editable.nodes.find((n) => n.id === "gate")!;
+    expect(step.draggable).toBe(true);
+    expect(step.deletable).toBe(true);
+    // A trigger is never deletable — a pipeline has exactly one.
+    expect(editable.nodes.find((n) => n.id === "t")!.deletable).toBe(false);
+
+    const pipe = editable.edges.find((e) => e.id === "t.out->gate")!;
+    expect(pipe.reconnectable).toBe(true);
+    expect(readable.edges.find((e) => e.id === "t.out->gate")!.reconnectable).toBe(false);
+
+    // A terminated pipe is not grabbable: it carries an authored reason.
+    const term = editable.edges.find((e) => e.id === "gate.false->stop:gate.false")!;
+    expect(term.reconnectable).toBe(false);
+  });
+});

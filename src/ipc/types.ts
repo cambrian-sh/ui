@@ -1429,6 +1429,101 @@ export interface StudioCaptureSamples {
   total: number;
 }
 
+/**
+ * ADR-0115 Source Discovery — one sentence and one endpoint instead of a form.
+ *
+ * The console renders `status` differently per value, so the epistemic
+ * distinction has to survive all the way here: `observed` and `documented` read
+ * as fact, `inferred` and `assumed` as candidates with their basis.
+ */
+export interface DiscoveryFinding {
+  field: string;
+  proposed_value: string;
+  /** observed | documented | inferred | assumed | operator_confirmed */
+  status: string;
+  confidence: number;
+  rule_id: string;
+  evidence_refs: string[];
+  explanation: string;
+  observed_at: string;
+  bounds_min: number;
+  bounds_max: number;
+}
+
+export interface DiscoveryGap {
+  field: string;
+  why: string;
+  /** A gap no further probing can close — renders as a refusal, not a to-do. */
+  refusal: boolean;
+}
+
+export interface DiscoveryQuestion {
+  id: string;
+  shape: string;
+  prompt: string;
+  options: string[];
+  path: string;
+  status: string;
+  asked_at_revision: number;
+  version: number;
+  /** Generated downstream of content Cambrian did not author. */
+  from_untrusted: boolean;
+  auth_scheme_ref: string;
+}
+
+export interface DiscoveryProposal {
+  revision: number;
+  archetype: string;
+  protocol: string;
+  format: string;
+  cadence_seconds: number;
+  /** The operator's own words the cadence was derived from. May be empty. */
+  cadence_because: string;
+  collection_root: string;
+  cursor_path: string;
+  cursor_param: string;
+  auth_scheme_ref: string;
+}
+
+export interface DiscoverySession {
+  ok: boolean;
+  error: string;
+  session_id: string;
+  /** proposed | abstained | budget_exhausted | policy_refused — all terminal successes. */
+  outcome: string;
+  reason: string;
+  findings: DiscoveryFinding[];
+  gaps: DiscoveryGap[];
+  questions: DiscoveryQuestion[];
+  proposal: DiscoveryProposal | null;
+  /** Origins discovery wanted and could not have, awaiting an operator grant. */
+  pending_origins: string[];
+  requests_used: number;
+  model_calls_used: number;
+  /**
+   * True while the loop is still going. A session that researches an API runs
+   * for minutes, so the console shows progress instead of a frozen button.
+   * There is no `outcome` yet while this is true, and saying one would be a lie.
+   */
+  running: boolean;
+  /** The trajectory so far, appended as it happens. */
+  steps: DiscoveryStep[];
+}
+
+export interface DiscoveryStep {
+  n: number;
+  /** The discovery action kind, or "" for the loop announcing what it is about to do. */
+  action: string;
+  /** A readable sentence. The console does not need to know the action vocabulary. */
+  summary: string;
+  /** Set when the controller declined the action. A refusal is not a fault. */
+  refusal: string;
+  observed_ref: string;
+  at: string;
+  /** The step running right now — what makes a slow call legible rather than a hang. */
+  in_flight: boolean;
+}
+
 /** One dry-run evaluation: a real delivery, evaluated, never preserved. */
 export interface StudioPreviewEntry {
   delivery_ref: string;
@@ -2400,6 +2495,25 @@ export interface PipelineDryRun {
    * worth doing.
    */
   elapsed_ms: number;
+  /**
+   * What was replayed (contract 0092): the archive's real deliveries, or the
+   * redacted capture samples. Over redacted samples every value is a type
+   * token and a numeric gate fails on every item — only this field lets the
+   * report blame the source rather than the graph.
+   */
+  source: string;
+  /** Real items observed per node during the replay, bounded kernel-side. */
+  node_examples: PipelineNodeExample[];
+}
+
+/** One item as one node saw it during a dry run (contract 0092). */
+export interface PipelineNodeExample {
+  node: string;
+  item_key: string;
+  /** The item's value as the node received it. */
+  value_json: string;
+  /** What the node recorded (an effect's receipt), when any. */
+  result_json: string;
 }
 
 /** One effect that would have been carried out. */
@@ -2469,6 +2583,13 @@ export interface PipelineGraph {
    * AST, so it cannot disagree with what the runtime will read.
    */
   reads: NodeReads[];
+  /**
+   * The per-node field schema (contract 0091), as JSON — parse with
+   * `parseFieldSchema`. Empty means "unchecked", never "no fields": a console
+   * that renders an empty string as zero available fields makes an unprofiled
+   * trigger look like a fieldless payload.
+   */
+  field_schema_json: string;
 }
 
 /** One node and the payload paths it reads. */
@@ -2477,6 +2598,38 @@ export interface NodeReads {
   /** Qualified by root: `item.x`, `signal.y`. `item.*` is the whole payload. */
   paths: string[];
 }
+
+/**
+ * One known payload path at a point in the graph (contract 0091).
+ *
+ * Paths are dotted and item-rooted (`properties.mag`), `*` is the array-member
+ * segment. The kernel walked these from the trigger's capture profile through
+ * every transform — the console renders them and decides nothing.
+ */
+export interface FieldSpec {
+  path: string;
+  /** "string" | "number" | "boolean" | "object" | "array" | "null" | "dynamic" */
+  types?: string[];
+  /** The node that introduced this field; "" or absent means the trigger. */
+  origin?: string;
+}
+
+/** What one node can see of the flowing item, and what it does about it. */
+export interface NodeFields {
+  /** Fields an expression on this node may read. Meaningful only when `unknown` is empty. */
+  available?: FieldSpec[];
+  /** Set when availability cannot be known here — the reason, named. */
+  unknown?: string;
+  /** Item-rooted paths this node's own expressions read. */
+  reads?: string[];
+  /** Top-level fields a map's `set` introduces or replaces. */
+  writes?: string[];
+  /** Top-level fields a map's `drop` removes. */
+  drops?: string[];
+}
+
+/** The whole projection: node id → what it sees and does. */
+export type FieldSchema = Record<string, NodeFields>;
 
 /** The compiler's answer about a graph being edited and not yet stored. */
 export interface PipelineValidation {
@@ -2490,6 +2643,12 @@ export interface PipelineValidation {
   effect_node_count: number;
   plan_checksum: string;
   semantics_checksum: string;
+  /**
+   * The per-node field schema of the DRAFT being validated — same shape as
+   * `PipelineGraph.field_schema_json`, so the picker tracks the edit rather
+   * than the revision it started from. Empty when the draft does not compile.
+   */
+  field_schema_json: string;
 }
 
 // ── The graph document, as the canvas reads it ──────────────────────────────
@@ -2504,6 +2663,12 @@ export interface GraphNode {
   config?: Record<string, unknown>;
   /** A structured-control node owns a nested scope. */
   body?: GraphScope;
+  /**
+   * Canvas position, stored with the pipeline (kernel `Node.Layout`). A
+   * diagram that re-lays-out on every load is not the operator's diagram.
+   * Semantically inert: excluded from the plan checksum kernel-side.
+   */
+  layout?: { x: number; y: number };
 }
 
 export interface GraphEdge {
@@ -2542,6 +2707,19 @@ export interface GraphDocument {
   scope: GraphScope;
 }
 
+/** The outcome of moving a revision along its lifecycle (contract 0093). */
+export interface PipelineTransitioned {
+  /**
+   * The gate that held, in the registry's own words. The revision is
+   * untouched when set.
+   */
+  refused: string;
+  pipeline_id: string;
+  revision: number;
+  /** Where the revision IS now — the store's answer, never an echo. */
+  state: string;
+}
+
 /** The outcome of storing an edited graph (kernel contract 0090). */
 export interface PipelineSaved {
   /** Set when nothing was stored at all. */
@@ -2557,4 +2735,19 @@ export interface PipelineSaved {
    * not Save.
    */
   refusals: PipelineRefusal[];
+}
+
+/** One item's passage through one node — what the inspector shows. */
+export interface NodeItem {
+  run_id: string;
+  item_key: string;
+  state: string;
+  attempt: number;
+  /** The envelope consumed and what it produced, as JSON strings. */
+  input_json: string;
+  result_json: string;
+  error: string;
+  evidence_ref: string;
+  updated_at: string;
+  iter_path: string;
 }

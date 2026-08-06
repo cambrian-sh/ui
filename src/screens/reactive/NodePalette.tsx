@@ -32,14 +32,19 @@ export function NodePalette({
     <aside className="hidden w-[186px] shrink-0 flex-col border-r border-[var(--border-subtle)] lg:flex">
       {canAdd && (
         <p className="border-b border-[var(--border-subtle)] px-3 py-2 text-[10.5px] leading-[1.5] text-[var(--fg-muted)]">
+          <span className="text-[var(--fg-secondary)]">
+            Drag a step onto the canvas
+          </span>{" "}
+          — drop it on a pipe to add it into that flow, connected on both
+          sides.{" "}
           {after !== null ? (
             <>
-              Adds after{" "}
+              Clicking adds after{" "}
               <span className="text-[var(--color-accent-400)]">{after}</span>,
               wired in.
             </>
           ) : (
-            "Select a step first and the next one lands after it, wired in."
+            "Clicking adds after the selected step."
           )}
         </p>
       )}
@@ -103,11 +108,19 @@ export function NodePalette({
                           <button
                             type="button"
                             draggable
-                            onDragStart={(e) =>
-                              e.dataTransfer.setData("text/plain", s.kind)
-                            }
+                            onDragStart={(e) => {
+                              // Both types: ours for the canvas' drop handler,
+                              // plain text so dragging anywhere else degrades
+                              // to pasting the kind rather than to nothing.
+                              e.dataTransfer.setData(
+                                "application/cambrian-node-kind",
+                                s.kind,
+                              );
+                              e.dataTransfer.setData("text/plain", s.kind);
+                              e.dataTransfer.effectAllowed = "move";
+                            }}
                             onClick={() => onAdd!(s.kind)}
-                            className={`${shell} w-full text-left hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)]`}
+                            className={`${shell} w-full cursor-grab text-left hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)] active:cursor-grabbing`}
                             style={style}
                           >
                             {body}

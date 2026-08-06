@@ -142,6 +142,106 @@ pub struct StudioCaptureSamples {
     pub total: i32,
 }
 
+/// ADR-0115 Source Discovery.
+///
+/// The five calls are separate because the CAPABILITIES are separate:
+/// `approve_origin` is not implied by `run`, and `accept_proposal` is not
+/// implied by `answer`. Collapsing them into one "do discovery" command here
+/// would put the split back together at the only layer an operator touches.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DiscoveryFinding {
+    pub field: String,
+    pub proposed_value: String,
+    /// observed | documented | inferred | assumed | operator_confirmed.
+    /// The console renders the first two as fact and the rest as candidates, so
+    /// the distinction has to survive the wire.
+    pub status: String,
+    pub confidence: f64,
+    pub rule_id: String,
+    pub evidence_refs: Vec<String>,
+    pub explanation: String,
+    pub observed_at: String,
+    pub bounds_min: i32,
+    pub bounds_max: i32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DiscoveryGap {
+    pub field: String,
+    pub why: String,
+    /// A gap no further probing can close, because the transport schema cannot
+    /// express the answer. Renders as a refusal, not as a to-do.
+    pub refusal: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DiscoveryQuestion {
+    pub id: String,
+    pub shape: String,
+    pub prompt: String,
+    pub options: Vec<String>,
+    pub path: String,
+    pub status: String,
+    pub asked_at_revision: i32,
+    pub version: i32,
+    /// Generated downstream of content Cambrian did not author. Marked so
+    /// "paste your token here" can never look like it originated here.
+    pub from_untrusted: bool,
+    pub auth_scheme_ref: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DiscoveryProposal {
+    pub revision: i32,
+    pub archetype: String,
+    pub protocol: String,
+    pub format: String,
+    pub cadence_seconds: i32,
+    /// The operator's own words the cadence was derived from.
+    pub cadence_because: String,
+    pub collection_root: String,
+    pub cursor_path: String,
+    pub cursor_param: String,
+    pub auth_scheme_ref: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DiscoverySession {
+    pub ok: bool,
+    pub error: String,
+    pub session_id: String,
+    /// proposed | abstained | budget_exhausted | policy_refused. Every one is a
+    /// terminal SUCCESS: the session stopped saying something true.
+    pub outcome: String,
+    pub reason: String,
+    pub findings: Vec<DiscoveryFinding>,
+    pub gaps: Vec<DiscoveryGap>,
+    pub questions: Vec<DiscoveryQuestion>,
+    pub proposal: Option<DiscoveryProposal>,
+    pub pending_origins: Vec<String>,
+    pub requests_used: i32,
+    pub model_calls_used: i32,
+    /// True while the loop is still going. A session that researches an API runs
+    /// for minutes, so the console shows work in progress rather than a frozen
+    /// button.
+    pub running: bool,
+    /// The trajectory so far, appended as it happens.
+    pub steps: Vec<DiscoveryStep>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DiscoveryStep {
+    pub n: i32,
+    pub action: String,
+    pub summary: String,
+    pub refusal: String,
+    pub observed_ref: String,
+    pub at: String,
+    /// The step being executed right now. Without it a slow model call is
+    /// indistinguishable from a hung session.
+    pub in_flight: bool,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StudioPreviewEntry {
     pub delivery_ref: String,
@@ -435,6 +535,141 @@ impl Transport {
         Ok(StudioCaptureSamples { bodies_json: c.bodies_json, total: c.total })
     }
 
+    pub async fn studio_start_discovery(
+        &self,
+        ingress_id: String,
+        intent: String,
+        endpoint: String,
+    ) -> Result<DiscoverySession, String> {
+        let mut client = self.studio_client().await?;
+        let r = client
+            .start_discovery(Request::new(pb::ingress::StartDiscoveryRequest {
+                ingress_id,
+                intent,
+                endpoint,
+            }))
+            .await
+            .map_err(map_status)?
+            .into_inner();
+        Ok(discovery_session_from(r))
+    }
+
+    pub async fn studio_get_discovery(
+        &self,
+        ingress_id: String,
+        session_id: String,
+    ) -> Result<DiscoverySession, String> {
+        let mut client = self.studio_client().await?;
+        let r = client
+            .get_discovery_session(Request::new(pb::ingress::DiscoverySessionRef {
+                ingress_id,
+                session_id,
+            }))
+            .await
+            .map_err(map_status)?
+            .into_inner();
+        Ok(discovery_session_from(r))
+    }
+
+    pub async fn studio_answer_discovery(
+        &self,
+        ingress_id: String,
+        session_id: String,
+        question_id: String,
+        answer: String,
+        expected_version: i32,
+        proposal_revision: i32,
+        idempotency_key: String,
+    ) -> Result<StudioAck, String> {
+        let mut client = self.studio_client().await?;
+        let a = client
+            .answer_discovery_question(Request::new(
+                pb::ingress::AnswerDiscoveryQuestionRequest {
+                    ingress_id,
+                    session_id,
+                    question_id,
+                    answer,
+                    expected_version,
+                    proposal_revision,
+                    idempotency_key,
+                    rebase: false,
+                },
+            ))
+            .await
+            .map_err(map_status)?
+            .into_inner();
+        Ok(StudioAck { ok: a.ok, error: a.error, detail: a.detail })
+    }
+
+    /// Its own call because it is its own right: a newly discovered origin is
+    /// never pre-approved, and the grant is exact — scheme, host AND port.
+    pub async fn studio_approve_origin(
+        &self,
+        ingress_id: String,
+        session_id: String,
+        scheme: String,
+        host: String,
+        port: String,
+    ) -> Result<StudioAck, String> {
+        let mut client = self.studio_client().await?;
+        let a = client
+            .approve_discovery_origin(Request::new(
+                pb::ingress::ApproveDiscoveryOriginRequest {
+                    ingress_id,
+                    session_id,
+                    scheme,
+                    host,
+                    port,
+                },
+            ))
+            .await
+            .map_err(map_status)?
+            .into_inner();
+        Ok(StudioAck { ok: a.ok, error: a.error, detail: a.detail })
+    }
+
+    pub async fn studio_accept_discovery(
+        &self,
+        ingress_id: String,
+        session_id: String,
+    ) -> Result<StudioSaveResult, String> {
+        let mut client = self.studio_client().await?;
+        let r = client
+            .accept_discovery_proposal(Request::new(pb::ingress::DiscoverySessionRef {
+                ingress_id,
+                session_id,
+            }))
+            .await
+            .map_err(map_status)?
+            .into_inner();
+        Ok(StudioSaveResult { ok: r.ok, error: r.error, revision: r.revision })
+    }
+
+    /// Send the operator's own words back to the discovery agent.
+    ///
+    /// Not an accept and not a reject. A proposal usually arrives with one field
+    /// wrong and the rest right, and neither existing verb covers that: reject
+    /// discards a run that already asked a human questions, accept arms the
+    /// mistake. The comment re-enters the agent, which revises.
+    pub async fn studio_comment_discovery(
+        &self,
+        ingress_id: String,
+        session_id: String,
+        comment: String,
+    ) -> Result<StudioAck, String> {
+        let mut client = self.studio_client().await?;
+        let r = client
+            .comment_on_proposal(Request::new(pb::ingress::CommentOnProposalRequest {
+                ingress_id,
+                session_id,
+                comment,
+            }))
+            .await
+            .map_err(map_status)?
+            .into_inner();
+        Ok(StudioAck { ok: r.ok, error: r.error, detail: r.detail })
+    }
+
     pub async fn studio_preview(&self, ingress_id: String) -> Result<Vec<StudioPreviewEntry>, String> {
         let mut client = self.studio_client().await?;
         let p = client
@@ -562,5 +797,88 @@ impl Transport {
                 finished_at: x.finished_at,
             })
             .collect())
+    }
+}
+
+
+/// Maps the proto session onto the UI shape.
+///
+/// Written out rather than derived so the epistemic status, the refusal flag and
+/// the untrusted marker are each visibly carried. Those three are the fields the
+/// console renders differently, and a silent rename would degrade them to
+/// ordinary text without anything failing.
+fn discovery_session_from(r: pb::ingress::DiscoverySession) -> DiscoverySession {
+    DiscoverySession {
+        running: r.running,
+        steps: r
+            .steps
+            .into_iter()
+            .map(|s| DiscoveryStep {
+                n: s.n,
+                action: s.action,
+                summary: s.summary,
+                refusal: s.refusal,
+                observed_ref: s.observed_ref,
+                at: s.at,
+                in_flight: s.in_flight,
+            })
+            .collect(),
+        ok: r.ok,
+        error: r.error,
+        session_id: r.session_id,
+        outcome: r.outcome,
+        reason: r.reason,
+        findings: r
+            .findings
+            .into_iter()
+            .map(|f| DiscoveryFinding {
+                field: f.field,
+                proposed_value: f.proposed_value,
+                status: f.status,
+                confidence: f.confidence,
+                rule_id: f.rule_id,
+                evidence_refs: f.evidence_refs,
+                explanation: f.explanation,
+                observed_at: f.observed_at,
+                bounds_min: f.bounds_min,
+                bounds_max: f.bounds_max,
+            })
+            .collect(),
+        gaps: r
+            .gaps
+            .into_iter()
+            .map(|g| DiscoveryGap { field: g.field, why: g.why, refusal: g.refusal })
+            .collect(),
+        questions: r
+            .questions
+            .into_iter()
+            .map(|q| DiscoveryQuestion {
+                id: q.id,
+                shape: q.shape,
+                prompt: q.prompt,
+                options: q.options,
+                path: q.path,
+                status: q.status,
+                asked_at_revision: q.asked_at_revision,
+                version: q.version,
+                from_untrusted: q.from_untrusted,
+                auth_scheme_ref: q.auth_scheme_ref,
+            })
+            .collect(),
+        proposal: r.proposal.map(|p| DiscoveryProposal {
+            revision: p.revision,
+            archetype: p.archetype,
+            protocol: p.protocol,
+            format: p.format,
+            cadence_seconds: p.cadence_seconds,
+            cadence_because: p.cadence_because.clone(),
+            collection_root: p.collection_root,
+            cursor_path: p.cursor_path,
+            cursor_param: p.cursor_param,
+            auth_scheme_ref: p.auth_scheme_ref,
+        }),
+        pending_origins: r.pending_origins,
+        requests_used: r.requests_used,
+        model_calls_used: r.model_calls_used,
     }
 }

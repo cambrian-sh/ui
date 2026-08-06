@@ -10,10 +10,12 @@ import { Receipt, Precondition, OpenStage, ReceiptNote } from "./StageRows";
 import { MappingStage } from "./MappingStage";
 import { RevisionStage } from "./RevisionStage";
 import { EvidencePane } from "./EvidencePane";
+import { DiscoverSource } from "./DiscoverSource";
 import {
   buildStages,
   isLive,
   nextAction,
+  primaryAction,
   revisingRevision,
 } from "./studioStages";
 import {
@@ -97,19 +99,34 @@ export function StudioColumn({
 
   const draft = useMutation(ipc.studioDraftMapping);
   const save = useMutation(ipc.studioSaveSpec);
+  const arm = useMutation(ipc.studioArm);
 
   const samples = capture.data?.samples ?? 0;
   const profile = useMemo<SchemaProfile | null>(
     () => parseJson<SchemaProfile>(capture.data?.profile_json),
     [capture.data?.profile_json],
   );
+  // The SAVED mapping, not just one drafted in this browser session.
+  //
+  // `spec` came only from `result` — the output of a draft the operator had
+  // triggered themselves. So a mapping produced any other way was invisible:
+  // after ConfirmMapping started drafting on the operator's behalf, the pane it
+  // was meant to be reviewed in showed nothing at all, and the only way to see
+  // what was about to be armed was to read Postgres.
+  const savedRevision = status?.latest_mapping_revision ?? 0;
+  const saved = useKernelQuery(
+    ["studio", "mapping-revision", ingressId, savedRevision],
+    () => ipc.studioGetRevision("mapping", ingressId, savedRevision),
+    { enabled: savedRevision > 0, staleTime: 0 },
+  );
   const coverage = useMemo<Coverage | null>(
     () => parseJson<Coverage>(result?.coverage_json),
     [result?.coverage_json],
   );
+  // A draft in flight wins; otherwise show what is actually stored.
   const spec = useMemo<MappingSpec | null>(
-    () => parseJson<MappingSpec>(result?.spec_json),
-    [result?.spec_json],
+    () => parseJson<MappingSpec>(result?.spec_json ?? saved.data?.spec_json),
+    [result?.spec_json, saved.data?.spec_json],
   );
 
   const abstentions = result?.field_abstentions?.length ?? 0;
@@ -123,18 +140,47 @@ export function StudioColumn({
   );
   const action = nextAction({ summary, abstentions, hasProposal });
 
-  const accept = async () => {
-    if (!result) return;
-    const res = await save.mutate("mapping", ingressId, result.spec_json);
-    if (res?.ok) {
-      setNotice(
-        `Saved as mapping revision ${res.revision}. Nothing is armed by saving — the dry-run stage opens next.`,
+  const primary = useMemo(
+    () => primaryAction({ summary, abstentions, samples }),
+    [summary, abstentions, samples],
+  );
+
+  /**
+   * Runs the one action for the stage.
+   *
+   * An in-session draft is SAVED first: an operator who redrafted and is looking
+   * at the result means that one, and confirming without saving it would map
+   * from the revision they had just replaced.
+   */
+  const runPrimary = async () => {
+    setNotice("");
+    if (primary.kind === "confirm_mapping" && hasProposal && result?.spec_json) {
+      const saved = await save.mutate("mapping", ingressId, result.spec_json);
+      if (!saved?.ok) {
+        setNotice(saved?.error ?? "the mapping could not be saved");
+        return;
+      }
+    }
+    if (primary.kind === "arm") {
+      const res = await arm.mutate(
+        ingressId,
+        status?.latest_transport_revision ?? 0,
+        status?.latest_mapping_revision ?? 0,
+        "armed from the studio",
       );
+      setNotice(res?.ok ? (res.detail || "Armed.") : (res?.error ?? ""));
+      onChanged();
+      return;
+    }
+    const res = await lifecycle.mutate(primary.kind, ingressId, "");
+    if (res?.ok) {
+      setNotice(res.detail || "");
       onChanged();
     } else if (res) {
       setNotice(res.error);
     }
   };
+
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -329,6 +375,22 @@ export function StudioColumn({
                 );
               }
 
+              // ADR-0115: the source stage is no longer a form. An operator
+              // says what they want and where it is, and discovery proposes the
+              // transport — which is the one stage turn 17 called "the only
+              // place you type into a blank".
+              if (stage.id === "source") {
+                return (
+                  <OpenStage
+                    key={stage.id}
+                    stage={stage}
+                    note="a sentence and an endpoint — Cambrian proposes, you accept"
+                  >
+                    <DiscoverSource ingressId={ingressId} onChanged={onChanged} />
+                  </OpenStage>
+                );
+              }
+
               return (
                 <OpenStage key={stage.id} stage={stage}>
                   <p className="text-[11.5px] leading-[1.6] text-[var(--fg-muted)]">
@@ -381,24 +443,29 @@ export function StudioColumn({
               )}
             />
             <div className="min-w-0 flex-1">
-              <div className="text-[12.5px] font-medium">{action.headline}</div>
+              <div className="text-[12.5px] font-medium">
+                {primary.blocked !== "" ? primary.blocked : action.headline}
+              </div>
               <div className="text-[11.5px] text-[var(--fg-muted)]">
                 nothing has been stored yet — saving, arming and promoting are
                 human actions
               </div>
             </div>
-            <Button size="sm" variant="ghost" disabled>
-              Save and come back
-            </Button>
-            <Button
-              size="sm"
-              variant="secondary"
-              onClick={accept}
-              disabled={!hasProposal || readOnly || save.isLoading}
-              className={cn(!hasProposal && "opacity-45")}
-            >
-              {save.isLoading ? "Saving…" : "Accept & dry run"}
-            </Button>
+            {/* ONE action, named by what it will do.
+                There used to be a decorative disabled button beside a hardcoded
+                "Accept & dry run", while confirm / dry-run / arm lived in
+                Lifecycle & History — so the mapping could only be created from
+                the last place anyone looks for it. */}
+            {primary.kind !== "none" && (
+              <Button
+                size="sm"
+                variant={primary.kind === "arm" ? "default" : "secondary"}
+                onClick={runPrimary}
+                disabled={readOnly || primary.blocked !== "" || lifecycle.isLoading || arm.isLoading || save.isLoading}
+              >
+                {lifecycle.isLoading || arm.isLoading || save.isLoading ? "Working…" : primary.label}
+              </Button>
+            )}
           </div>
         </div>
 
@@ -439,7 +506,7 @@ function panelFor(id: string): "specs" | "overview" | "operations" {
 function stageFallback(id: string): string {
   switch (id) {
     case "source":
-      return "Declaring the transport is the one stage that is a form, and it still lives on the specs surface — everything after it is review rather than typing.";
+      return "Say what you want and where it is; Cambrian inspects the source and proposes how to read it.";
     case "capture":
       return "Capture is running. Arrivals are counted in the receipt above and the schema profile builds beside it as deliveries land — a field appears the moment its shape is first seen.";
     case "dryrun":

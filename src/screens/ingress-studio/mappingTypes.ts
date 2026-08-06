@@ -47,6 +47,8 @@ export interface ValueSource {
 export interface Observation {
   predicate?: string;
   value?: ValueSource;
+  /** How the fact is stored. `text` on a numeric field is the cheap mistake. */
+  value_type?: string;
 }
 
 export interface MappingSpec {

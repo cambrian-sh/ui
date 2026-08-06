@@ -264,6 +264,49 @@ export function removeNode(doc: GraphDocument, nodeID: string): GraphDocument {
   }));
 }
 
+/**
+ * Move a node — the drag's landing place, stored WITH the graph.
+ *
+ * The kernel's model already carries this (`Node.Layout`, checksum-inert); the
+ * canvas simply never wrote it. Persisting it is what makes the diagram the
+ * operator arranged the diagram they get back.
+ */
+export function setNodeLayout(
+  doc: GraphDocument,
+  nodeID: string,
+  layout: { x: number; y: number },
+): GraphDocument {
+  return mapScope(doc, (s) => ({
+    ...s,
+    nodes: s.nodes.map((n) => (n.id === nodeID ? { ...n, layout } : n)),
+  }));
+}
+
+/**
+ * Add a node INTO a specific pipe: A ──port──▶ B becomes A ─▶ new ─▶ B.
+ *
+ * The drop-on-an-edge gesture. Same contract as insertAfter — the downstream
+ * stays attached — but for ONE named edge rather than everything the port
+ * feeds, because dropping onto a single pipe is a statement about that pipe.
+ */
+export function spliceIntoEdge(
+  doc: GraphDocument,
+  from: string,
+  fromPort: string,
+  to: string,
+  kind: string,
+  newID: () => string = defaultID,
+): { doc: GraphDocument; id: string } {
+  const { doc: withNode, id } = addNode(doc, kind, newID);
+  let next = unwire(withNode, from, fromPort, to);
+  next = wire(next, from, fromPort, id);
+  const out = outputPorts({ id, kind })[0];
+  if (out) {
+    next = wire(next, id, out, to);
+  }
+  return { doc: next, id };
+}
+
 /** Rename a node. The id never changes — effect keys are derived from it. */
 export function renameNode(
   doc: GraphDocument,

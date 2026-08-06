@@ -271,3 +271,72 @@ export function nextAction({
       return { headline: "Read what arming will do, then arm it.", blocked: false };
   }
 }
+
+/** The one thing to do at the stage you are standing in. */
+export interface PrimaryAction {
+  /** Named by its CONSEQUENCE, never by the transition it performs. */
+  label: string;
+  /** The lifecycle verb, or "arm" / "accept" for the two that are not one. */
+  kind: "start_capture" | "confirm_mapping" | "start_dry_run" | "arm" | "pause" | "resume" | "none";
+  /** Why it cannot be pressed yet. Empty when it can. */
+  blocked: string;
+}
+
+/**
+ * primaryAction collapses the accept ladder to ONE decision per stage.
+ *
+ * Getting from samples to armed used to be: accept the draft, confirm the
+ * mapping, start the dry run, accept & dry run, arm. Five actions, three of them
+ * ("accept", "confirm", "arm") meaning roughly yes — and they were spread across
+ * two panes, so the mapping could only be created from Lifecycle & History,
+ * which is the last place anyone looks for it.
+ *
+ * The lifecycle already enforces the order. The UI should not ALSO make an
+ * operator choose the verb, so this names each action by what it will do and
+ * leaves exactly one live at a time.
+ *
+ * Deliberately NOT collapsed: arming stays its own decision. "Nothing is armed
+ * until you accept" is a real property, and the release/pin invariant refuses to
+ * re-pin under a live ingress for a real reason. Fewer, clearer decisions — not
+ * fewer gates.
+ */
+export function primaryAction({
+  summary,
+  abstentions,
+  samples,
+}: {
+  summary: StudioIngress;
+  abstentions: number;
+  samples: number;
+}): PrimaryAction {
+  switch (summary.state) {
+    case "DRAFT":
+      return { label: "Start capturing", kind: "start_capture", blocked: "" };
+    case "CAPTURING":
+      if (samples === 0) {
+        return {
+          label: "Use this mapping",
+          kind: "confirm_mapping",
+          blocked: "Nothing has arrived yet. You cannot map a source you have not seen.",
+        };
+      }
+      if (abstentions > 0) {
+        return {
+          label: "Use this mapping",
+          kind: "confirm_mapping",
+          blocked: `${abstentions === 1 ? "One decision" : `${abstentions} decisions`} left — each changes what gets stored.`,
+        };
+      }
+      return { label: "Use this mapping", kind: "confirm_mapping", blocked: "" };
+    case "MAPPED":
+      return { label: "Try it on live arrivals", kind: "start_dry_run", blocked: "" };
+    case "DRY_RUN":
+      return { label: "Arm it — it starts writing", kind: "arm", blocked: "" };
+    case "ARMED":
+      return { label: "Pause it", kind: "pause", blocked: "" };
+    case "PAUSED":
+      return { label: "Resume", kind: "resume", blocked: "" };
+    default:
+      return { label: "", kind: "none", blocked: "" };
+  }
+}

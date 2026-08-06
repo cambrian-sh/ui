@@ -67,6 +67,14 @@ export type StepData = {
   /** Set while a wire is being drawn from somewhere, for the target verdict. */
   wiring: { node: string; port: string } | null;
   depth: number;
+  /**
+   * How this node touches the followed field, when one is being followed.
+   * null while following means: this node does NOT touch it — dimmed, which is
+   * what makes the ones that do readable at a glance.
+   */
+  lineage?: string | null;
+  /** True when a field is being followed at all. */
+  following?: boolean;
 };
 
 export type StopData = {
@@ -119,6 +127,8 @@ export type BuildInput = {
   hasConfigLine: (n: GraphNode) => boolean;
   /** Items seen on this port since the kernel started, for the edge label. */
   recentlyMoved: Set<string>;
+  /** node id → how it touches the followed field. null = nothing followed. */
+  lineage?: Map<string, string> | null;
 };
 
 export function buildGraph(input: BuildInput): { nodes: Node[]; edges: Edge[] } {
@@ -167,6 +177,12 @@ export function buildGraph(input: BuildInput): { nodes: Node[]; edges: Edge[] } 
         position: { x: 0, y: 0 },
         sourcePosition: Position.Right,
         targetPosition: Position.Left,
+        // Dragging is editing: positions persist into the draft. Body nodes
+        // stay where dagre puts them — their coordinate space is the group's.
+        draggable: input.editing && groupID === null,
+        // The delete key removes a selected step the same way the button does;
+        // a trigger is never deletable — a pipeline has exactly one.
+        deletable: input.editing && node.kind !== "trigger",
         data: {
           kind: "step",
           node,
@@ -183,6 +199,8 @@ export function buildGraph(input: BuildInput): { nodes: Node[]; edges: Edge[] } 
           editing: input.editing,
           wiring: input.wiring,
           depth,
+          following: input.lineage != null,
+          lineage: input.lineage?.get(node.id) ?? null,
         } satisfies StepData,
       });
 
@@ -204,6 +222,10 @@ export function buildGraph(input: BuildInput): { nodes: Node[]; edges: Edge[] } 
           type: "stop",
           position: { x: 0, y: 0 },
           targetPosition: Position.Left,
+          // A terminal is a rendering of its owner's port, not a thing of its
+          // own: it moves with the owner and cannot be dragged or deleted.
+          draggable: false,
+          deletable: false,
           data: {
             kind: "stop",
             reason: t ? t.reason : null,
@@ -228,6 +250,8 @@ export function buildGraph(input: BuildInput): { nodes: Node[]; edges: Edge[] } 
           id: gid,
           type: "group",
           position: { x: 0, y: 0 },
+          draggable: false,
+          deletable: false,
           data: { kind: "group", label: "body · runs once per iteration" } satisfies GroupData,
           style: { zIndex: -1 },
         });
@@ -267,7 +291,82 @@ export function buildGraph(input: BuildInput): { nodes: Node[]; edges: Edge[] } 
     }
   }
 
+  // STORED POSITIONS WIN. The model has always said so (`Node.Layout`: "a
+  // diagram that re-lays-out on every load is not the operator's diagram");
+  // dagre is the default for nodes nobody has placed, not an override of the
+  // ones somebody has. Top-level nodes only: a loop body's coordinate space is
+  // its group's, which dagre owns.
+  const placed = new Map<string, { x: number; y: number }>();
+  for (const n of nodes) {
+    if (n.type !== "step" || parentOf.has(n.id)) continue;
+    const stored = (n.data as StepData).node.layout;
+    if (stored && (stored.x !== 0 || stored.y !== 0)) {
+      n.position = { x: stored.x, y: stored.y };
+      placed.set(n.id, n.position);
+    }
+  }
+  // A moved node takes its terminals with it. A stop is a destination OF that
+  // node; leaving it where dagre put the unmoved graph draws a pipe across the
+  // whole canvas to say "this port stops here".
+  for (const n of nodes) {
+    if (n.type !== "stop") continue;
+    const d = n.data as StopData;
+    const owner = placed.get(d.owner);
+    if (!owner) continue;
+    const ownerH = abs.get(d.owner)?.h ?? 120;
+    const siblings = nodes.filter(
+      (s) => s.type === "stop" && (s.data as StopData).owner === d.owner,
+    );
+    const at = siblings.indexOf(n);
+    n.position = {
+      x: owner.x + CARD_W + 72,
+      y: owner.y + Math.max(0, ownerH / 2 - 22) + at * (STOP_H + 12),
+    };
+  }
+
+  // NOTHING OVERLAPS BY DEFAULT. Auto-placed nodes are nudged out of any
+  // intersection — with each other or with a stored position. Hand-placed
+  // nodes are never moved: where the operator put something is a fact this
+  // pass has no business editing.
+  resolveOverlaps(nodes, placed, parentOf);
+
   return { nodes, edges };
+}
+
+/** Push auto-placed top-level nodes down until nothing intersects. */
+function resolveOverlaps(
+  nodes: Node[],
+  placed: Map<string, { x: number; y: number }>,
+  parentOf: Map<string, string>,
+  margin = 14,
+) {
+  const boxes = nodes.filter(
+    (n) => (n.type === "step" || n.type === "stop") && !parentOf.has(n.id),
+  );
+  const w = (n: Node) => (n.type === "stop" ? STOP_W : CARD_W);
+  const h = (n: Node) => (n.type === "stop" ? STOP_H : 120);
+  for (let pass = 0; pass < 10; pass++) {
+    let moved = false;
+    for (let i = 0; i < boxes.length; i++) {
+      for (let j = 0; j < boxes.length; j++) {
+        if (i === j) continue;
+        const a = boxes[i];
+        const b = boxes[j];
+        if (placed.has(b.id)) continue; // never move a hand-placed node
+        const overlapX =
+          a.position.x < b.position.x + w(b) + margin &&
+          b.position.x < a.position.x + w(a) + margin;
+        const overlapY =
+          a.position.y < b.position.y + h(b) + margin &&
+          b.position.y < a.position.y + h(a) + margin;
+        if (overlapX && overlapY) {
+          b.position = { x: b.position.x, y: a.position.y + h(a) + margin };
+          moved = true;
+        }
+      }
+    }
+    if (!moved) break;
+  }
 }
 
 function portEdge(
@@ -285,6 +384,14 @@ function portEdge(
     sourceHandle: port,
     target: to,
     type: "smoothstep",
+    // A pipe can be GRABBED while editing: drag its arrow end onto another
+    // node to re-route it, or drop it on empty canvas to disconnect it. A
+    // terminated pipe is not grabbable — it carries an authored reason, and
+    // silently discarding a reason is a bigger change than a drag should make.
+    reconnectable: input.editing && opts.terminated !== true,
+    // Only a real pipe between two steps can be deleted; the synthetic ones
+    // into terminals are a rendering of absence, not a thing to remove.
+    deletable: input.editing && !opts.terminated && !opts.dead,
     // Animated ONLY where something actually moved. An animated edge with no
     // traffic on it is the same lie as a pulsing dot on an idle pipeline — and
     // it is the lie that makes people stop trusting the whole view.

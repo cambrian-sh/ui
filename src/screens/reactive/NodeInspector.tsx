@@ -1,7 +1,15 @@
+import { NodeItems } from "./NodeItems";
 import { Button, ScrollArea } from "@/design-system/components";
 import { cn } from "@/design-system/lib/utils";
-import type { GraphNode, GraphScope, PipelineRefusal } from "@/ipc/types";
+import type {
+  GraphNode,
+  GraphScope,
+  NodeFields,
+  PipelineNodeExample,
+  PipelineRefusal,
+} from "@/ipc/types";
 import { configLines } from "./nodeConfig";
+import { NodeEditor, FieldPicker } from "./NodeEditor";
 import { StepFlow } from "./StepFlow";
 import { ItemHistory } from "./ItemHistory";
 import {
@@ -32,6 +40,14 @@ export function NodeInspector({
   onSelectItem,
   onSelectNode,
   seenHere = null,
+  editing = false,
+  fields,
+  fieldsUnchecked = true,
+  onConfig,
+  onRename,
+  onFollowField,
+  examples = [],
+  exampleSource = "",
 }: {
   node: GraphNode | null;
   scope: GraphScope | null;
@@ -46,6 +62,20 @@ export function NodeInspector({
   onSelectNode?: (nodeID: string) => void;
   /** How many items the live counters have seen at the selected node. */
   seenHere?: number | null;
+  /** When true the panel edits the node rather than describing it. */
+  editing?: boolean;
+  /** The kernel's field projection AT this node (contract 0091). */
+  fields?: NodeFields;
+  /** True when no projection exists at all — rendered as "unchecked". */
+  fieldsUnchecked?: boolean;
+  onConfig?: (nodeID: string, key: string, value: unknown) => void;
+  onRename?: (nodeID: string, name: string) => void;
+  /** Follow a field across the graph (lineage). */
+  onFollowField?: (path: string) => void;
+  /** Real items this node received, from the dry run (contract 0092). */
+  examples?: PipelineNodeExample[];
+  /** What the dry run replayed — archived deliveries or redacted captures. */
+  exampleSource?: string;
 }) {
   return (
     <aside className="hidden w-[400px] shrink-0 border-l border-[var(--border-subtle)] xl:block">
@@ -79,6 +109,14 @@ export function NodeInspector({
               pipelineID={pipelineID}
               onSelectItem={onSelectItem}
               seenHere={seenHere}
+              editing={editing}
+              fields={fields}
+              fieldsUnchecked={fieldsUnchecked}
+              onConfig={onConfig}
+              onRename={onRename}
+              onFollowField={onFollowField}
+              examples={examples}
+              exampleSource={exampleSource}
             />
           )}
         </div>
@@ -97,6 +135,14 @@ function Detail({
   pipelineID,
   onSelectItem,
   seenHere = null,
+  editing = false,
+  fields,
+  fieldsUnchecked = true,
+  onConfig,
+  onRename,
+  onFollowField,
+  examples = [],
+  exampleSource = "",
 }: {
   node: GraphNode;
   scope: GraphScope | null;
@@ -108,10 +154,34 @@ function Detail({
   onSelectItem?: (itemKey: string | null) => void;
   /** How many items the live counters have seen at this node. */
   seenHere?: number | null;
+  editing?: boolean;
+  fields?: NodeFields;
+  fieldsUnchecked?: boolean;
+  onConfig?: (nodeID: string, key: string, value: unknown) => void;
+  onRename?: (nodeID: string, name: string) => void;
+  onFollowField?: (path: string) => void;
+  examples?: PipelineNodeExample[];
+  exampleSource?: string;
 }) {
   const spec = SPEC_BY_KIND[node.kind];
   const family = spec?.family ?? "transform";
   const ports = outputPorts(node);
+  // A REAL item this node received, parsed once — the picker's example values
+  // and the data panel both read it.
+  const exampleItem = (() => {
+    for (const ex of examples) {
+      if (ex.value_json === "") continue;
+      try {
+        const parsed = JSON.parse(ex.value_json) as unknown;
+        if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) {
+          return parsed as Record<string, unknown>;
+        }
+      } catch {
+        // fall through to the next example
+      }
+    }
+    return null;
+  })();
   // Whether the table has anything at all, and where it came from. The footer
   // used to say "run a dry run to get them" beside a column full of live
   // numbers, because it only ever considered the dry run.
@@ -119,15 +189,6 @@ function Detail({
     (p) => counts[`${node.id}.${p}`] !== undefined,
   );
   const countsAreLive = hasCounts && !countsAreDryRun;
-  // How many items reached this node, summed across its ports. Null when no
-  // run has produced counts — the label then says "the items", not "the 0
-  // items", because zero would be a claim nothing supports.
-  const reached = ports.reduce<number | null>((acc, port) => {
-    const n = counts[`${node.id}.${port}`];
-    if (n === undefined) return acc;
-    return (acc ?? 0) + n;
-  }, null);
-
   const destinations = new Map<string, string>();
   const terminated = new Map<string, string>();
   if (scope) {
@@ -202,11 +263,46 @@ function Detail({
         </section>
       )}
 
-      {/* What it does to the data, in full.
-          The card shows one line because there is room for one; here every
-          configured value is readable, because reviewing a pipeline means
-          reading the expressions, not counting the nodes. */}
-      <ConfiguredAs node={node} />
+      {/* THE DATA ITSELF. Counts say how much; this says WHAT — the item as
+          this node received it, from replaying what actually arrived. It is
+          the panel that turns "a choice is here" into "a choice deciding on
+          magnitude 5.3, '62 km W of Tobelo, Indonesia'". */}
+      {examples.length > 0 && (
+        <DataThrough examples={examples} source={exampleSource} />
+      )}
+
+      {/* What it does to the data.
+          Read mode shows every configured value verbatim — reviewing a
+          pipeline means reading the expressions, not counting the nodes.
+          Edit mode replaces the verbatim view with the same values as inputs,
+          the arriving fields one click away. The compiler still rules: every
+          keystroke lands in the draft and refusals render above. */}
+      {editing && onConfig && onRename ? (
+        <NodeEditor
+          node={node}
+          fields={fields}
+          fieldsUnchecked={fieldsUnchecked}
+          onConfig={(key, value) => onConfig(node.id, key, value)}
+          onRename={(name) => onRename(node.id, name)}
+          onFollowField={onFollowField}
+          example={exampleItem}
+        />
+      ) : (
+        <>
+          <ConfiguredAs node={node} />
+          {/* The same projection the editor's picker reads, here to answer the
+              reviewer's question: what exists at this step? Clicking a field
+              follows it across the graph. */}
+          <FieldPicker
+            fields={fields}
+            unchecked={fieldsUnchecked}
+            hasExpressionTarget={false}
+            onPick={() => {}}
+            onFollowField={onFollowField}
+            example={exampleItem}
+          />
+        </>
+      )}
 
       {/* The fields this step reaches into, from the compiled AST. The config
           shows the expression; this shows what it touches — which is what gets
@@ -328,19 +424,116 @@ function Detail({
               : "Node tests arrive with the authoring turn — nothing in this kernel runs a single node against a pinned input yet."
           }
         />
-        {/* The other half of inspecting a node: not what it would do, but
-            what actually reached it. */}
-        <UnavailableAction
-          label={
-            reached === null
-              ? "Show the items that reached it"
-              : `Show the ${reached} items that reached it`
-          }
-          reason="The per-node item list is not projected by this kernel yet. The live trace above shows what has moved since this console connected, which is the part that does exist."
-        />
+        {/* The other half of inspecting a node: not what it would do, but what
+            actually reached it. This was a disabled button explaining that the
+            kernel did not project the list — it does now, and the answer an
+            operator wants ("what did it write?") leads. */}
+        <NodeItems pipelineID={pipelineID} nodeID={node.id} />
       </section>
     </div>
   );
+}
+
+/**
+ * Real items this node received, from replaying what actually arrived.
+ *
+ * The value leads and the JSON is secondary: `magnitude 5.3 · place "62 km W
+ * of Tobelo, Indonesia"` is readable by anyone; the raw envelope is there for
+ * the minority case where the summary is not enough. The source line matters
+ * as much as the data — over redacted captures every value is a type token,
+ * and a reader must know they are looking at shapes rather than facts.
+ */
+function DataThrough({
+  examples,
+  source,
+}: {
+  examples: PipelineNodeExample[];
+  source: string;
+}) {
+  return (
+    <section className="flex flex-col gap-1.5">
+      <h3 className="text-[12px] font-medium">The data through this step</h3>
+      <ul className="flex flex-col gap-1.5">
+        {examples.map((ex, i) => (
+          <li
+            key={`${ex.item_key}-${i}`}
+            className="rounded-[var(--radius-md)] bg-[var(--bg-base)] px-2.5 py-1.5"
+          >
+            <ExampleSummary ex={ex} />
+          </li>
+        ))}
+      </ul>
+      {source !== "" && (
+        <p className="text-[10.5px] leading-[1.5] text-[var(--fg-muted)]">
+          From a rehearsal over {source} — the same material the live pipeline
+          receives, with every effect shadowed.
+        </p>
+      )}
+    </section>
+  );
+}
+
+function ExampleSummary({ ex }: { ex: PipelineNodeExample }) {
+  const parsed = (() => {
+    try {
+      return ex.value_json !== "" ? (JSON.parse(ex.value_json) as unknown) : null;
+    } catch {
+      return null;
+    }
+  })();
+
+  // The leading line: up to four scalar fields, in the operator's terms.
+  const facts: string[] = [];
+  if (parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)) {
+    for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
+      if (facts.length >= 4) break;
+      if (v === null || typeof v === "object") continue;
+      const s = JSON.stringify(v) ?? "";
+      facts.push(`${k} ${s.length > 32 ? s.slice(0, 31) + "…" : s}`);
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-1">
+      {facts.length > 0 ? (
+        <span className="text-[11.5px] leading-[1.5] text-[var(--fg-secondary)]">
+          {facts.join(" · ")}
+        </span>
+      ) : (
+        <span className="text-[11px] text-[var(--fg-muted)]">
+          {ex.value_json !== "" ? "structured item" : "receipt only"}
+        </span>
+      )}
+      {ex.value_json !== "" && (
+        <details>
+          <summary className="cursor-pointer text-[10px] text-[var(--fg-muted)]">
+            the whole item
+          </summary>
+          <pre className="mt-1 max-h-40 overflow-auto rounded-[3px] bg-[var(--bg-surface)] p-1.5 font-mono text-[9.5px] leading-[1.5] text-[var(--fg-secondary)]">
+            {prettyJSON(ex.value_json)}
+          </pre>
+        </details>
+      )}
+      {ex.result_json !== "" && (
+        <details>
+          <summary className="cursor-pointer text-[10px] text-[var(--fg-muted)]">
+            what this step reported back
+          </summary>
+          <pre className="mt-1 max-h-40 overflow-auto rounded-[3px] bg-[var(--bg-surface)] p-1.5 font-mono text-[9.5px] leading-[1.5] text-[var(--fg-secondary)]">
+            {prettyJSON(ex.result_json)}
+          </pre>
+        </details>
+      )}
+    </div>
+  );
+}
+
+function prettyJSON(raw: string): string {
+  try {
+    return JSON.stringify(JSON.parse(raw), null, 2);
+  } catch {
+    return raw;
+  }
 }
 
 /**

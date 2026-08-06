@@ -1,4 +1,5 @@
 import { ArrowRight, Sparkle } from "@phosphor-icons/react";
+import { MappingSummary } from "./MappingSummary";
 import { Button, Input } from "@/design-system/components";
 import type { StudioDraft, StudioFieldAbstention } from "@/ipc/types";
 import {
@@ -76,24 +77,41 @@ export function MappingStage({
       />
 
       {!readOnly && (
+        /* Two different questions, and asking the wrong one wastes the box.
+           Before a mapping exists it wants what the samples cannot say. Once
+           one is on screen the useful question is what is WRONG with it —
+           "the temperature should be a number, not text" is the sentence an
+           operator actually has, and it was previously nowhere to put. */
         <div className="flex flex-col gap-2">
-          <SectionLabel note="the drafter reads the profile; this is what it cannot">
-            Anything the samples cannot tell it
+          <SectionLabel
+            note={
+              spec
+                ? "say what should change; it redrafts from your words"
+                : "the drafter reads the profile; this is what it cannot"
+            }
+          >
+            {spec ? "What is wrong with this mapping?" : "Anything the samples cannot tell it"}
           </SectionLabel>
           <div className="flex gap-2">
             <Input
               id="mapping-guidance"
-              aria-label="Anything the samples cannot tell it"
+              aria-label={
+                spec ? "What is wrong with this mapping?" : "Anything the samples cannot tell it"
+              }
               value={guidance}
               onChange={(e) => onGuidance(e.target.value)}
-              placeholder="e.g. treat properties.updated as re-observed at"
+              placeholder={
+                spec
+                  ? "e.g. temperature should be a number, and key it on latitude+longitude"
+                  : "e.g. treat properties.updated as re-observed at"
+              }
             />
             <Button
               size="sm"
               disabled={samples === 0 || drafting}
               onClick={onPropose}
             >
-              {drafting ? "Drafting…" : "Propose a mapping"}
+              {drafting ? "Drafting…" : spec ? "Redraft it" : "Propose a mapping"}
             </Button>
           </div>
           {samples === 0 && (
@@ -107,6 +125,11 @@ export function MappingStage({
       )}
 
       {abstained && <WholeDraftAbstention reason={result!.abstained} />}
+
+      {/* Rendered from the SPEC, so it survives a reload and shows a mapping the
+          operator did not draft here. Coverage below answers what was ignored;
+          this answers what it does. */}
+      {!abstained && <MappingSummary spec={spec} />}
 
       {coverage && !abstained && (
         <>

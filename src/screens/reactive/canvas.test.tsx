@@ -7,6 +7,7 @@ const getPipeline = vi.fn();
 const dryRunPipeline = vi.fn();
 const validatePipeline = vi.fn();
 const savePipeline = vi.fn();
+const transitionPipeline = vi.fn();
 
 const studioCaptureStatus = vi.fn().mockResolvedValue({ samples: 0, profile_json: "" });
 
@@ -17,6 +18,7 @@ vi.mock("@/ipc", () => ({
     dryRunPipeline: (...a: unknown[]) => dryRunPipeline(...a),
     validatePipeline: (...a: unknown[]) => validatePipeline(...a),
     savePipeline: (...a: unknown[]) => savePipeline(...a),
+    transitionPipeline: (...a: unknown[]) => transitionPipeline(...a),
   },
 }));
 
@@ -192,6 +194,8 @@ describe("graph helpers", () => {
         ],
         failures: [],
         elapsed_ms: 0,
+        source: "archived deliveries",
+        node_examples: [],
       }),
     ).toEqual({ "save.out": 2, "gate.false": 4 });
 
@@ -206,6 +210,8 @@ describe("graph helpers", () => {
         terminations: [],
         failures: [],
         elapsed_ms: 0,
+        source: "",
+        node_examples: [],
       }),
     ).toEqual({});
   });
@@ -370,16 +376,15 @@ describe("15a — the canvas", () => {
     ).toBeInTheDocument();
   });
 
-  it("keeps publish disabled and says which reason applies", async () => {
+  it("offers the NEXT lifecycle step from where the revision stands", async () => {
+    // The summary says published, so the next step is arming — and with no
+    // refusals standing, the button is real (contract 0093), not the disabled
+    // placeholder older kernels required.
     mount();
-    await waitFor(() => expect(screen.getByText("Publish")).toBeInTheDocument());
-    expect(screen.getByText("Publish")).toBeDisabled();
-    // With no refusals standing, the reason is the lifecycle itself: arming what
-    // was just drawn would collapse four deliberate steps into one click.
-    expect(screen.getByText("Publish")).toHaveAttribute(
-      "title",
-      expect.stringContaining("separate steps on the lifecycle"),
+    await waitFor(() =>
+      expect(screen.getByText("Arm — make it live")).toBeInTheDocument(),
     );
+    expect(screen.getByText("Arm — make it live")).toBeEnabled();
   });
 
   it("shows WHAT each node does to the data, not just that it exists", async () => {
@@ -643,7 +648,7 @@ describe("15a — canvas editing", () => {
       expect(screen.getByText(/Saved as draft revision 3/)).toBeInTheDocument(),
     );
     expect(
-      screen.getByText(/publishing and arming are separate steps/),
+      screen.getByText(/Nothing is live yet — Publish freezes it, Arm makes it live/),
     ).toBeInTheDocument();
   });
 
@@ -668,9 +673,10 @@ describe("15a — canvas editing", () => {
         screen.getByText(/is neither connected nor declared terminated/),
       ).toBeInTheDocument(),
     );
-    // Refusals hold Publish, not Save.
+    // Refusals hold Publish, not Save — and while EDITING there is no
+    // lifecycle button at all: nothing can move until the draft is saved.
     expect(screen.getByText("Save as draft")).toBeEnabled();
-    expect(screen.getByText("Publish")).toBeDisabled();
+    expect(screen.queryByText("Publish")).toBeNull();
   });
 
   it("discards an edit back to what the kernel stored", async () => {
@@ -814,5 +820,281 @@ describe("the ports table counts", () => {
     // canvas does not show counts.
     expect(screen.getAllByText("47").length).toBeGreaterThan(0);
     expect(screen.getAllByText("5").length).toBeGreaterThan(0);
+  });
+});
+
+/**
+ * Contract 0091 — the field schema on the canvas.
+ *
+ * The kernel projects, the console renders: chips in the inspector, a picker
+ * while editing, and a followed field lighting the nodes that touch it.
+ */
+describe("the field schema on the canvas", () => {
+  const FIELD_SCHEMA = JSON.stringify({
+    t: { available: [{ path: "mag", types: ["number"] }, { path: "place", types: ["string"] }] },
+    gate: {
+      available: [{ path: "mag", types: ["number"] }, { path: "place", types: ["string"] }],
+      reads: ["mag"],
+    },
+    save: {
+      available: [{ path: "mag", types: ["number"] }, { path: "place", types: ["string"] }],
+    },
+  });
+
+  beforeEach(() => {
+    getPipeline.mockReset();
+    dryRunPipeline.mockReset();
+    validatePipeline.mockReset();
+    dryRunPipeline.mockResolvedValue({
+      refused: "", run_id: "r", samples: 0,
+      effects: [], duplicates: [], terminations: [], failures: [], elapsed_ms: 0,
+    });
+    validatePipeline.mockResolvedValue({
+      refused: "", refusals: [], node_count: 3, effect_node_count: 1,
+      plan_checksum: "abc", semantics_checksum: "def",
+      field_schema_json: FIELD_SCHEMA,
+    });
+    getPipeline.mockResolvedValue({
+      refused: "",
+      summary: summary(),
+      graph_json: JSON.stringify(GRAPH),
+      refusals: [],
+      reads: [{ node: "gate", paths: ["item.mag"] }],
+      field_schema_json: FIELD_SCHEMA,
+    });
+  });
+
+  it("shows the kernel's fields at a selected node, and follows one across the graph", async () => {
+    render(
+      <PipelineCanvas pipeline={summary()} onClose={() => {}} onDryRun={() => {}} />,
+    );
+    await waitFor(() =>
+      expect(screen.getByText("large enough?")).toBeInTheDocument(),
+    );
+    fireEvent.click(screen.getByText("large enough?"));
+
+    // The inspector renders the projection — the fields that arrive here.
+    await waitFor(() =>
+      expect(screen.getByText("Fields that arrive here")).toBeInTheDocument(),
+    );
+    expect(screen.getByText("place")).toBeInTheDocument();
+
+    // Clicking a field follows it: the banner names it and tallies who
+    // touches it — the gate reads `mag`, so following it finds one reader.
+    fireEvent.click(screen.getByText("mag"));
+    await waitFor(() => expect(screen.getByText("following")).toBeInTheDocument());
+    expect(screen.getByText(/1 routes on it/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText("stop following"));
+    await waitFor(() =>
+      expect(screen.queryByText("following")).not.toBeInTheDocument(),
+    );
+  });
+
+  it("while editing, the gate's condition opens as rows, and the expression stays a toggle away", async () => {
+    render(
+      <PipelineCanvas pipeline={summary()} onClose={() => {}} onDryRun={() => {}} />,
+    );
+    await waitFor(() =>
+      expect(screen.getByText("large enough?")).toBeInTheDocument(),
+    );
+    fireEvent.click(screen.getByText("Edit"));
+    await waitFor(() =>
+      expect(screen.getByText("Save as draft")).toBeInTheDocument(),
+    );
+    fireEvent.click(screen.getByText("large enough?"));
+
+    // The stored condition `item.mag > 4.5` opens as a ROW — field,
+    // comparison, value — not as syntax.
+    await waitFor(() =>
+      expect(screen.getByLabelText("condition 0 field")).toBeInTheDocument(),
+    );
+    expect(screen.getByLabelText("condition 0 field")).toHaveValue("mag");
+    expect(screen.getByLabelText("condition 0 value")).toHaveValue("4.5");
+
+    // The raw expression is one toggle away, and a chip typed into it there.
+    fireEvent.click(screen.getByText("edit as an expression"));
+    await waitFor(() => expect(screen.getByText("place")).toBeInTheDocument());
+    const condition = screen.getByLabelText("condition") as HTMLTextAreaElement;
+    expect(condition.value).toBe("item.mag > 4.5");
+    fireEvent.click(screen.getByText("place"));
+    await waitFor(() =>
+      expect((screen.getByLabelText("condition") as HTMLTextAreaElement).value)
+        .toContain("item.place"),
+    );
+  });
+
+  it("an absent projection reads as unchecked, never as an empty payload", async () => {
+    getPipeline.mockResolvedValue({
+      refused: "",
+      summary: summary(),
+      graph_json: JSON.stringify(GRAPH),
+      refusals: [],
+      reads: [],
+      // An older kernel: the field is simply missing.
+    });
+    render(
+      <PipelineCanvas pipeline={summary()} onClose={() => {}} onDryRun={() => {}} />,
+    );
+    await waitFor(() =>
+      expect(screen.getByText("large enough?")).toBeInTheDocument(),
+    );
+    fireEvent.click(screen.getByText("large enough?"));
+    await waitFor(() => expect(screen.getByText(/Unchecked/)).toBeInTheDocument());
+  });
+});
+
+/**
+ * Contract 0092 — the data itself, on the inspector.
+ */
+describe("the data through a step", () => {
+  beforeEach(() => {
+    getPipeline.mockReset();
+    dryRunPipeline.mockReset();
+    validatePipeline.mockReset();
+    validatePipeline.mockResolvedValue({
+      refused: "", refusals: [], node_count: 3, effect_node_count: 1,
+      plan_checksum: "abc", semantics_checksum: "def", field_schema_json: "",
+    });
+    getPipeline.mockResolvedValue({
+      refused: "",
+      summary: summary(),
+      graph_json: JSON.stringify(GRAPH),
+      refusals: [],
+      reads: [],
+      field_schema_json: JSON.stringify({
+        gate: { available: [{ path: "mag", types: ["number"] }] },
+      }),
+    });
+    dryRunPipeline.mockResolvedValue({
+      refused: "", run_id: "r", samples: 2,
+      effects: [], duplicates: [], terminations: [], failures: [], elapsed_ms: 12,
+      source: "archived deliveries",
+      node_examples: [
+        {
+          node: "gate",
+          item_key: "abc123",
+          value_json: JSON.stringify({ mag: 5.3, place: "62 km W of Tobelo, Indonesia" }),
+          result_json: "",
+        },
+      ],
+    });
+  });
+
+  it("shows the real item a node received, and where it came from", async () => {
+    render(
+      <PipelineCanvas pipeline={summary()} onClose={() => {}} onDryRun={() => {}} />,
+    );
+    await waitFor(() =>
+      expect(screen.getByText("large enough?")).toBeInTheDocument(),
+    );
+    fireEvent.click(screen.getByText("large enough?"));
+
+    await waitFor(() =>
+      expect(screen.getByText("The data through this step")).toBeInTheDocument(),
+    );
+    // The leading line is the operator's terms, not JSON. (Tobelo appears
+    // twice — the summary line and the raw envelope — which is the design.)
+    expect(screen.getByText(/mag 5\.3/)).toBeInTheDocument();
+    expect(screen.getAllByText(/Tobelo/).length).toBeGreaterThan(0);
+    // And the source is named — real deliveries, not redacted shapes.
+    expect(screen.getByText(/archived deliveries/)).toBeInTheDocument();
+
+    // The picker chips carry the example value beside the type.
+    expect(screen.getByText(/= 5\.3/)).toBeInTheDocument();
+  });
+});
+
+/**
+ * Contract 0093 — the lifecycle finally has a button.
+ */
+describe("publishing and arming from the canvas", () => {
+  beforeEach(() => {
+    getPipeline.mockReset();
+    dryRunPipeline.mockReset();
+    transitionPipeline.mockReset();
+    dryRunPipeline.mockResolvedValue({
+      refused: "", run_id: "r", samples: 0,
+      effects: [], duplicates: [], terminations: [], failures: [], elapsed_ms: 0,
+      source: "", node_examples: [],
+    });
+    getPipeline.mockResolvedValue({
+      refused: "",
+      summary: summary({ state: "draft" }),
+      graph_json: JSON.stringify(GRAPH),
+      refusals: [],
+      reads: [],
+      field_schema_json: "",
+    });
+  });
+
+  it("a draft's next step is Publish, and the kernel's answer becomes the state", async () => {
+    transitionPipeline.mockResolvedValue({
+      refused: "", pipeline_id: "ingress:usgs", revision: 2, state: "published",
+    });
+    render(
+      <PipelineCanvas
+        pipeline={summary({ state: "draft" })}
+        onClose={() => {}}
+        onDryRun={() => {}}
+      />,
+    );
+    await waitFor(() =>
+      expect(screen.getByText("large enough?")).toBeInTheDocument(),
+    );
+    fireEvent.click(screen.getByText("Publish"));
+    await waitFor(() =>
+      expect(screen.getByText(/frozen and inspectable, not live/)).toBeInTheDocument(),
+    );
+    // The button now offers the NEXT step from where the revision IS.
+    expect(screen.getByText("Arm — make it live")).toBeInTheDocument();
+  });
+
+  it("a refusal is the registry's own sentence, and the state does not move", async () => {
+    transitionPipeline.mockResolvedValue({
+      refused: "pipeline p1 r2: cannot publish from retired",
+      pipeline_id: "", revision: 0, state: "",
+    });
+    render(
+      <PipelineCanvas
+        pipeline={summary({ state: "draft" })}
+        onClose={() => {}}
+        onDryRun={() => {}}
+      />,
+    );
+    await waitFor(() =>
+      expect(screen.getByText("large enough?")).toBeInTheDocument(),
+    );
+    fireEvent.click(screen.getByText("Publish"));
+    await waitFor(() =>
+      expect(screen.getByText(/cannot publish from retired/)).toBeInTheDocument(),
+    );
+    expect(screen.getByText("Publish")).toBeInTheDocument();
+  });
+
+  it("refusals hold Publish, with the count as the reason", async () => {
+    getPipeline.mockResolvedValue({
+      refused: "",
+      summary: summary({ state: "draft" }),
+      graph_json: JSON.stringify(GRAPH),
+      refusals: [
+        { constraint: "port-unwired", node: "gate", port: "false", message: "wire it" },
+      ],
+      reads: [],
+      field_schema_json: "",
+    });
+    render(
+      <PipelineCanvas
+        pipeline={summary({ state: "draft" })}
+        onClose={() => {}}
+        onDryRun={() => {}}
+      />,
+    );
+    await waitFor(() =>
+      expect(screen.getByText("large enough?")).toBeInTheDocument(),
+    );
+    const publish = screen.getByText("Publish").closest("button")!;
+    expect(publish).toBeDisabled();
+    expect(publish.title).toContain("refusal");
   });
 });
