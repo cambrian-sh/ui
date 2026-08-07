@@ -407,9 +407,22 @@ export const ipc = {
     invoke<t.StudioDiff>('op_studio_diff_mapping', {
       ingress_id: ingressId, from_revision: fromRevision, to_revision: toRevision,
     }),
-  /** READ-ONLY proposal (plan D1); saving it is a separate human action. */
-  studioDraftMapping: (ingressId: string, guidance: string): Promise<t.StudioDraft> =>
-    invoke<t.StudioDraft>('op_studio_draft_mapping', { ingress_id: ingressId, guidance }),
+  /**
+   * READ-ONLY proposal (plan D1); saving it is a separate human action.
+   * `baseSpecJson` non-empty = REVISE that mapping per the guidance (change
+   * only what the words require, stream identity kept); empty = draft from
+   * scratch off the capture profile.
+   */
+  studioDraftMapping: (
+    ingressId: string,
+    guidance: string,
+    baseSpecJson = '',
+  ): Promise<t.StudioDraft> =>
+    invoke<t.StudioDraft>('op_studio_draft_mapping', {
+      ingress_id: ingressId,
+      guidance,
+      base_spec_json: baseSpecJson,
+    }),
   studioCaptureStatus: (ingressId: string): Promise<t.StudioCaptureStatus> =>
     invoke<t.StudioCaptureStatus>('op_studio_capture_status', { ingress_id: ingressId }),
   /** Real captured deliveries, redacted at capture, newest first. */
@@ -743,6 +756,34 @@ export const ipc = {
   startLogTail: (filter: t.LogFilter = {}, afterSeq = 0): Promise<void> =>
     invoke<void>('op_start_log_tail', { filter, after_seq: afterSeq }),
   stopLogTail: (): Promise<void> => invoke<void>('op_stop_log_tail'),
+
+  // ── Knowledge substrate (ADR-0118) ──────────────────────────────────────
+
+  /**
+   * One natural-language question → compiled AST + exact answer, or a refusal.
+   * A refusal is a first-class outcome, not an error — render it as the plane
+   * working (it refuses rather than guesses), with the compiled query shown
+   * whenever an answer arrives.
+   */
+  askKnowledge: (question: string): Promise<t.AskOutcome> =>
+    invoke<t.AskOutcome>('op_knowledge_ask', { question }),
+
+  /**
+   * One closed-AST query — the console's own drill-ins (entity cards, the
+   * contradictions view, evidence receipts, the neighborhood graph). Internal
+   * plumbing behind curated affordances; the USER-facing query surface is the
+   * ask box, never a structured builder.
+   */
+  knowledgeQuery: (query: Partial<t.CompiledQuery>): Promise<t.KnowledgeAnswer> =>
+    invoke<t.KnowledgeAnswer>('op_knowledge_query', { query }),
+
+  /** What the substrate holds, per source surface (full-visibility numbers). */
+  knowledgeOverview: (): Promise<t.SubstrateOverview> =>
+    invoke<t.SubstrateOverview>('op_knowledge_overview'),
+
+  /** Browsable entities matching a substring; names and predicates only. */
+  listKnowledgeEntities: (query: string, limit = 50): Promise<t.KnowledgeEntity[]> =>
+    invoke<t.KnowledgeEntity[]>('op_knowledge_entities', { query, limit }),
 
   listRoleAssignments: (): Promise<t.RoleAssignment[]> =>
     invoke<t.RoleAssignment[]>('op_list_role_assignments'),

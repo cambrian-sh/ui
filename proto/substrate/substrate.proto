@@ -1,0 +1,294 @@
+// SubstrateLane (ADR-0108 D4): the event-shaped knowledge plane.
+//
+// Premium-owned, mounted on the kernel server via Registry.AddGRPCService
+// behind the same operator auth as everything else — the pinned OSS operator
+// contract is untouched (the receipts-lane precedent).
+//
+// Ingest is ASYNC by design: IngestEvent archives the delivery as evidence and
+// returns; the outbox consumer transforms it into typed rows moments later.
+// The reads answer exactly over STORED rows — no embedding, no model, no
+// ranking — and their guarantee is exact-over-stored-data, never world truth.
+syntax = "proto3";
+
+package cambrian.premium.substrate;
+
+option go_package = "github.com/cambrian-sh/cambrian-premium/api/proto/substrate;substratepb";
+
+import "google/protobuf/timestamp.proto";
+
+service SubstrateLane {
+  // IngestEvent preserves one event-shaped delivery as evidence (ADR-0105
+  // ordering: durable bytes before the row, ACK only after commit) and
+  // enqueues it for transformation. deduplicated=true means this exact
+  // delivery was already archived and nothing was written.
+  rpc IngestEvent(IngestEventRequest) returns (IngestEventResponse);
+
+  // PointLookup returns the LATEST stored observation for an entity and
+  // predicate. found=false is an answer, not an error.
+  rpc PointLookup(PointLookupRequest) returns (PointLookupResponse);
+
+  // History returns the entity's observations for a predicate in
+  // [from, to), oldest first.
+  rpc History(HistoryRequest) returns (HistoryResponse);
+
+  // EventsForEntity returns events the entity participated in (any role)
+  // within [from, to), oldest first, roles included.
+  rpc EventsForEntity(EventsForEntityRequest) returns (EventsForEntityResponse);
+
+  // CheckPolicy classifies one message against the CURRENT policy-statement
+  // resolutions (ADR-0109): a closed five-way outcome per detected claim,
+  // deterministic end to end. The §7D measurement drives this RPC.
+  rpc CheckPolicy(CheckPolicyRequest) returns (CheckPolicyResponse);
+
+  // Query executes the closed knowledge-query AST (ADR-0111). A request
+  // outside the AST returns InvalidArgument "cannot express safely" — never
+  // invented SQL, never a guess. Rows are JSON objects (v1 wire shape); every
+  // response names its guarantee (exact-over-stored, exact-and-complete, …).
+  rpc Query(QueryRequest) returns (QueryResponse);
+
+  // AskKnowledge (ADR-0118 D5's deferred arm, now built and measured):
+  // compiles ONE natural-language question into the closed AST with a temp-0
+  // model over a DETERMINISTIC catalog, then executes it through the same
+  // validated, scoped plane. The model forms the QUERY, never the answer: a
+  // compiled query naming anything outside the catalog is refused, not
+  // executed, so NL convenience never becomes NL guessing. The compiled query
+  // returns WITH the answer, so a caller always sees exactly what was asked
+  // of the store; an open-ended question is refused with a lane hint naming
+  // the memory lane as the right tool.
+  rpc AskKnowledge(AskKnowledgeRequest) returns (AskKnowledgeResponse);
+
+  // Overview reports what the substrate holds: per-lane row counts, per-kind
+  // counts, per-source holdings (each ingress surface with its classification
+  // tags — which surface contributed what, and which scopes gate it), ingest
+  // health (evidence-outbox backlog), current cross-actor contradiction
+  // count, and the time span covered. Plain deterministic reads.
+  rpc Overview(OverviewRequest) returns (OverviewResponse);
+
+  // ListEntities finds modelled entities by substring — the catalog the
+  // explore surface browses. Names and counts only; VALUES are disclosed
+  // exclusively through the query plane.
+  rpc ListEntities(ListEntitiesRequest) returns (ListEntitiesResponse);
+}
+
+message AskKnowledgeRequest {
+  string question = 1;
+}
+
+message AskKnowledgeResponse {
+  // answered=true: compiled + guarantee + rows are set. answered=false:
+  // refusal_reason names why (unexpressible, open-ended, names outside the
+  // catalog, no model configured), lane_hint optionally names the right tool.
+  bool answered = 1;
+  QueryRequest compiled = 2;
+  string guarantee = 3;
+  repeated string rows = 4; // JSON objects (v1 wire shape)
+  string refusal_reason = 5;
+  string lane_hint = 6; // "memory" when the corpus lane is the right tool
+}
+
+message OverviewRequest {}
+
+message SourceOverview {
+  string source_id = 1; // evidence source: the ingress/stream that contributed
+  int64 evidence_count = 2;
+  google.protobuf.Timestamp last_seen = 3;
+  repeated string classification = 4; // distinct tags this source's rows carry
+}
+
+message KindCount {
+  string kind = 1;
+  int64 count = 2;
+}
+
+message OverviewResponse {
+  int64 evidence_count = 1;
+  int64 event_count = 2;
+  int64 observation_count = 3;
+  int64 knowledge_item_count = 4;
+  int64 live_resolution_count = 5;
+  int64 entity_count = 6;
+  int64 actor_count = 7;
+  // Evidence rows archived but not yet transformed into typed rows — "your
+  // data is still materializing", the async-ingest health number.
+  int64 outbox_pending = 8;
+  // Entities whose CURRENT resolutions disagree across actors, summed over
+  // all item kinds — disagreement is a headline metric, not a buried query.
+  int64 contradiction_count = 9;
+  google.protobuf.Timestamp earliest = 10; // oldest occurred_at held
+  google.protobuf.Timestamp latest = 11;   // newest occurred_at held
+  repeated SourceOverview sources = 12;
+  repeated KindCount kinds = 13;
+}
+
+message ListEntitiesRequest {
+  string query = 1; // substring; empty lists most-recently-observed entities
+  int32 limit = 2;  // 0 = 50
+}
+
+message EntityOverview {
+  string entity_id = 1;
+  int64 observation_count = 2;
+  repeated string predicates = 3;
+  google.protobuf.Timestamp last_seen = 4;
+}
+
+message ListEntitiesResponse {
+  repeated EntityOverview entities = 1;
+}
+
+// SubstrateRetrieval (ADR-0118 D4): the AGENT-facing retrieval surface over
+// the same closed AST. A separate service rather than a dual-mode
+// SubstrateLane because ADR-0047's lesson is that overloading one plane for
+// two audiences smuggles one past the other's auth. Declared agent-facing at
+// registration (Registry.AddAgentGRPCService): no operator bearer,
+// SurfaceAgent, caller principal seeded kernel-side from x-agent-id. Reads are
+// scope-enforced fail-closed for the calling agent; guarantee labels and
+// refusal semantics are identical to the operator lane — the agent gets the
+// same warranty an operator gets.
+service SubstrateRetrieval {
+  // Query executes the closed AST as the calling agent's principal. Absent or
+  // unknown principal → PermissionDenied (fail closed); outside the AST →
+  // InvalidArgument "cannot express safely"; rows the principal's scope does
+  // not reach are simply absent, never redacted in place.
+  rpc Query(QueryRequest) returns (QueryResponse);
+}
+
+message QueryRequest {
+  // "point" | "history" | "as_of" | "current" | "contradictions" |
+  // "aggregate" | "events" | "traverse" | "evidence"
+  string kind = 1;
+  string entity_id = 2;
+  string predicate = 3;
+  string item_kind = 4;
+  string policy = 5;
+  string actor = 6;
+  google.protobuf.Timestamp as_of = 7;
+  google.protobuf.Timestamp from = 8;
+  google.protobuf.Timestamp to = 9;
+  string aggregate = 10;
+  int32 hops = 11;
+  int32 limit = 12;
+  string evidence_id = 13;
+}
+
+message QueryResponse {
+  string guarantee = 1;
+  repeated string rows = 2; // JSON objects
+}
+
+message CheckPolicyRequest {
+  string text = 1;
+}
+
+message CheckPolicyResponse {
+  repeated PolicyCheckResult results = 1;
+}
+
+message PolicyCheckResult {
+  // "deterministic_consistent" | "deterministic_contradictory" | "abstained"
+  // | "no_policy_bound" | "no_quantitative_claim"
+  string outcome = 1;
+  string predicate = 2;
+  double stated = 3;
+  double bound = 4;
+  string bound_kind = 5;
+  // Why the check abstained ("hypothetical" | "negated" | "quoted"), when it did.
+  string abstain_reason = 6;
+}
+
+// The §19.5 thin envelope: stream identity, source-native reference, times,
+// and a payload the KERNEL never interprets — the transformer does.
+message EventEnvelope {
+  // Source stream identity ("anpr:lot-a"). Becomes evidence source_id.
+  string stream = 1;
+  // Source-native unique reference for this delivery (reading id). The
+  // idempotency key end to end: evidence, event and observation rows all
+  // dedupe on it.
+  string source_ref = 2;
+  // When the source says it happened (world clock, attacker-controllable).
+  google.protobuf.Timestamp occurred_at = 3;
+  // The event type ("gate_passage") — data, never kernel vocabulary.
+  string event_type = 4;
+  // Typed participants: role -> entity id ("vehicle" -> "camera/plate/34-ABC").
+  map<string, string> roles = 5;
+  // Observations carried by this delivery.
+  repeated ObservationValue observations = 6;
+  // Classification tags as delivered.
+  repeated string classification = 7;
+}
+
+message ObservationValue {
+  string entity_id = 1;
+  string predicate = 2;
+  // Exactly one of the value fields is meaningful, selected by value_type:
+  // "date" | "number" | "text" | "entity".
+  string value_type = 3;
+  google.protobuf.Timestamp value_date = 4;
+  double value_number = 5;
+  string value_text = 6;
+  string value_entity_id = 7;
+  string location = 8;
+  double confidence = 9;
+}
+
+message IngestEventRequest {
+  EventEnvelope envelope = 1;
+}
+
+message IngestEventResponse {
+  string evidence_id = 1;
+  bool deduplicated = 2;
+}
+
+message PointLookupRequest {
+  string entity_id = 1;
+  string predicate = 2;
+}
+
+message PointLookupResponse {
+  bool found = 1;
+  ObservationRow observation = 2;
+}
+
+message HistoryRequest {
+  string entity_id = 1;
+  string predicate = 2;
+  google.protobuf.Timestamp from = 3;
+  google.protobuf.Timestamp to = 4;
+}
+
+message HistoryResponse {
+  repeated ObservationRow observations = 1;
+}
+
+message ObservationRow {
+  string entity_id = 1;
+  string predicate = 2;
+  string value_type = 3;
+  google.protobuf.Timestamp value_date = 4;
+  double value_number = 5;
+  string value_text = 6;
+  string value_entity_id = 7;
+  string location = 8;
+  google.protobuf.Timestamp occurred_at = 9;
+  double confidence = 10;
+  string evidence_id = 11;
+}
+
+message EventsForEntityRequest {
+  string entity_id = 1;
+  google.protobuf.Timestamp from = 2;
+  google.protobuf.Timestamp to = 3;
+}
+
+message EventsForEntityResponse {
+  repeated EventRow events = 1;
+}
+
+message EventRow {
+  string id = 1;
+  string event_type = 2;
+  google.protobuf.Timestamp occurred_at = 3;
+  map<string, string> roles = 4;
+  string evidence_id = 5;
+}

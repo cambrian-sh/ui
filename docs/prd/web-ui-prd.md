@@ -127,6 +127,7 @@ The stories are organised by the audiences defined in the requirements document.
 51. As an **Auditor / reviewer**, I want the audit log to be discoverable from the main navigation, and every entry to deep-link back to the target it affected (the agent, the tool grant, the memory document, the skill, the MCP server).
 52. As an **Operator** connecting to a **remote** Cambrian runtime, I want the same experience as connecting to a local one, so that I can develop on my laptop and operate a production kernel.
 53. As an **Operator** whose session is interrupted, I want to **recover gracefully** — drafts, in-flight messages, and pending approvals survive a refresh, and the realtime stream reconnects without my intervention.
+54. As an **Operator** on a kernel with the knowledge substrate (ADR-0118), I want a **Knowledge console** where I can **ask in natural language** and get either an exact answer — with its guarantee label and the compiled query shown — or an explicit refusal naming the memory lane for open-ended questions; **explore** what the substrate holds per source surface (with each surface's classification tags), browse modelled entities and their co-participation neighborhood; see **standing contradictions** with both actors' assertions side by side; and open the **evidence receipt** behind any value in one click. The console never offers a structured query builder, and it renders full-visibility operator numbers by design.
 
 ---
 

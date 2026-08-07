@@ -481,10 +481,18 @@ impl Transport {
         &self,
         ingress_id: String,
         guidance: String,
+        base_spec_json: String,
     ) -> Result<StudioDraft, String> {
+        // base_spec_json non-empty = REVISE that mapping per the guidance (the
+        // "what is wrong with this mapping" box finally means what it says);
+        // empty keeps the from-scratch draft.
         let mut client = self.studio_client().await?;
         let d = client
-            .draft_mapping(Request::new(pb::ingress::DraftRequest { ingress_id, guidance }))
+            .draft_mapping(Request::new(pb::ingress::DraftRequest {
+                ingress_id,
+                guidance,
+                base_spec_json,
+            }))
             .await
             .map_err(map_status)?
             .into_inner();

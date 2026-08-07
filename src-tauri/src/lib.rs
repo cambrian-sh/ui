@@ -10,6 +10,7 @@ pub mod pb;
 pub mod policy;
 pub mod records;
 pub mod state;
+pub mod substrate;
 mod telegram;
 pub mod transport;
 
@@ -1028,6 +1029,51 @@ async fn op_stop_log_tail(tail: State<'_, crate::logs::LogTail>) -> Result<(), S
 // backfills the history the feed cannot replay.
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Knowledge substrate (ADR-0118) — the premium query/explore plane. All four
+// are request/response (nothing substrate-shaped is on the operator feed);
+// the console polls nothing here — reads happen on navigation and on demand.
+// The USER-facing query surface is `op_knowledge_ask` (NL → compiled AST);
+// `op_knowledge_query` is internal plumbing behind curated drill-ins (entity
+// cards, contradictions, receipts), never a user-facing query builder.
+// ---------------------------------------------------------------------------
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_knowledge_ask(
+    transport: State<'_, Transport>,
+    question: String,
+) -> Result<crate::substrate::AskOutcome, String> {
+    transport.inner().clone().knowledge_ask(question).await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_knowledge_query(
+    transport: State<'_, Transport>,
+    query: crate::substrate::CompiledQuery,
+) -> Result<crate::substrate::KnowledgeAnswer, String> {
+    transport.inner().clone().knowledge_query(query).await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_knowledge_overview(
+    transport: State<'_, Transport>,
+) -> Result<crate::substrate::SubstrateOverview, String> {
+    transport.inner().clone().knowledge_overview().await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_knowledge_entities(
+    transport: State<'_, Transport>,
+    query: Option<String>,
+    limit: Option<i32>,
+) -> Result<Vec<crate::substrate::EntityOverview>, String> {
+    transport
+        .inner()
+        .clone()
+        .knowledge_entities(query.unwrap_or_default(), limit.unwrap_or(50))
+        .await
+}
+
 #[tauri::command(rename_all = "snake_case")]
 async fn op_list_alerts(transport: State<'_, Transport>) -> Result<Vec<crate::records::Alert>, String> {
     transport.inner().clone().list_alerts().await
@@ -1168,8 +1214,13 @@ async fn op_studio_draft_mapping(
     transport: State<'_, Transport>,
     ingress_id: String,
     guidance: String,
+    base_spec_json: Option<String>,
 ) -> Result<crate::ingress_studio::StudioDraft, String> {
-    transport.inner().clone().studio_draft_mapping(ingress_id, guidance).await
+    transport
+        .inner()
+        .clone()
+        .studio_draft_mapping(ingress_id, guidance, base_spec_json.unwrap_or_default())
+        .await
 }
 
 #[tauri::command(rename_all = "snake_case")]
@@ -1797,6 +1848,10 @@ pub fn run() {
             op_query_logs,
             op_start_log_tail,
             op_stop_log_tail,
+            op_knowledge_ask,
+            op_knowledge_query,
+            op_knowledge_overview,
+            op_knowledge_entities,
             op_list_alerts,
             op_get_drift_stats,
             op_list_refusals,

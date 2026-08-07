@@ -16,7 +16,7 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import { Blocks } from "lucide-react";
+import { Blocks, Library } from "lucide-react";
 import { cn } from "@/design-system/lib/utils";
 
 interface NavEntry {
@@ -64,6 +64,16 @@ export const NAV_GROUPS: readonly NavGroup[] = [
       { path: "/plans", label: "Plans in flight", icon: ListChecks, count: "plans" },
       { path: "/plan-builder", label: "Plan builder", icon: Workflow },
       { path: "/memory", label: "Memory", icon: Database },
+      {
+        // ADR-0118: the knowledge substrate's console. Gated on the capability
+        // the plugin reports after Build finds Postgres — a deployment without
+        // it is CORRECT, and the entry stays absent rather than leading to a
+        // refusal.
+        path: "/knowledge",
+        label: "Knowledge",
+        icon: Library,
+        requires: "substrate-query",
+      },
     ],
   },
   {

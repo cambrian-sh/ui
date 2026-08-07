@@ -2751,3 +2751,101 @@ export interface NodeItem {
   updated_at: string;
   iter_path: string;
 }
+
+// ── Knowledge substrate (ADR-0118) ──────────────────────────────────────────
+//
+// Mirrors `src-tauri/src/substrate.rs` exactly — `invoke<T>()` is an unchecked
+// cast, so a drift here fails at runtime, not at compile time.
+
+/**
+ * The compiled closed-AST query — echoed with every answered ask (the
+ * transparency contract: the exact query that ran travels WITH the answer)
+ * and accepted by `knowledgeQuery` for the console's curated drill-ins.
+ * Times are RFC-3339 strings; "" = unset.
+ */
+export interface CompiledQuery {
+  kind: string;
+  entity_id: string;
+  predicate: string;
+  item_kind: string;
+  actor: string;
+  aggregate: string;
+  hops: number;
+  limit: number;
+  evidence_id: string;
+  as_of: string;
+  from: string;
+  to: string;
+}
+
+/**
+ * One executed query's answer. `guarantee` is the §14 label and must be
+ * rendered verbatim — a row set without its warranty is just another ranked
+ * list. `rows` are JSON objects (v1 wire shape), parsed by the screen.
+ */
+export interface KnowledgeAnswer {
+  guarantee: string;
+  rows: string[];
+}
+
+/**
+ * One ask outcome: exactly one of ANSWERED or REFUSED. A refusal is the plane
+ * WORKING (it refuses rather than guesses) and must render distinctly from
+ * both an answer and an error; `lane_hint === "memory"` names the corpus lane
+ * as the right tool for an open-ended question.
+ */
+export interface AskOutcome {
+  answered: boolean;
+  guarantee: string;
+  rows: string[];
+  compiled: CompiledQuery | null;
+  refusal_reason: string;
+  lane_hint: string;
+}
+
+/**
+ * What one source surface (ingress/stream) contributed, with the
+ * classification tags its rows carry — which scopes gate that material.
+ */
+export interface SourceHolding {
+  source_id: string;
+  evidence_count: number;
+  last_seen: string;
+  classification: string[];
+}
+
+/** One knowledge-item kind and its item count. */
+export interface KnowledgeKindCount {
+  kind: string;
+  count: number;
+}
+
+/**
+ * What the substrate holds. Full-visibility numbers: the operator console
+ * sees everything by design (ADR-0118 v1), classified material included.
+ */
+export interface SubstrateOverview {
+  evidence_count: number;
+  event_count: number;
+  observation_count: number;
+  knowledge_item_count: number;
+  live_resolution_count: number;
+  entity_count: number;
+  actor_count: number;
+  /** Evidence archived but not yet transformed — data still materializing. */
+  outbox_pending: number;
+  /** Entities whose current resolutions disagree across actors. */
+  contradiction_count: number;
+  earliest: string;
+  latest: string;
+  sources: SourceHolding[];
+  kinds: KnowledgeKindCount[];
+}
+
+/** One browsable entity — names/predicates/counts only, never values. */
+export interface KnowledgeEntity {
+  entity_id: string;
+  observation_count: number;
+  predicates: string[];
+  last_seen: string;
+}

@@ -523,6 +523,95 @@ class MockIPC {
   // Test-only helpers
   // --------------------------------------------------------------------------
 
+  // ── Knowledge substrate (ADR-0118) ──────────────────────────────────────
+
+  private knowledgeAskOutcome: t.AskOutcome = {
+    answered: true,
+    guarantee: 'exact over stored data; identity and coverage epistemically uncertain',
+    rows: ['{"entity_id":"purchase_order/PO-1","predicate":"payment_terms_days","value_number":60,"evidence_id":"ev-1"}'],
+    compiled: {
+      kind: 'point',
+      entity_id: 'purchase_order/PO-1',
+      predicate: 'payment_terms_days',
+      item_kind: '',
+      actor: '',
+      aggregate: '',
+      hops: 0,
+      limit: 0,
+      evidence_id: '',
+      as_of: '',
+      from: '',
+      to: '',
+    },
+    refusal_reason: '',
+    lane_hint: '',
+  };
+
+  private knowledgeOverviewData: t.SubstrateOverview = {
+    evidence_count: 12,
+    event_count: 4,
+    observation_count: 9,
+    knowledge_item_count: 6,
+    live_resolution_count: 3,
+    entity_count: 5,
+    actor_count: 2,
+    outbox_pending: 0,
+    contradiction_count: 1,
+    earliest: '2026-08-01T09:00:00Z',
+    latest: '2026-08-06T12:00:00Z',
+    sources: [
+      {
+        source_id: 'event:bench:mock-stream',
+        evidence_count: 12,
+        last_seen: '2026-08-06T12:00:00Z',
+        classification: ['sales'],
+      },
+    ],
+    kinds: [{ kind: 'commitment', count: 6 }],
+  };
+
+  private knowledgeEntities: t.KnowledgeEntity[] = [
+    {
+      entity_id: 'purchase_order/PO-1',
+      observation_count: 2,
+      predicates: ['payment_terms_days'],
+      last_seen: '2026-08-06T12:00:00Z',
+    },
+  ];
+
+  askKnowledge(_question: string): Promise<t.AskOutcome> {
+    return Promise.resolve(this.knowledgeAskOutcome);
+  }
+
+  knowledgeQuery(_query: Partial<t.CompiledQuery>): Promise<t.KnowledgeAnswer> {
+    return Promise.resolve({
+      guarantee: this.knowledgeAskOutcome.guarantee,
+      rows: this.knowledgeAskOutcome.rows,
+    });
+  }
+
+  knowledgeOverview(): Promise<t.SubstrateOverview> {
+    return Promise.resolve(this.knowledgeOverviewData);
+  }
+
+  listKnowledgeEntities(_query: string, _limit = 50): Promise<t.KnowledgeEntity[]> {
+    return Promise.resolve(this.knowledgeEntities);
+  }
+
+  __seedKnowledgeAsk(outcome: t.AskOutcome) {
+    this.knowledgeAskOutcome = outcome;
+  }
+
+  __seedKnowledgeOverview(overview: t.SubstrateOverview) {
+    this.knowledgeOverviewData = overview;
+  }
+
+  __seedKnowledgeEntities(entities: t.KnowledgeEntity[]) {
+    this.knowledgeEntities = entities;
+  }
+
+  // --------------------------------------------------------------------------
+
   __seed(state: t.StateOfRecord) {
     this.state = state;
     this.emitState();

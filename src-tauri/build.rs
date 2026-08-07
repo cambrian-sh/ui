@@ -43,6 +43,12 @@ fn main() {
                 // compiles unconditionally and the surface is gated on the
                 // "ingress-studio" capability, reported post-Build.
                 "../proto/ingress/ingress_studio.proto",
+                // ADR-0118: the knowledge substrate's operator plane — the NL
+                // ask box (AskKnowledge), the closed query AST (Query), and the
+                // explore catalog (Overview/ListEntities). Premium-owned for
+                // the ADR-0073 reason; gated on "substrate-query", reported
+                // post-Build (a plugin with no Postgres never advertises it).
+                "../proto/substrate/substrate.proto",
             ],
             &["../proto"],
         )
@@ -54,6 +60,7 @@ fn main() {
     println!("cargo:rerun-if-changed=../proto/telemetry/telemetry_admin.proto");
     println!("cargo:rerun-if-changed=../proto/records/records.proto");
     println!("cargo:rerun-if-changed=../proto/ingress/ingress_studio.proto");
+    println!("cargo:rerun-if-changed=../proto/substrate/substrate.proto");
 
     tauri_build::build();
 }

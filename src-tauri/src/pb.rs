@@ -51,6 +51,19 @@ pub mod ingress {
     tonic::include_proto!("cambrian.premium.ingress");
 }
 
+/// The premium knowledge-substrate plane (ADR-0118) — the NL ask box
+/// (`AskKnowledge`: question → compiled AST + exact answer + guarantee, or a
+/// named refusal), the closed query AST (`Query`), and the explore catalog
+/// (`Overview` / `ListEntities`).
+///
+/// Compiled in unconditionally like every premium plane here. The capability
+/// is reported post-Build (the record-lane precedent): a kernel with the
+/// substrate plugin and no Postgres is a CORRECT deployment that never
+/// advertises it, and the surface stays hidden rather than broken.
+pub mod substrate {
+    tonic::include_proto!("cambrian.premium.substrate");
+}
+
 /// The capability the kernel advertises when the access-policy plugin is active.
 /// The UI renders the policy console only when the handshake carries it
 /// (ADR-0082 D2: the kernel forwards plugin capabilities without interpreting
@@ -72,6 +85,12 @@ pub const RECORD_LANE_CAPABILITY: &str = "record-lane";
 /// (ADR-0112; reported via `LiveCapabilities` after Build finds Postgres and
 /// evidence capture). Absence is a complete configuration, never a fault.
 pub const INGRESS_STUDIO_CAPABILITY: &str = "ingress-studio";
+
+/// The capability the kernel advertises when the knowledge substrate's query
+/// plane has a store behind it (ADR-0118, `substrateplugin.LiveCapabilities`).
+/// Absence is a complete configuration (no Postgres / no substrate plugin),
+/// never a fault.
+pub const SUBSTRATE_CAPABILITY: &str = "substrate-query";
 
 /// The capability gating `RetentionRunOp` on the operator feed (contract 0084,
 /// ADR-0102 A1).
@@ -165,8 +184,12 @@ pub const PINNED_CONTRACT_VERSION: &str = "0093";
 /// for — reported as unknown rather than assumed compatible. Add an entry when
 /// the console gains a surface for a plugin, and bump it when that surface is
 /// rebuilt against a new plugin major.
-pub const PINNED_PLUGIN_VERSIONS: &[(&str, &str)] =
-    &[("authz", "1.0.0"), ("reactive", "1.0.0"), ("drift", "0.1.0")];
+pub const PINNED_PLUGIN_VERSIONS: &[(&str, &str)] = &[
+    ("authz", "1.0.0"),
+    ("reactive", "1.0.0"),
+    ("drift", "0.1.0"),
+    ("substrate", "0.1.0"),
+];
 
 /// How a kernel plugin's version compares to what this console pinned.
 ///

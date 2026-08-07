@@ -195,6 +195,13 @@ const KNOWN: Record<string, Omit<CapabilitySurface, 'capability'>> = {
       'describe → secure+capture → draft → confirm → dry-run → arm for external data sources; reported only when the studio found Postgres and evidence capture',
     gatesSurface: true,
   },
+  // ── plugin: substrate (ADR-0118) ─────────────────────────────────────────
+  'substrate-query': {
+    surface: 'Knowledge',
+    consequence:
+      'the natural-language ask box, the holdings overview and the entity explorer over the knowledge substrate; reported only when the substrate plugin found Postgres',
+    gatesSurface: true,
+  },
 };
 
 /** Map the handshake's capability list onto the surfaces they gate. */

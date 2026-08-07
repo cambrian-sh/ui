@@ -286,6 +286,12 @@ message FieldChange {
 message DraftRequest {
   string ingress_id = 1;
   string guidance = 2;
+  // When set, the drafter REVISES this mapping per the guidance instead of
+  // drafting from scratch: it changes only what the guidance requires, keeps
+  // the stream identity (a stream change is refused deterministically), and
+  // returns the full revised spec through the same validator, execution check
+  // and propose-only contract. Empty keeps the from-scratch behaviour.
+  string base_spec_json = 3;
 }
 
 message DraftResponse {

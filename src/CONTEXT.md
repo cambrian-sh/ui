@@ -124,3 +124,19 @@ Five rules govern this screen, and each exists because the obvious implementatio
 **This screen polls, and it is the only one that does.** `ListAlerts` is request/response only — alerts are not on the operator event feed, and putting them there is a contract bump — so the alert queries set `refetchInterval` explicitly against an otherwise inert `queryClient`. The header says "polled N s ago" for exactly that reason: a pulsing live dot over a poll would be a lie. Retention is the exception and *is* folded (`retention_runs` on the projection, capability `retention-feed`), merged with `ListRetentionRuns` so a pass from before login is still visible on the first paint.
 
 `tags[]` on an alert are **inherited** classification (ADR-0095 D9). An alert is never more visible than the material it quotes, and it is the artifact most likely to be forwarded — so the copy/export path leads with the tags, and any future share affordance must too.
+
+## The Knowledge console (`screens/knowledge/`, route `/knowledge`, ADR-0118, PRD story 54)
+
+Asking, exploring and auditing the knowledge substrate. Mounted inside `PluginSurface` (`pluginId="substrate"`, capability `substrate-query`, reported post-Build) — an absent plugin or a Postgres-less kernel is a complete deployment, not a fault. Three surfaces behind `?tab=` (**Ask**, **Explore**, **Contradictions**); `?entity=` centres the explorer, `?receipt=` opens the evidence drawer in the **inspector slot** — all three are things an operator sends someone, so they are search params.
+
+Rules, each load-bearing:
+
+1. **The ask box is the only user-facing query surface — there is deliberately no structured query builder.** The kernel compiles the question into the closed AST; curated drill-ins (entity cards, contradictions, receipts) cover the structured shapes via `knowledgeQuery` as internal plumbing.
+2. **An answer always renders its guarantee label verbatim AND the compiled query.** A row set without its warranty is just another ranked list, and the compiled chip is what keeps NL convenience from becoming NL ambiguity — the operator always sees exactly what was asked of the store.
+3. **A refusal is the plane WORKING** — rendered as "Refused — by design" with a word and a shape (dashed border), never error styling; `lane_hint === 'memory'` links the memory page, because open-ended questions belong to the approximate lane.
+4. **The receipt is one click from any value.** Every substrate row keeps its `evidence_id`; `RowTable` renders it as the one interactive column, opening `ReceiptInspector` (source surface, source key, content hash, classification tags — the scopes that gate the material).
+5. **Rows render as a dynamic table** (`rows.tsx`): shape-specific keys, undecodable rows stay visible, zero rows say "an answer, not an error". No schema this build guessed at.
+6. **Full-visibility by design** (ADR-0118 v1): operator numbers include classified material, and nothing on this page reflects what any agent can see — agent reads elsewhere are scope-filtered.
+7. **This page does not poll.** Holdings change on ingest cadence; the overview reads on navigation with `staleTime: 60s`, and everything else reads on demand. The outbox badge ("N materializing") is the honest async-ingest indicator.
+
+The co-participation graph (`NeighborGraph`) follows the PlanGraph conventions (dagre layout, tokens for every colour, hidden attribution) and is bounded by the query plane's own hop cap; node clicks re-centre the entity card — exploration is the feature.

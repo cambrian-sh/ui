@@ -52,6 +52,8 @@ const KERNEL_ADVERTISES = [
   'watch-schedule',
   // plugin: ingress-studio
   'ingress-studio',
+  // plugin: substrate
+  'substrate-query',
 ];
 
 describe('describeCapabilities', () => {

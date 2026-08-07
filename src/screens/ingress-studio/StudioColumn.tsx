@@ -9,6 +9,7 @@ import type { StudioDraft, StudioIngress, StudioStatus } from "@/ipc/types";
 import { Receipt, Precondition, OpenStage, ReceiptNote } from "./StageRows";
 import { MappingStage } from "./MappingStage";
 import { RevisionStage } from "./RevisionStage";
+import { ReviseMapping } from "./ReviseMapping";
 import { EvidencePane } from "./EvidencePane";
 import { DiscoverSource } from "./DiscoverSource";
 import {
@@ -356,7 +357,13 @@ export function StudioColumn({
                       onGuidance={setGuidance}
                       onPropose={async () => {
                         setNotice("");
-                        const r = await draft.mutate(ingressId, guidance);
+                        // When a spec exists, the box asks "what is wrong with
+                        // this mapping?" — so the drafter must actually REVISE
+                        // it, not re-roll from the profile. The shown spec is
+                        // the base: a draft in flight wins, else the stored
+                        // revision.
+                        const base = result?.spec_json ?? saved.data?.spec_json ?? "";
+                        const r = await draft.mutate(ingressId, guidance, base);
                         if (r) setResult(r);
                       }}
                       onDecide={(path, choice) => {
@@ -399,6 +406,19 @@ export function StudioColumn({
                 </OpenStage>
               );
             })}
+
+            {/* Revise-by-prompt on a live ingress: authors a proposed revision
+                through the drafter (base = the latest stored revision) and
+                saves it as the fork the RevisionStage below then shadow-tests.
+                Authoring only — nothing applies until promote. */}
+            {live && (
+              <ReviseMapping
+                ingressId={ingressId}
+                baseRevision={status?.latest_mapping_revision ?? 0}
+                readOnly={readOnly}
+                onSaved={onChanged}
+              />
+            )}
 
             {/* 17b: revising forks a revision, and the live one keeps running. */}
             {live && revising !== null && (
