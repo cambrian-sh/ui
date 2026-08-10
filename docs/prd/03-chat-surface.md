@@ -28,7 +28,7 @@
 - **Chat follows Linear convention.** Newest at the bottom. The operator's natural action ("type at the bottom") and the plan / step / output blocks (which grow downward as they stream) share the same end. The status pill of the running plan is always at the bottom near the inject input.
 
 **From the in-repo `ui/CONTEXT.md` (PRD-01 §2.5):**
-- **EC-1** (Tauri 2), **EC-2** (React 19 + TS + Vite), **EC-3** (Bun), **EC-4** (gRPC in Rust core; chat calls `op_send_message` and `op_inject_correction` via Tauri IPC), **EC-5** (vendored proto at 0047).
+- **EC-1** (Tauri 2), **EC-2** (React 19 + TS + Vite), **EC-3** (Bun), **EC-4** (gRPC in Rust core; chat calls `op_send_message` and `op_inject_correction` via Tauri IPC), **EC-5** (vendored proto pinned by `pb.rs::PINNED_CONTRACT_VERSION`).
 
 **From PRD-01 (Foundation):**
 - §4 (visual tokens; the chat surface consumes them — no per-component forks).
@@ -257,7 +257,7 @@ These are the V1 artifact types. The contract for the runtime to emit a new arti
 - **Parent PRD** — `web-ui-ux-prd.md` §5 (The chat surface), §2.6 (LD-6), §2.10 (LD-10), §2.3 (LD-3 — Linear convention is a sub-decision from LD-3's density+theme, applied to the chat's reverse-chronology).
 - **Sibling PRDs** — PRD-02 (centre column + right inspector shell), PRD-04 (right inspector plan context; the work surface behind the PlanCard), PRD-05 (MemoryReference → memory explorer), PRD-06 (the operator console that the slash-prefixes navigate to).
 - **Foundation PRD** — PRD-01 §4.4 (motion), §6 (components), §7 (realtime grammar), §8 (a11y), §9 (keyboard), §10 (states), §11 (forbids).
-- **In-repo `ui/CONTEXT.md`** — EC-1…EC-5 (Tauri 2, React 19, Bun, gRPC in Rust, vendored proto at 0047).
+- **In-repo `ui/CONTEXT.md`** — EC-1…EC-5 (Tauri 2, React 19, Bun, gRPC in Rust, vendored proto pinned by `pb.rs::PINNED_CONTRACT_VERSION`).
 - **Kernel ADRs** — ADR-0031 (Universal Input Router — the slash-prefixes), ADR-0018 (SubstrateLLMGateway — the streaming path that feeds the AgentOutputStream), ADR-0047 (Operator Transport Plane — the gRPC seam).
 - **Companion ADRs** — UI-009, UI-010 (both in this PRD's §14).
 

@@ -40,7 +40,7 @@
 - §6 (status strip; the LTM up pill is the at-a-glance read).
 
 **From the in-repo `ui/CONTEXT.md` (PRD-01 §2.5):**
-- **EC-1** (Tauri 2), **EC-2** (React 19 + TS + Vite), **EC-3** (Bun), **EC-4** (gRPC in Rust core; the memory explorer reads via the projection store + `memory_query` (kernel ADR-0022's pull mechanism) and mutates via Tauri commands), **EC-5** (vendored proto at 0047).
+- **EC-1** (Tauri 2), **EC-2** (React 19 + TS + Vite), **EC-3** (Bun), **EC-4** (gRPC in Rust core; the memory explorer reads via the projection store + `memory_query` (kernel ADR-0022's pull mechanism) and mutates via Tauri commands), **EC-5** (vendored proto pinned by `pb.rs::PINNED_CONTRACT_VERSION`).
 
 **From kernel ADRs (cited, not re-decided):**
 - **ADR-0015** (Engram engine; the memory model the UI renders).
@@ -245,7 +245,7 @@ The memory explorer's five states per surface:
 - **Parent PRD** — `web-ui-ux-prd.md` §7.6 (Memory), §2.5 (LD-5), §2.8 (LD-8), §2.11 (LD-11).
 - **Sibling PRDs** — PRD-03 (MemoryReference block), PRD-04 (plan work surface; the destination for "go to plan"), PRD-06 (Memory console entry in the nav rail — same surface, same PRD), PRD-07 (audit + role gating + config).
 - **Foundation PRD** — PRD-01 §4.4 (motion), §6 (components), §7 (realtime), §8 (a11y), §9 (keyboard), §10 (states), §11 (forbids).
-- **In-repo `ui/CONTEXT.md`** — EC-1…EC-5 (Tauri 2, React 19, Bun, gRPC in Rust, vendored proto at 0047).
+- **In-repo `ui/CONTEXT.md`** — EC-1…EC-5 (Tauri 2, React 19, Bun, gRPC in Rust, vendored proto pinned by `pb.rs::PINNED_CONTRACT_VERSION`).
 - **Kernel ADRs** — ADR-0015 (Engram engine), ADR-0016 (WorkspaceStage), ADR-0017 (Spreading activation), ADR-0022 (push/pull), ADR-0025/0027/0029 (memory reform / Hippocampus / Episodic), ADR-0034/0035 (scoping / kernel-derived write classification), ADR-0044 (semantic tool retrieval — the DocTypeTool memory type), ADR-0046 (skills — the DocTypeSkill memory type), ADR-0048 (working-memory context hygiene).
 - **Companion ADRs** — UI-012, UI-013 (both in this PRD's §14).
 

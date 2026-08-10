@@ -67,7 +67,29 @@ The presentation layer. Responsibilities: a **projection store** hydrated from t
 
 ### `proto/` — the vendored contract
 
-`operator.proto`, **vendored and pinned** to contract `0061`, header-stamped DO-NOT-EDIT. The single source of the wire types. Re-vendor from the kernel repo `api/proto/operator.proto` when the contract bumps.
+`operator.proto`, **vendored and pinned** to contract `0093`, header-stamped DO-NOT-EDIT. The single source of the wire types. Re-vendor from the kernel repo `api/proto/operator.proto` when the contract bumps.
+
+(This line said `0061` until 2026-08-07 while `src-tauri/src/pb.rs` pinned `0093` — the *pin* was current and the *prose* was stale, which is the direction that misleads a reader checking whether they are behind. The pin in `pb.rs` is the authority; this sentence is a copy of it and copies drift.)
+
+**Re-vendored 2026-08-07**, byte-identical to core again. The change was one hunk: `AuthoredStepOp.recommended_model` gained `[deprecated = true]` plus a rationale comment — the kernel resolves model choice from the step's declared need and no longer reads the field. **The contract did NOT bump** (still `0093`): the wire is unchanged, nothing was added or removed, and `buf breaking` passes — so no skew banner, correctly. Note for the next re-vendor: because prost emits `#[deprecated]` and `transport.rs` reads that field, `cargo check` surfaces warnings unless the two conversion functions keep their `#[allow(deprecated)]` — they do, deliberately, so an authored value round-trips instead of being silently dropped in transport. `DagBuilder` states the field is advisory rather than pretending the override works.
+
+### Chat: a failed turn now reads as failed (2026-08-08)
+
+`ProgressLine` rendered every ADR-0098 snapshot with a pulsing live dot and
+`aria-live="polite"`, including a **final** one. A turn that failed before replying
+therefore left the console saying "working on it" forever — the precise "looks like a hang"
+reading the terminal signal exists to prevent. A final update that still carries text IS the
+failure notice (its `Note`); a successful turn clears instead, by sending empty text that the
+Rust fold removes. So final-and-present now renders as ended: `--fg-danger`, a static dot,
+`role="alert"` + `aria-live="assertive"`, and no step counter ("step 2 of 4" beside a failure
+is where it stopped, not progress). `ProgressLine` is exported from `ChatConsole.tsx` for its
+test, the same way `InterviewCard` already is.
+
+`SessionWorkSurface` also stopped `void`-ing `ipc.sendMessage` / `ipc.injectCorrection`. A
+rejected command used to vanish — the draft cleared, the composer looked like it had worked,
+and nothing said otherwise. An ASYNC failure arrives later on the progress channel, but a
+send that never left the machine has no progress channel to arrive on, so that was the one
+failure a user could never discover.
 
 ### `docs/` — the product spec
 
@@ -116,7 +138,7 @@ The runtime's Operator Transport Plane (kernel ADR-0047) is **fully implemented 
 
 ## 7. Glossary
 
-**Cambrian domain terms (use verbatim).** Substrate, Handoff, ExecutionPlan, Step, Planner, Gatekeeper, Auctioneer, Verifier, Agent (Cognitive/Model/Daemon), TrustScore, GatekeeperScore, Session, Checkpoint, EpisodicMemory, LTM, MnemonicFact, MnemonicScene, ProceduralTemplate, NegativeEdge, Scope, EffectiveScope, DefaultWriteTags, k-anonymity, Tool/Skill/MCP, Tier-1/Tier-2 disclosure, HITL, PauseController, EventBus, Consolidation, Lifecycle, LLM Provider, Circuit Breaker. Full definitions: kernel `CONTEXT.md §7`, PRD §10.
+**Cambrian domain terms (use verbatim).** Substrate, Handoff, ExecutionPlan, Step, Planner, Gatekeeper, Dispatcher (`domain.StepDispatcher` — **not** Auctioneer, deleted by ADR-0100 P3; the wire still says `AuctionEventOp` and the feed class is still `auction`, because the proto was deliberately left unchanged to hold the contract at `0093`), Verifier, Agent (Cognitive/Model/Daemon), TrustScore, GatekeeperScore, Session, Checkpoint, EpisodicMemory, LTM, MnemonicFact, MnemonicScene, ProceduralTemplate, NegativeEdge, Scope, EffectiveScope, DefaultWriteTags, k-anonymity, Tool/Skill/MCP, Tier-1/Tier-2 disclosure, HITL, PauseController, EventBus, Consolidation, Lifecycle, LLM Provider, Circuit Breaker. Full definitions: kernel `CONTEXT.md §7`, PRD §10.
 
 **UI-app terms.**
 - **Runtime-core / kernel / Substrate** — the Go runtime this app controls.

@@ -43,7 +43,7 @@
 - §5 / §8 (the memory detail's blast-radius preview and inline graph view are reused here for scope changes, write-tag changes, and tool-grant changes — the same PRD-01 components).
 
 **From the in-repo `ui/CONTEXT.md` (PRD-01 §2.5):**
-- **EC-1** (Tauri 2), **EC-2** (React 19 + TS + Vite), **EC-3** (Bun), **EC-4** (gRPC in Rust core; every console entry reads from the projection store, every mutation goes through a Tauri command), **EC-5** (vendored proto at 0047).
+- **EC-1** (Tauri 2), **EC-2** (React 19 + TS + Vite), **EC-3** (Bun), **EC-4** (gRPC in Rust core; every console entry reads from the projection store, every mutation goes through a Tauri command), **EC-5** (vendored proto pinned by `pb.rs::PINNED_CONTRACT_VERSION`).
 
 **From kernel ADRs (cited, not re-decided):**
 - **ADR-0001** (Agent-trait classification + DAG parallel execution — the agent list).

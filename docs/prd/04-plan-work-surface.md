@@ -43,7 +43,7 @@
 - §6 (the plan stack in the inspector; this PRD owns the work surface behind each stack entry).
 
 **From the in-repo `ui/CONTEXT.md` (PRD-01 §2.5):**
-- **EC-1** (Tauri 2), **EC-2** (React 19 + TS + Vite), **EC-3** (Bun), **EC-4** (gRPC in Rust core; the work surface reads from the projection store, which is folded from `kernel://state`), **EC-5** (vendored proto at 0047).
+- **EC-1** (Tauri 2), **EC-2** (React 19 + TS + Vite), **EC-3** (Bun), **EC-4** (gRPC in Rust core; the work surface reads from the projection store, which is folded from `kernel://state`), **EC-5** (vendored proto pinned by `pb.rs::PINNED_CONTRACT_VERSION`).
 
 ---
 
@@ -269,7 +269,7 @@ The work surface is **realtime** (product PRD ID-5). The fold (UI-005) updates t
 - **Parent PRD** — `web-ui-ux-prd.md` §6 (The right inspector), §2.4 (LD-4), §2.6 (LD-6), §2.10 (LD-10).
 - **Sibling PRDs** — PRD-03 (chat PlanCard + chat AgentOutputStream + chat BidPanel), PRD-05 (MemoryReference → memory explorer), PRD-06 (Plans in Flight global view, agents, tools, cost), PRD-07 (audit + reason field + role gating + config).
 - **Foundation PRD** — PRD-01 §4.4 (motion), §6 (components), §7 (realtime), §8 (a11y), §9 (keyboard), §10 (states), §11 (forbids).
-- **In-repo `ui/CONTEXT.md`** — EC-1…EC-5 (Tauri 2, React 19, Bun, gRPC in Rust, vendored proto at 0047).
+- **In-repo `ui/CONTEXT.md`** — EC-1…EC-5 (Tauri 2, React 19, Bun, gRPC in Rust, vendored proto pinned by `pb.rs::PINNED_CONTRACT_VERSION`).
 - **In-repo `ui/src-tauri/CONTEXT.md`** — full transport contract; the work surface reads from the projection store (UI-005).
 - **Kernel ADRs** — ADR-0001 (Gatekeeper + Merit, source of TrustScore), ADR-0005 (SelfHealing — the retry step action), ADR-0010 (ReplanHandler — the abort plan action), ADR-0013 (Mid-execution semantic checkpoint — the H1 gate that triggers replan), ADR-0018 (SubstrateLLMGateway — the streaming path that feeds the AgentOutputStream), ADR-0037 (Central-Executive Planner — the proposed alternative to the auction; UI is forward-compatible), ADR-0047 (Operator Transport Plane).
 - **Companion ADRs** — UI-011 (in this PRD's §14).

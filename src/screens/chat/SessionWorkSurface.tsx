@@ -8,6 +8,7 @@ import { Button } from '@/design-system/components/ui/button';
 import { Inspector } from '@/components/InspectorSlot';
 import { ConfirmMutationDialog } from '@/screens/tasks/ConfirmMutationDialog';
 import { useMutation } from '@/lib/useMutation';
+import { errorMessage } from '@/lib/errorMessage';
 import { useBreakpoint } from '@/lib/useBreakpoint';
 import { formatTokenCount, formatRelativeTime, sessionSubject } from '@/lib/format';
 import { stepsOf, withApprovals } from '@/lib/planSteps';
@@ -109,18 +110,27 @@ export function SessionWorkSurface({
       ? 'Operator role required to resolve an intervention.'
       : undefined;
 
+  // Both sends were `void`ed, so a rejected command vanished: the draft cleared, the
+  // composer looked like it had worked, and nothing ever said otherwise. That is only
+  // half the story the kernel tells — an ASYNC failure (the model provider refusing,
+  // say) arrives later on the ADR-0098 progress channel and renders as a terminal
+  // note — but a send that never left the machine has no progress channel to arrive
+  // on, so swallowing it here is the one failure the user can never find out about.
+  const [sendError, setSendError] = useState<string | null>(null);
+
   const submit = (text: string) => {
+    setSendError(null);
     if (mode === 'inject') {
       if (!activePlan) return;
-      void ipc.injectCorrection({
-        session_id: sessionId,
-        instruction: text,
-        reason: 'mid-plan-inject',
-      });
+      ipc
+        .injectCorrection({ session_id: sessionId, instruction: text, reason: 'mid-plan-inject' })
+        .catch((e: unknown) => setSendError(`Could not send that correction. ${errorMessage(e)}`));
       setInjectDraft('');
       return;
     }
-    void ipc.sendMessage({ session_id: sessionId, text, reason: 'chat-send' });
+    ipc
+      .sendMessage({ session_id: sessionId, text, reason: 'chat-send' })
+      .catch((e: unknown) => setSendError(`Could not send that message. ${errorMessage(e)}`));
     setChatDraft('');
   };
 
@@ -213,6 +223,12 @@ export function SessionWorkSurface({
       {sessionMutation.error && (
         <div className="flex-none px-[26px] pb-2">
           <ErrorState reason={sessionMutation.error} />
+        </div>
+      )}
+
+      {sendError && (
+        <div className="flex-none px-[26px] pb-2">
+          <ErrorState reason={sendError} />
         </div>
       )}
 

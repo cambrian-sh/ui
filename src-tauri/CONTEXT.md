@@ -68,7 +68,9 @@ The Rust core is the **only** thing that talks gRPC to the runtime-core. The web
 - `kernel://state` → the full `StateOfRecord` projection, emitted on connection change, snapshot, and each structural feed event.
 - `kernel://token` → `{ session_id, step_index, text }`, the live-only token lane (never part of `StateOfRecord`).
 
-**Pending (follow-ups, not blocking):** outbound ACK/retry queue for commands mid-reconnect; backoff jitter (single client — low value); TLS endpoint selection; token-restore-from-keychain on startup; per-class batching at the bridge (currently emit-per-structural-event, which is low-frequency); richer projections for auction/verifier/llm-health as their screens land.
+**Pending (follow-ups, not blocking):** outbound ACK/retry queue for commands mid-reconnect; backoff jitter (single client — low value); TLS endpoint selection; per-class batching at the bridge (currently emit-per-structural-event, which is low-frequency); a richer `llm_health` projection.
+
+**Two entries left this list on 2026-08-08, in opposite directions.** *Token-restore-from-keychain on startup* is **done** — `saved_connection` persists `(endpoint, username)` and `reconnect_saved` auto-connects on launch, with an explicit write-back verification because `keyring`'s mock store once accepted every write and forgot it, so "remember me" reported success and stored nothing. *A richer auction projection* is **cancelled, not pending** — ADR-0100 P3 deleted the auction, the UI's own settings surface is now `DispatchSettings`/`dispatchFields`, and that screen is never landing. The `auction` feed class and `AuctionEventOp` remain on the wire by deliberate choice (the proto was left unchanged to hold the contract at `0093`); they now carry capability-typed **selection** events.
 
 ---
 
@@ -103,7 +105,7 @@ Neither is the agent-facing `Orchestrator`/`AgentService`, and the core never ca
 
 ### `OperatorEvent` (the feed envelope)
 
-`{ seq: u64, ts, session_id, payload: oneof }`. `seq` is a **global monotonic** cursor across all classes/sessions. Payloads are **absolute-state** (the new value, not increments). Classes: `resync` (control), `auction`, `agent_ready`, `session_dormant`, `session_completed`, `memory_pressure`, `daemon_crashed` (premium), `watch_triggered` (premium), `memory_written`, `hitl_raised`, `verifier_round`, `llm_health`, `plan_state`, `audit`, `token` (live-only).
+`{ seq: u64, ts, session_id, payload: oneof }`. `seq` is a **global monotonic** cursor across all classes/sessions. Payloads are **absolute-state** (the new value, not increments). Classes: `resync` (control), `auction` (the wire name; it carries capability-typed **selection** events — the mechanism was deleted by ADR-0100 P3 and the proto deliberately was not, so the class name outlived the auction), `agent_ready`, `session_dormant`, `session_completed`, `memory_pressure`, `daemon_crashed` (premium), `watch_triggered` (premium), `memory_written`, `hitl_raised`, `verifier_round`, `llm_health`, `plan_state`, `audit`, `token` (live-only).
 
 ---
 

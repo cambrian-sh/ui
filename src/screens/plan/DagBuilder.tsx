@@ -615,7 +615,10 @@ function StepInspectorPanel({
       </Labelled>
 
       <Labelled label="Which model it uses">
-        {/* An override on an INHERITED value, never a blank you must fill. */}
+        {/* The inherited value is the ANSWER now, not a default to override: the kernel
+            resolves model choice from what the step declares it needs, so the field below
+            is advisory. Kept editable rather than removed so an authored plan that already
+            carries a value round-trips instead of silently losing it. */}
         <div className="rounded-md p-2 shadow-[inset_0_0_0_1px_var(--border-subtle)]">
           <div className="font-mono text-[9.5px] uppercase tracking-[0.14em] text-[var(--fg-muted)]">
             Inherits the router role
@@ -625,20 +628,33 @@ function StepInspectorPanel({
               ? `${inheritedGen.model}${inheritedGen.disable_thinking ? ' · thinking off' : ''}`
               : inheritedRole?.generator_id || 'not reported by this kernel'}
           </div>
+          {inheritedGen?.disable_thinking ? (
+            <div className="mt-1 text-[10.5px] leading-[1.5] text-[var(--fg-muted)]">
+              Thinking is switched off on this generator — a poor fit for arithmetic over many
+              rows.
+            </div>
+          ) : null}
+        </div>
+        <div className="mt-1.5 flex items-center gap-1.5">
+          <span className="rounded px-1 py-px font-mono text-[9px] uppercase tracking-[0.14em] text-[var(--fg-muted)] shadow-[inset_0_0_0_1px_var(--border-subtle)]">
+            Advisory
+          </span>
+          <span className="font-mono text-[9.5px] uppercase tracking-[0.14em] text-[var(--fg-muted)]">
+            recorded, not applied
+          </span>
         </div>
         <Input
           value={step.recommended_model}
           onChange={(e) => onChange({ recommended_model: e.target.value })}
-          placeholder="Override →"
-          aria-label="Override the model"
+          placeholder="Note a model →"
+          aria-label="Model note — advisory, the kernel does not apply it"
           className="h-8 text-[12px]"
         />
         <p className="text-[11px] leading-[1.55] text-[var(--fg-muted)]">
-          Overriding writes <code>recommended_model</code> on this step only. Worth doing when a
-          step is unusually hard
-          {inheritedGen?.disable_thinking
-            ? ' — and worth remembering that the role map already has thinking switched off on this generator, which is a poor fit for arithmetic over many rows.'
-            : '.'}
+          The kernel chooses the model from what the step declares it needs, so anything you
+          type here is <strong>saved with the plan but never applied</strong> — it will not
+          change which model runs. It stays as a note for whoever reads the plan next. To change
+          the model a step actually uses, change the generator bound to the router role.
         </p>
       </Labelled>
 

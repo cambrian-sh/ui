@@ -7,7 +7,7 @@
 
 PRD-02 ([../prd/02-shell-and-layout.md](../prd/02-shell-and-layout.md)) requires a **hydration contract**: on shell mount, call `op_get_state` (Tauri IPC) once; thereafter, fold every `kernel://state` event into the projection store. The contract is fixed by EC-4 (gRPC in Rust core) and the in-repo `ui/src-tauri/CONTEXT.md` (full transport contract).
 
-EC-5 pins the proto: `ui/proto/operator.proto` at contract 0047. The Rust core emits `OperatorEvent` envelopes with a `oneof` payload covering 15 event types (per the explore). The webview's job is to fold these into the Zustand store (UI-004).
+EC-5 pins the proto: `ui/proto/operator.proto`, at whatever contract `src-tauri/src/pb.rs::PINNED_CONTRACT_VERSION` names (it said `0047` when this was written; the pin has moved since — the number is deliberately no longer restated here, because a copy of a moving value drifts). The Rust core emits `OperatorEvent` envelopes with a `oneof` payload covering 15 event types (per the explore). The webview's job is to fold these into the Zustand store (UI-004).
 
 The decisions this ADR records are: **how** the fold works (snapshot vs delta), **what to do** on `RESYNC_REQUIRED`, **how to handle** the `kernel://token` live-only lane, and **how to keep the UI responsive** when the event stream is bursty.
 

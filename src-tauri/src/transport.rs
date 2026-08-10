@@ -2336,6 +2336,14 @@ impl Transport {
     }
 }
 
+// `recommended_model` is deprecated in the kernel's contract as of 2026-08-07 (the
+// LLM Provider resolves model choice from the declared need, ADR-0042 D1) and the
+// kernel no longer reads it. The round trip is kept ANYWAY, deliberately: DagBuilder
+// still offers the field as an editable control, and dropping it here would silently
+// discard a value the operator typed — a worse failure than carrying one the kernel
+// ignores. The open question is a UI one, not a transport one: the control should stop
+// promising an override that does nothing. Until it does, this stays symmetric.
+#[allow(deprecated)]
 fn authored_step_from_pb(s: pb::AuthoredStepOp) -> AuthoredStep {
     AuthoredStep {
         query: s.query,
@@ -2353,6 +2361,9 @@ fn authored_step_from_pb(s: pb::AuthoredStepOp) -> AuthoredStep {
     }
 }
 
+// See authored_step_from_pb: the deprecated `recommended_model` is round-tripped on
+// purpose so an authored value is not silently dropped in transport.
+#[allow(deprecated)]
 fn authored_step_to_pb(s: AuthoredStep) -> pb::AuthoredStepOp {
     pb::AuthoredStepOp {
         query: s.query,

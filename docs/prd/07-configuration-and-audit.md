@@ -48,7 +48,7 @@
 - The per-resource mutating actions (scope / write tags / tool grants / new skill / new MCP / new watch config / manual consolidation) are the local form of the same mutations; the Settings surface is the global view. The two share the same blast-radius panel + confirm-with-consequence bar + reason field.
 
 **From the in-repo `ui/CONTEXT.md` (PRD-01 §2.5):**
-- **EC-1** (Tauri 2), **EC-2** (React 19 + TS + Vite), **EC-3** (Bun), **EC-4** (gRPC in Rust core; every Settings mutation goes through a Tauri command, the auth provider uses the in-repo `keyring` crate), **EC-5** (vendored proto at 0047).
+- **EC-1** (Tauri 2), **EC-2** (React 19 + TS + Vite), **EC-3** (Bun), **EC-4** (gRPC in Rust core; every Settings mutation goes through a Tauri command, the auth provider uses the in-repo `keyring` crate), **EC-5** (vendored proto pinned by `pb.rs::PINNED_CONTRACT_VERSION`).
 
 **From kernel ADRs (cited, not re-decided):**
 - **ADR-0019/0021** (OTel Bridge + Langfuse — the telemetry opt-in target).

@@ -143,10 +143,29 @@ describe('DagBuilder', () => {
     expect(screen.queryByText('hard')).not.toBeInTheDocument();
   });
 
-  it('describes the model field as an override on an inherited value', () => {
+  // Was: "describes the model field as an override on an inherited value". It is no longer
+  // an override — the kernel resolves model choice from what the step declares it needs and
+  // does not read `recommended_model` (deprecated in the contract 2026-08-07). The field is
+  // kept editable so an authored plan carrying a value round-trips instead of silently
+  // losing it, which is exactly why the SCREEN has to say it will not be applied. A control
+  // that looks like it changes behaviour and does not is worse than no control.
+  it('presents the model field as advisory, not as an override that takes effect', () => {
     render(<DagBuilder />);
     expect(screen.getByText(/inherits the router role/i)).toBeInTheDocument();
-    expect(screen.getByPlaceholderText(/override/i)).toBeInTheDocument();
+
+    // Still editable, and no longer labelled as an override.
+    expect(screen.getByPlaceholderText(/note a model/i)).toBeInTheDocument();
+    expect(screen.queryByPlaceholderText(/override/i)).not.toBeInTheDocument();
+
+    // The status is stated on the screen, not just in the accessible name.
+    expect(screen.getByText(/advisory/i)).toBeInTheDocument();
+    expect(screen.getByText(/recorded, not applied/i)).toBeInTheDocument();
+    expect(screen.getByText(/saved with the plan but never applied/i)).toBeInTheDocument();
+
+    // And in the accessible name, so it is not a visual-only caveat.
+    expect(
+      screen.getByLabelText(/advisory, the kernel does not apply it/i),
+    ).toBeInTheDocument();
   });
 
   it('gates both run and dry run behind a reason', () => {

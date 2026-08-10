@@ -38,7 +38,7 @@
 | EC-2 | React 19 + TypeScript + Vite. |
 | EC-3 | Bun for JS package management and dev/build. |
 | EC-4 | gRPC in Rust core only; webview touches only Tauri IPC. |
-| EC-5 | Vendored `ui/proto/operator.proto` at contract 0047. |
+| EC-5 | Vendored `ui/proto/operator.proto`, pinned by `src-tauri/src/pb.rs::PINNED_CONTRACT_VERSION`. |
 | LD-1…LD-11 | The 11 parent UX PRD locked decisions. |
 | UI-001 | Tailwind v4 `@theme` + shadcn/ui component library. |
 | UI-002 | i18n Externalization (Lingui). |
@@ -308,7 +308,7 @@ This contract is the **single source of truth** for the webview ↔ Tauri shell 
 
 `ui/proto/operator.proto` is vendored from the kernel at `api/proto/operator.proto`. The vendored copy is the **implementation source** for the Rust core's gRPC client. The kernel's `api/proto/` is the **authoritative source**.
 
-The proto is pinned to a specific contract version (currently `0047` per the explore's `ui/src-tauri/src/pb.rs::PINNED_CONTRACT_VERSION`). The vendor comment is `// DO NOT EDIT BY HAND`.
+The proto is pinned to a specific contract version, and `src-tauri/src/pb.rs::PINNED_CONTRACT_VERSION` is the authority for which one — read it rather than trusting a number quoted in prose. (This sentence said `0047` from the original explore until 2026-08-07, long after the pin had moved; `ui/CONTEXT.md` had independently drifted to `0061`. Two stale copies of one value is the argument for not keeping copies.) The vendor comment is `// DO NOT EDIT BY HAND`.
 
 ### 4.2 The sync process
 
@@ -533,7 +533,9 @@ The implementation supports **two dev modes**:
 
 On Tauri shell mount, the Rust core compares the vendored `PINNED_CONTRACT_VERSION` (from `pb.rs`) with the kernel's runtime version (returned in `Login` / `Snapshot`). If they mismatch, the shell surfaces a warning via the role pill area:
 
-> "This kernel is on contract 0048; the UI is on 0047. Some features may be unavailable."
+> "This kernel is on contract <kernel>; the UI is on <ui>. Some features may be unavailable."
+
+(Placeholders on purpose — this is the message SHAPE. Real version numbers in an example get read as current state, which is how the stale claims above survived so long.)
 
 The warning is non-blocking; the UI continues to work with whatever subset of features the two contracts share. The contract bump (§4) is the recovery path.
 

@@ -271,6 +271,41 @@ describe('SessionWorkSurface — composer', () => {
     ).toBeInTheDocument();
   });
 
+  it('surfaces a rejected send instead of swallowing it', async () => {
+    // Regression: both sends were `void ipc.…(…)`, so a rejected command vanished —
+    // the draft cleared, the composer looked like it had worked, and nothing ever
+    // said otherwise. An ASYNC failure (the provider refusing) arrives later on the
+    // progress channel, but a send that never left the machine has no progress
+    // channel to arrive on, so this was the one failure a user could never find out
+    // about.
+    vi.mocked(ipc.sendMessage).mockRejectedValueOnce(new Error('Unavailable'));
+    projectionStore.getState().hydrate(makeState('operator'));
+    render(<SessionWorkSurface sessionId="session-1" />);
+
+    fireEvent.change(screen.getByLabelText('Chat message'), {
+      target: { value: 'what is the status' },
+    });
+    fireEvent.keyDown(screen.getByLabelText('Chat message'), { key: 'Enter' });
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('Unavailable');
+  });
+
+  it('surfaces a rejected mid-plan inject too', async () => {
+    vi.mocked(ipc.injectCorrection).mockRejectedValueOnce(new Error('PermissionDenied'));
+    projectionStore.getState().hydrate(makeState('operator'));
+    render(<SessionWorkSurface sessionId="session-1" />);
+
+    // Switch the composer to the running plan, then send.
+    fireEvent.click(screen.getByRole('radio', { name: /Inject into plan/ }));
+    const box = screen.getByLabelText('Inject into plan');
+    fireEvent.change(box, { target: { value: 'stop and re-read the brief' } });
+    fireEvent.keyDown(box, { key: 'Enter' });
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('PermissionDenied');
+  });
+
   it('switches the target between the session and the running plan', () => {
     projectionStore.getState().hydrate(makeState('operator'));
     render(<SessionWorkSurface sessionId="session-1" />);

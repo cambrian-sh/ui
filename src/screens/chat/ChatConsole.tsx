@@ -640,21 +640,42 @@ function PlanLadder({
  * disappears when the turn ends. Writing each snapshot into the log instead would
  * leave a permanent trail of "Searching memory…" above every answer.
  */
-function ProgressLine({ progress }: { progress: ConversationProgress }) {
+export function ProgressLine({ progress }: { progress: ConversationProgress }) {
+  // A FINAL update that still carries text is a turn that ENDED and left a reason —
+  // ADR-0098's `Note`, "the closing line a FINAL update leaves on screen instead of
+  // clearing, used to say what went wrong". A successful turn clears instead (empty
+  // text, and the fold removes the entry), so if this is final and present, it failed.
+  //
+  // It must not keep pulsing. A live dot and `aria-live="polite"` on a turn that has
+  // already stopped is exactly the "looks like a hang" reading the terminal signal
+  // exists to prevent: the kernel said "over, and here is why" and the console
+  // rendered "still working". Announce it assertively — the user is waiting on a
+  // reply that is never coming, and that is the one thing worth interrupting for.
+  const ended = progress.final;
+
   // Only show the counter when the kernel actually knows the denominator —
-  // "step 1 of 0" is worse than no counter at all.
+  // "step 1 of 0" is worse than no counter at all. Suppressed once the turn has
+  // ended: "step 2 of 4" beside a failure is where it stopped, not progress.
   const counter =
-    progress.total_steps > 0 ? `step ${progress.step} of ${progress.total_steps}` : null;
+    !ended && progress.total_steps > 0
+      ? `step ${progress.step} of ${progress.total_steps}`
+      : null;
 
   return (
     <div
-      className="flex max-w-[720px] items-center gap-2.5 text-[12.5px] leading-[1.55] text-[var(--fg-secondary)]"
-      role="status"
-      aria-live="polite"
+      className={
+        'flex max-w-[720px] items-center gap-2.5 text-[12.5px] leading-[1.55] ' +
+        (ended ? 'text-[var(--fg-danger)]' : 'text-[var(--fg-secondary)]')
+      }
+      role={ended ? 'alert' : 'status'}
+      aria-live={ended ? 'assertive' : 'polite'}
     >
       <span
         aria-hidden
-        className="h-1.5 w-1.5 flex-none animate-pulse rounded-full bg-[var(--status-live)]"
+        className={
+          'h-1.5 w-1.5 flex-none rounded-full ' +
+          (ended ? 'bg-[var(--fg-danger)]' : 'animate-pulse bg-[var(--status-live)]')
+        }
       />
       <span>{progress.text}</span>
       {counter && <span className="font-mono text-[11px] text-[var(--fg-muted)]">{counter}</span>}

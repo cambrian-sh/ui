@@ -95,7 +95,7 @@ The 5 frozen engineering constraints from `ui/CONTEXT.md` are re-stated in **PRD
 | EC-2 | React 19 + TypeScript + Vite | Every PRD's §2; UI-001 (Tailwind v4 + shadcn/ui), UI-003 (TanStack Router), UI-004 (Zustand+Query) |
 | EC-3 | Bun for JS package management and dev/build | Every PRD's §2; UI-001 (`bunx shadcn@latest`); UI-008 (Vitest on Bun); PRD-07 §6 (file picker) |
 | EC-4 | gRPC in Rust core only | Every PRD's §2; UI-005 (Realtime Sync — the fold loop reads from `kernel://state`); UI-013 (Blast-Radius — `op_blast_radius_preview` is a Tauri command); PRD-07 §9 (auth provider) |
-| EC-5 | Vendored `ui/proto/operator.proto` at contract 0047 | Every PRD's §2; PRD-02 §5 (hydration contract); PRD-04 §7.3 (live-only token lane); PRD-07 §5.3 (audit events); UI-016 (audit export schema) |
+| EC-5 | Vendored `ui/proto/operator.proto`, pinned by `src-tauri/src/pb.rs::PINNED_CONTRACT_VERSION` | Every PRD's §2; PRD-02 §5 (hydration contract); PRD-04 §7.3 (live-only token lane); PRD-07 §5.3 (audit events); UI-016 (audit export schema) |
 
 ---
 

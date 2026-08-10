@@ -32,7 +32,7 @@ This PRD inherits the following normative decisions from the parent PRDs. They a
 - **EC-2 — React 19 + TypeScript + Vite.**
 - **EC-3 — Bun for JS package management and dev/build.**
 - **EC-4 — gRPC in Rust core only.** The webview touches only Tauri IPC. All state lives in the Rust core's `StateOfRecord`; the webview is a projection. **PRD-02's hydration contract is "on mount, call `op_get_state`; thereafter, fold every `kernel://state` event."**
-- **EC-5 — Vendored `ui/proto/operator.proto`, pinned to contract 0047.** Do not edit by hand; re-vendor at every kernel contract bump.
+- **EC-5 — Vendored `ui/proto/operator.proto`, pinned to the contract named by `src-tauri/src/pb.rs::PINNED_CONTRACT_VERSION`.** Do not edit by hand; re-vendor at every kernel contract bump.
 
 **Inherited sub-decisions from `../ui-session/02-decisions-summary.md`:**
 - Nav-rail footer carries: current instance, current operator, theme toggle, density toggle.
@@ -212,7 +212,7 @@ A free-text-over-actions modal. The data source is the union of all actions regi
 - **Parent PRD** — `web-ui-ux-prd.md` §4 (The shell), §2.1 (LD-1), §2.8 (LD-8), §2.11 (LD-11).
 - **Sibling PRDs** — PRD-03 (centre column chat surface), PRD-04 (right inspector plan context), PRD-05 (right inspector memory context), PRD-06 (centre column console + nav-rail entries), PRD-07 (footer identity + audit + instance profile + config).
 - **Foundation PRD** — PRD-01 §4 (motion grammar), §6 (component inventory — `NavRail`, `StatusStrip`, `CommandPalette`), §9 (keyboard map), §10 (state vocabulary), §11 (forbids).
-- **In-repo `ui/CONTEXT.md`** — "Frozen decisions" + "Hard rules" (Tauri 2, React 19+TS+Vite, Bun, gRPC-in-Rust, vendored proto at 0047).
+- **In-repo `ui/CONTEXT.md`** — "Frozen decisions" + "Hard rules" (Tauri 2, React 19+TS+Vite, Bun, gRPC-in-Rust, vendored proto pinned by `src-tauri/src/pb.rs::PINNED_CONTRACT_VERSION`).
 - **In-repo `ui/src-tauri/CONTEXT.md`** — full transport contract; the hydration contract for the shell is `op_get_state` + `kernel://state` fold.
 - **Kernel ADRs** — ADR-0019 (OTel Bridge), ADR-0021 (Langfuse), ADR-0022 (push/pull context), ADR-0047 (Operator Transport Plane), ADR-0048 (working-memory context hygiene).
 - **Companion ADRs** — UI-003, UI-004, UI-005, UI-006, UI-007, UI-008 (all in this PRD's §9).
