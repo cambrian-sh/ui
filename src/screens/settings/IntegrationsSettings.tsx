@@ -1,7 +1,6 @@
 import { Link } from '@tanstack/react-router';
-import { useStore } from '@/store/useStore';
-import { projectionStore } from '@/store/projection';
-import { relativeTime } from '@/lib/relativeTime';
+import { ipc } from '@/ipc';
+import { useKernelQuery } from '@/lib/useKernelQuery';
 import { cn } from '@/design-system/lib/utils';
 
 /**
@@ -18,8 +17,11 @@ import { cn } from '@/design-system/lib/utils';
  * drift.
  */
 export function IntegrationsSettings({ capabilities }: { capabilities: string[] }) {
-  const projection = useStore(projectionStore);
-  const servers = projection.state?.mcp_servers ?? [];
+  // The real read (contract 0097), not a feed projection — MCP servers are
+  // request/response state, and this pane once carried an apology that the
+  // kernel "does not project" them. It does now.
+  const mcp = useKernelQuery(['mcp-server-configs'], () => ipc.listMCPServerConfigs());
+  const servers = mcp.data ?? [];
 
   return (
     <div className="flex flex-col gap-5">
@@ -64,38 +66,35 @@ export function IntegrationsSettings({ capabilities }: { capabilities: string[] 
           </Link>
         </div>
 
-        {servers.length === 0 ? (
-          // Structurally empty on every current kernel — see report.md §4.7.
-          // Saying "none configured" here would be a claim the console cannot
-          // actually make.
+        {mcp.error ? (
           <p className="text-[12px] leading-[1.55] text-[var(--fg-muted)]">
-            This kernel does not project its MCP servers — there is no RPC and no feed event
-            for them — so the console cannot tell an empty deployment apart from an unreported
-            one. Whatever is configured is not visible here yet.
+            This kernel does not serve the MCP configuration surface (contract 0097), so
+            whatever is configured is not visible here.
+          </p>
+        ) : servers.length === 0 ? (
+          // A real claim now — the list read exists (contract 0097), so an
+          // empty answer means an empty deployment, not an unreported one.
+          <p className="text-[12px] leading-[1.55] text-[var(--fg-muted)]">
+            No MCP servers configured. Add one from the MCP screen — it connects live, no
+            restart.
           </p>
         ) : (
           <ul className="flex flex-col gap-1.5">
             {servers.map((s) => {
-              const up = s.connection_state === 'Up';
-              const tone = up
-                ? 'var(--status-live)'
-                : s.connection_state === 'Reconnecting'
-                  ? 'var(--status-warn)'
-                  : 'var(--status-err)';
+              const tone = s.connected ? 'var(--status-live)' : 'var(--status-warn)';
               return (
                 <li key={s.id} className="flex items-center gap-2 text-[12px]">
                   <span
                     aria-hidden="true"
-                    className={cn('size-1.5 shrink-0 rounded-full', up && 'cambrian-live-pulse')}
+                    className={cn('size-1.5 shrink-0 rounded-full', s.connected && 'cambrian-live-pulse')}
                     style={{ background: tone }}
                   />
                   <span className="font-mono">{s.id}</span>
-                  <span style={{ color: tone }}>{s.connection_state}</span>
+                  <span style={{ color: tone }}>
+                    {s.connected ? 'connected' : 'retrying'}
+                  </span>
                   <span className="text-[var(--fg-muted)]">
                     {s.tool_count} tool{s.tool_count === 1 ? '' : 's'}
-                    {s.last_health_check_at && (
-                      <> · checked {relativeTime(s.last_health_check_at)}</>
-                    )}
                   </span>
                 </li>
               );

@@ -30,7 +30,7 @@ function policy(over: Partial<PolicySpec> = {}): PolicySpec {
     id: 'p1',
     name: 'No customer PII on Telegram',
     version: 1,
-    rule: { required_tags: [], any_of_tags: [], forbidden_tags: [], granted_tags: [] },
+    rule: { required_tags: [], any_of_tags: [], forbidden_tags: [], granted_tags: [], party_scoped_tags: [] },
     effects: { allow: [], deny: [] },
     mode: 'enforced',
     expires_at_unix_ms: 0,

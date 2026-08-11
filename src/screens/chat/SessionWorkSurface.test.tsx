@@ -103,7 +103,6 @@ function makeState(
     agents: [],
     tools: [],
     skills: [],
-    mcp_servers: [],
     scope: {},
     watch_configs: [],
     lifecycle: {

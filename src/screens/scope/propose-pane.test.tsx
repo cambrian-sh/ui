@@ -34,7 +34,7 @@ function proposal(over: Partial<PolicyProposal> = {}): PolicyProposal {
       id: 'support-no-secrets',
       name: 'Support boundary',
       version: 0,
-      rule: { required_tags: [], any_of_tags: [], forbidden_tags: ['secrets'], granted_tags: [] },
+      rule: { required_tags: [], any_of_tags: [], forbidden_tags: ['secrets'], granted_tags: [], party_scoped_tags: [] },
       effects: { allow: [], deny: [] },
       mode: 'report_only',
       expires_at_unix_ms: 0,
@@ -53,7 +53,7 @@ function proposal(over: Partial<PolicyProposal> = {}): PolicyProposal {
       },
     ],
     problems: [],
-    simulation: { decisions: [], newly_denied: 0, newly_allowed: 0, unchanged: 0 },
+    simulation: { decisions: [], newly_denied: 0, newly_allowed: 0, unchanged: 0, row_scope_note: '' },
     simulation_basis: 0,
     blocking: false,
     ...over,
@@ -156,7 +156,13 @@ describe('ProposePane (ADR-0092)', () => {
     proposePolicy.mockResolvedValue(
       proposal({
         simulation_basis: 40,
-        simulation: { decisions: [], newly_denied: 3, newly_allowed: 0, unchanged: 37 },
+        simulation: {
+          decisions: [],
+          newly_denied: 3,
+          newly_allowed: 0,
+          unchanged: 37,
+          row_scope_note: '',
+        },
       }),
     );
     render(<ProposePane role="operator" onChanged={() => {}} vocabulary={VOCAB} />);

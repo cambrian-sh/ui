@@ -246,6 +246,24 @@ export function ExplainPane({ vocabulary, principals, hasPolicyPlane }: ExplainP
                 <dd className="text-[var(--color-status-err)]">
                   {resultant.effective.forbidden_tags.join(', ') || '—'}
                 </dd>
+                {/* ADR-0121 D1c. Shown INSIDE the same list as the other terms,
+                    because a reader who takes this list as the whole boundary is
+                    otherwise reading a party-scoped grant as a plain one — "sees
+                    every order" for a policy that means "only their own". */}
+                {resultant.effective.party_scoped_tags.length > 0 && (
+                  <>
+                    <dt className="text-[var(--fg-muted)]">Only own rows</dt>
+                    <dd className="text-[var(--fg-secondary)]">
+                      {resultant.effective.party_scoped_tags.join(', ')}
+                    </dd>
+                    <dt className="text-[var(--fg-muted)]">Party identities</dt>
+                    <dd className="text-[var(--fg-secondary)]">
+                      {resultant.party_identities.length > 0
+                        ? resultant.party_identities.join(', ')
+                        : 'none'}
+                    </dd>
+                  </>
+                )}
                 <dt className="text-[var(--fg-muted)]">Effects denied</dt>
                 <dd className="text-[var(--color-status-err)]">
                   {resultant.effects.deny.join(', ') || '—'}
@@ -255,6 +273,15 @@ export function ExplainPane({ vocabulary, principals, hasPolicyPlane }: ExplainP
                   {resultant.effects.allow.length > 0 ? resultant.effects.allow.join(', ') : 'all'}
                 </dd>
               </dl>
+
+              {/* The tags above are this reader's CEILING, not what they will see.
+                  Stated after the list rather than as a footnote, because the whole
+                  failure being prevented is someone reading the list and stopping. */}
+              {resultant.row_scope_note && (
+                <p className="mt-3 rounded-[var(--radius-sm,3px)] border border-[var(--border-subtle)] p-2 text-xs text-[var(--fg-secondary)]">
+                  {resultant.row_scope_note}
+                </p>
+              )}
 
               {resultant.contributions.length > 0 && (
                 <ul className="mt-3 space-y-1 border-t border-[var(--border-subtle)] pt-3 text-xs">

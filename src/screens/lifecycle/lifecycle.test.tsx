@@ -34,7 +34,6 @@ function makeState(overrides: Partial<StateOfRecord> = {}): StateOfRecord {
     agents: [],
     tools: [],
     skills: [],
-    mcp_servers: [],
     scope: {},
     watch_configs: [],
     lifecycle: { 

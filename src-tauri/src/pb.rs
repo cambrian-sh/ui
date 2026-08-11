@@ -170,7 +170,21 @@ pub const RETENTION_FEED_CAPABILITY: &str = "retention-feed";
 ///   (validated/published/armed/paused/retired); `armed` walks a draft
 ///   through its gates so "make this live" is one intent; refusals carry the
 ///   registry's own sentence. Capability `pipeline-lifecycle`.
-pub const PINNED_CONTRACT_VERSION: &str = "0093";
+/// - **0096** `SetRoleAssignment`: the WRITE half of `ListRoleAssignments`.
+///   The RoleMap grid's radios had called `op_set_role_assignment` since the
+///   pane was built with nothing behind them. The kernel stores the binding on
+///   the ADR-0101 store (per-role key, so it composes with file-configured
+///   roles) and hot-applies it — effect `live`, the organ's next call moves.
+///   Also: `RemoveGenerator` now refuses the global default and role-serving
+///   generators, the states that would brick or silently reroute a later boot.
+/// - **0097** the MCP server write half: `SaveMCPServer`/`RemoveMCPServer`
+///   (ADR-0101 store + LIVE attach/detach through the connector — tools appear
+///   as soon as the server answers, no restart), `SetMCPServerToken`/
+///   `ClearMCPServerToken` (write-only; a set bounces the connection so the
+///   new credential is actually presented), and `TestMCPServer` (one ephemeral
+///   dial of a possibly-unsaved spec, returning the tool names the server
+///   actually advertises). `MCPServerOp` gains the declared half + token facts.
+pub const PINNED_CONTRACT_VERSION: &str = "0097";
 
 /// The plugin versions this console was BUILT against, by plugin id (ADR-0089).
 ///

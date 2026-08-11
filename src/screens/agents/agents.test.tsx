@@ -50,7 +50,6 @@ function makeState(agents: AgentSummary[] = []): StateOfRecord {
     agents,
     tools: [],
     skills: [],
-    mcp_servers: [],
     scope: {},
     watch_configs: [],
     lifecycle: { scheduler_state: 'idle', pending_jobs: 0, last_consolidation: null, dormancy_events: [] },

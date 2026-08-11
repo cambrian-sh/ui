@@ -82,8 +82,9 @@ export function SurfaceRegistryPane({ onGo }: SurfaceRegistryPaneProps) {
         ) : rows.length === 0 ? (
           <p className="max-w-[560px] p-4 text-[12.5px] leading-[1.6] text-[var(--fg-muted)]">
             No surfaces. Nothing is registered as an entry point and no policy targets one, so
-            every surface is derived from the transport. That is a correct deployment, not a
-            missing step.
+            every surface is derived from the transport. That is a correct deployment if nothing
+            is armed — this pane cannot see the Ingress Studio, and an armed ingress that was
+            never registered is a live entry point no surface-scoped policy can reach.
           </p>
         ) : (
           <ul role="list" aria-label="Surfaces">

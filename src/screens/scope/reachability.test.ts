@@ -17,7 +17,7 @@ function policy(over: Partial<PolicySpec> = {}): PolicySpec {
       required_tags: [],
       any_of_tags: [],
       forbidden_tags: [],
-      granted_tags: [],
+      granted_tags: [], party_scoped_tags: [],
     },
     effects: { allow: [], deny: [] },
     mode: 'enforced',
@@ -47,7 +47,7 @@ const NOTHING_CLOSED = new Set<string>();
 
 describe('evaluateCell', () => {
   it('denies when a forbidden tag is present', () => {
-    const p = policy({ rule: { required_tags: [], any_of_tags: [], forbidden_tags: ['customer-pii'], granted_tags: [] } });
+    const p = policy({ rule: { required_tags: [], any_of_tags: [], forbidden_tags: ['customer-pii'], granted_tags: [], party_scoped_tags: [] } });
     const v = evaluateCell(TELEGRAM, ['customer-pii'], [p], [link()], NO_GROUPS, NOTHING_CLOSED);
 
     expect(v.state).toBe('denied');
@@ -61,7 +61,7 @@ describe('evaluateCell', () => {
   });
 
   it('denies when a required tag is missing', () => {
-    const p = policy({ rule: { required_tags: ['reviewed'], any_of_tags: [], forbidden_tags: [], granted_tags: [] } });
+    const p = policy({ rule: { required_tags: ['reviewed'], any_of_tags: [], forbidden_tags: [], granted_tags: [], party_scoped_tags: [] } });
     const v = evaluateCell(TELEGRAM, ['public'], [p], [link()], NO_GROUPS, NOTHING_CLOSED);
 
     expect(v.state).toBe('denied');
@@ -69,13 +69,13 @@ describe('evaluateCell', () => {
   });
 
   it('denies when no member of an any_of clause is present', () => {
-    const p = policy({ rule: { required_tags: [], any_of_tags: ['a', 'b'], forbidden_tags: [], granted_tags: [] } });
+    const p = policy({ rule: { required_tags: [], any_of_tags: ['a', 'b'], forbidden_tags: [], granted_tags: [], party_scoped_tags: [] } });
     const v = evaluateCell(TELEGRAM, ['c'], [p], [link()], NO_GROUPS, NOTHING_CLOSED);
     expect(v.state).toBe('denied');
   });
 
   it('satisfies an any_of clause with a single member', () => {
-    const p = policy({ rule: { required_tags: [], any_of_tags: ['a', 'b'], forbidden_tags: [], granted_tags: [] } });
+    const p = policy({ rule: { required_tags: [], any_of_tags: ['a', 'b'], forbidden_tags: [], granted_tags: [], party_scoped_tags: [] } });
     const v = evaluateCell(TELEGRAM, ['b'], [p], [link()], NO_GROUPS, NOTHING_CLOSED);
     expect(v.state).toBe('allowed');
   });
@@ -89,7 +89,7 @@ describe('evaluateCell', () => {
   });
 
   it('allows a closed label once a grant reopens it, and says that is why', () => {
-    const p = policy({ rule: { required_tags: [], any_of_tags: [], forbidden_tags: [], granted_tags: ['finance'] } });
+    const p = policy({ rule: { required_tags: [], any_of_tags: [], forbidden_tags: [], granted_tags: ['finance'], party_scoped_tags: [] } });
     const v = evaluateCell(TELEGRAM, ['finance'], [p], [link()], NO_GROUPS, new Set(['finance']));
 
     expect(v.state).toBe('allowed_via_grant');
@@ -101,11 +101,11 @@ describe('evaluateCell', () => {
     // system would be one policy away from being switched off.
     const deny = policy({
       id: 'deny',
-      rule: { required_tags: [], any_of_tags: [], forbidden_tags: ['finance'], granted_tags: [] },
+      rule: { required_tags: [], any_of_tags: [], forbidden_tags: ['finance'], granted_tags: [], party_scoped_tags: [] },
     });
     const grant = policy({
       id: 'grant',
-      rule: { required_tags: [], any_of_tags: [], forbidden_tags: [], granted_tags: ['finance'] },
+      rule: { required_tags: [], any_of_tags: [], forbidden_tags: [], granted_tags: ['finance'], party_scoped_tags: [] },
     });
     const v = evaluateCell(
       TELEGRAM,
@@ -124,7 +124,7 @@ describe('evaluateCell', () => {
     // be a lie; rendering it as a plain allow would hide the whole point.
     const p = policy({
       mode: 'report_only',
-      rule: { required_tags: [], any_of_tags: [], forbidden_tags: ['customer-pii'], granted_tags: [] },
+      rule: { required_tags: [], any_of_tags: [], forbidden_tags: ['customer-pii'], granted_tags: [], party_scoped_tags: [] },
     });
     const v = evaluateCell(TELEGRAM, ['customer-pii'], [p], [link()], NO_GROUPS, NOTHING_CLOSED);
 
@@ -133,7 +133,7 @@ describe('evaluateCell', () => {
   });
 
   it('ignores a policy linked to a container the principal is not in', () => {
-    const p = policy({ rule: { required_tags: [], any_of_tags: [], forbidden_tags: ['x'], granted_tags: [] } });
+    const p = policy({ rule: { required_tags: [], any_of_tags: [], forbidden_tags: ['x'], granted_tags: [], party_scoped_tags: [] } });
     const v = evaluateCell(
       TELEGRAM,
       ['x'],
@@ -146,7 +146,7 @@ describe('evaluateCell', () => {
   });
 
   it('applies an organisation-wide link to everyone', () => {
-    const p = policy({ rule: { required_tags: [], any_of_tags: [], forbidden_tags: ['x'], granted_tags: [] } });
+    const p = policy({ rule: { required_tags: [], any_of_tags: [], forbidden_tags: ['x'], granted_tags: [], party_scoped_tags: [] } });
     const v = evaluateCell(
       TELEGRAM,
       ['x'],
@@ -163,7 +163,7 @@ describe('evaluateCell', () => {
     // and except enforced links. A blocked group that could shed a deny would
     // be a way to opt out of a boundary.
     const deny = policy({
-      rule: { required_tags: [], any_of_tags: [], forbidden_tags: ['x'], granted_tags: [] },
+      rule: { required_tags: [], any_of_tags: [], forbidden_tags: ['x'], granted_tags: [], party_scoped_tags: [] },
     });
     const group: GroupSpec = {
       id: 'support-team',

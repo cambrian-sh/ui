@@ -41,7 +41,6 @@ class MockIPC {
       agents: [],
       tools: [],
       skills: [],
-      mcp_servers: [],
       scope: {},
       watch_configs: [],
       lifecycle: {
@@ -465,16 +464,6 @@ class MockIPC {
     return { ...summary, skill_md: '# Skill', bundled_tool_grants: [], where_loaded: [] };
   }
 
-  async listMCPServers(): Promise<t.MCPServerSummary[]> {
-    return this.state.mcp_servers;
-  }
-
-  async getMCPServer(serverId: string): Promise<t.MCPServerDetail> {
-    const summary = this.state.mcp_servers.find((s) => s.id === serverId);
-    if (!summary) throw new Error(`MCP server not found: ${serverId}`);
-    return { ...summary, health_check_history: [], discovered_tools: [] };
-  }
-
   async getScope(agentId: string): Promise<t.ScopeDetail> {
     const entry = this.state.scope[agentId];
     if (!entry) throw new Error(`Scope not found for agent: ${agentId}`);
@@ -648,11 +637,6 @@ class MockIPC {
 
   __seedSkills(skills: t.SkillSummary[]) {
     this.state = { ...this.state, skills };
-    this.emitState();
-  }
-
-  __seedMCPServers(servers: t.MCPServerSummary[]) {
-    this.state = { ...this.state, mcp_servers: servers };
     this.emitState();
   }
 

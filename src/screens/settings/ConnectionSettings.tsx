@@ -308,7 +308,7 @@ export function ConnectionSettings() {
                 label="Endpoint"
                 value={endpoint}
                 onChange={setEndpoint}
-                placeholder="http://localhost:50051"
+                placeholder="localhost:50051 · cambrian.example.com"
               />
               <Field
                 id="username"

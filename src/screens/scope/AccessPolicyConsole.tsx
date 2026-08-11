@@ -303,10 +303,19 @@ export function AccessPolicyConsole() {
                           </span>
                         )}
                         {/* A policy pointing at nobody is indistinguishable from a
-                            working boundary everywhere else in the console. */}
+                            working boundary everywhere else in the console.
+
+                            The kernel now decides this from `agent_scopes` — the
+                            table the authorizer consults — and not from the agent
+                            roster alone. The old wording said "nothing registers
+                            this", which was true of the roster and false of the
+                            deployment: every customer is a person, so none of them
+                            is a runnable agent, and the console condemned fourteen
+                            working boundaries as inert. */}
                         {p.orphaned && (
                           <span className="text-[10.5px] text-[var(--status-warn)]">
-                            nothing registers this — any policy on it applies to nobody
+                            no scope and no identity resolves this — a policy on it applies to
+                            nobody
                           </span>
                         )}
                       </li>

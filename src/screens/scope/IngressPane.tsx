@@ -193,7 +193,7 @@ export function IngressPane({ role }: { role: Role | null }) {
         ) : ingresses.length === 0 ? (
           <EmptyState
             title="No registered ingress"
-            body="Nothing is an entry point yet, so no external message becomes a conversation and every surface is derived from the transport. That is a correct deployment, not a missing step."
+            body="Nothing is registered as an entry point, so every surface is derived from the transport and no policy can be scoped to one. That is a correct deployment if nothing is armed — but this pane cannot see the Ingress Studio, so check there first: an armed ingress with no registration here is a live entry point that no surface-scoped policy can reach."
           />
         ) : (
           <ul role="list" aria-label="Registered ingresses" className="divide-y divide-[var(--border-subtle)]">

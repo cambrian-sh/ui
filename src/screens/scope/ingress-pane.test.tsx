@@ -49,14 +49,16 @@ describe('IngressPane (ADR-0090)', () => {
     );
   });
 
-  // A deployment with no ingress is correct, not unfinished — and the empty state
-  // has to say what the deployment IS.
-  it('explains the empty state as a valid deployment', async () => {
+  // An empty registry is correct only when nothing is armed, and this pane cannot
+  // see the studio — so it must qualify the reassurance rather than assert it. The
+  // unqualified version told a deployment with five armed ingresses and zero
+  // registrations that its absence was fine, which is exactly when it is not.
+  it('qualifies the empty state instead of calling it correct outright', async () => {
     listIngresses.mockResolvedValue([]);
     render(<IngressPane role="operator" />);
 
     await waitFor(() =>
-      expect(screen.getByText(/correct deployment, not a missing step/i)).toBeInTheDocument(),
+      expect(screen.getByText(/correct deployment if nothing is armed/i)).toBeInTheDocument(),
     );
   });
 

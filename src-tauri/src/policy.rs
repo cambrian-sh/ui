@@ -78,6 +78,16 @@ pub struct ScopeRule {
     /// offer closed tags only, or the author gets a rejection they cannot explain.
     #[serde(default)]
     pub granted_tags: Vec<String>,
+    /// Qualifies a tag this policy already grants: the reader sees a record carrying
+    /// it only if they are a party to that record (ADR-0121, contract 0095).
+    /// "Orders, but only your own."
+    ///
+    /// This projection exists so the round trip cannot lose it. A policy is read
+    /// here, edited, and written back, so a term the projection drops is a
+    /// restriction deleted by the act of editing something else — and the resulting
+    /// policy reads as a full grant.
+    #[serde(default)]
+    pub party_scoped_tags: Vec<String>,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, Default)]
@@ -138,6 +148,21 @@ pub struct ResultantPolicy {
     pub unsatisfiable_reason: String,
     /// The containers the principal resolved into, outermost first.
     pub groups: Vec<String>,
+    /// Set when the effective predicate carries party-scoped tags (ADR-0121 D1c).
+    /// Everything else here is a statement about TAGS and is a complete answer;
+    /// this one is not, because access to a party-scoped tag is decided per record
+    /// against identities resolved at query time.
+    ///
+    /// A surface that drops this renders a party-scoped grant as a plain grant,
+    /// which tells the administrator the OPPOSITE of the truth — "this customer
+    /// sees every order" for a policy that means "only their own".
+    #[serde(default)]
+    pub row_scope_note: String,
+    /// What the resolver returns for this principal right now. Empty is the
+    /// diagnosis worth having: a principal who is a party to nothing reads NO
+    /// party-scoped record, which looks identical to an empty database.
+    #[serde(default)]
+    pub party_identities: Vec<String>,
 }
 
 /// One journalled decision replayed through a draft policy set.
@@ -163,6 +188,13 @@ pub struct SimulationResult {
     pub newly_denied: i32,
     pub newly_allowed: i32,
     pub unchanged: i32,
+    /// Set when a draft party-scopes a tag (ADR-0121 D1c). The journal records each
+    /// resource's TAGS but never its parties, so a replayed party-scoped question
+    /// fails closed and every such record counts as denied — making `newly_denied`
+    /// an UPPER BOUND rather than a prediction. Silently overstating a blast radius
+    /// is how a correct policy gets abandoned.
+    #[serde(default)]
+    pub row_scope_note: String,
 }
 
 /// One reason a proposal is not safe to apply as it stands. `severity` is
@@ -240,6 +272,7 @@ fn scope_rule(r: Option<pb::authz::ScopeRule>) -> ScopeRule {
         any_of_tags: r.any_of_tags,
         forbidden_tags: r.forbidden_tags,
         granted_tags: r.granted_tags,
+        party_scoped_tags: r.party_scoped_tags,
     })
     .unwrap_or_default()
 }
@@ -305,6 +338,7 @@ impl From<PolicySpec> for pb::authz::PolicySpec {
                 any_of_tags: p.rule.any_of_tags,
                 forbidden_tags: p.rule.forbidden_tags,
                 granted_tags: p.rule.granted_tags,
+                party_scoped_tags: p.rule.party_scoped_tags,
             }),
             effects: Some(pb::authz::EffectRule {
                 allow: p.effects.allow,
@@ -580,6 +614,8 @@ impl Transport {
             policy_version: resp.policy_version,
             unsatisfiable_reason: resp.unsatisfiable_reason,
             groups: resp.groups,
+            row_scope_note: resp.row_scope_note,
+            party_identities: resp.party_identities,
         })
     }
 
@@ -620,6 +656,7 @@ impl Transport {
             newly_denied: resp.newly_denied,
             newly_allowed: resp.newly_allowed,
             unchanged: resp.unchanged,
+            row_scope_note: resp.row_scope_note,
         })
     }
 
@@ -893,6 +930,7 @@ impl Transport {
                 newly_denied: sim.newly_denied,
                 newly_allowed: sim.newly_allowed,
                 unchanged: sim.unchanged,
+                row_scope_note: sim.row_scope_note,
             },
             simulation_basis: resp.simulation_basis,
             blocking: resp.blocking,

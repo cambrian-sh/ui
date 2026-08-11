@@ -54,7 +54,6 @@ function makeState(scopeMap: Record<string, ScopeSummary>): StateOfRecord {
     agents: [],
     tools: [],
     skills: [],
-    mcp_servers: [],
     scope: scopeMap,
     watch_configs: [],
     lifecycle: { scheduler_state: 'idle', pending_jobs: 0, last_consolidation: null, dormancy_events: [] },

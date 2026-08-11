@@ -53,7 +53,6 @@ function makeState(role: 'operator' | 'viewer' = 'operator'): StateOfRecord {
     agents: [],
     tools: [],
     skills: [],
-    mcp_servers: [],
     scope: {},
     watch_configs: [],
     lifecycle: {

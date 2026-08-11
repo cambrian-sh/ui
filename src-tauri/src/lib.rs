@@ -25,7 +25,8 @@ use policy::{
 use state::{
     AuthoredStep, ClassifiedInput, ConfigSchema, ConfigWriteResult, ConversationMessage,
     ConversationSummary,
-    GeneratorSpec, GeneratorTestResult, PlanProposalResponse, RoleAssignment, SkillSummary,
+    GeneratorSpec, GeneratorTestResult, MCPServerConfigSpec, MCPServerTestResult,
+    PlanProposalResponse, RoleAssignment, SkillSummary,
     PipelineSummary, StateOfRecord, SubmitPlanResult, ToolSummary, WatchConfigSummary,
 };
 use transport::{DocumentPage, MemoryQueryResult, Transport};
@@ -1656,6 +1657,81 @@ async fn op_list_role_assignments(
     transport.inner().clone().list_role_assignments().await
 }
 
+// ── MCP servers (contract 0097) ──────────────────────────────────────────────
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_list_mcp_servers(
+    transport: State<'_, Transport>,
+) -> Result<Vec<MCPServerConfigSpec>, String> {
+    transport.inner().clone().list_mcp_servers().await
+}
+
+/// Create or replace an MCP server. The kernel arms it LIVE — no restart.
+#[tauri::command(rename_all = "snake_case")]
+async fn op_save_mcp_server(
+    transport: State<'_, Transport>,
+    server: MCPServerConfigSpec,
+    reason: String,
+) -> Result<ConfigWriteResult, String> {
+    transport.inner().clone().save_mcp_server(server, reason).await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_remove_mcp_server(
+    transport: State<'_, Transport>,
+    id: String,
+    reason: String,
+) -> Result<ConfigWriteResult, String> {
+    transport.inner().clone().remove_mcp_server(id, reason).await
+}
+
+/// Write-only, exactly like a generator key.
+#[tauri::command(rename_all = "snake_case")]
+async fn op_set_mcp_server_token(
+    transport: State<'_, Transport>,
+    id: String,
+    token: String,
+) -> Result<ConfigWriteResult, String> {
+    transport.inner().clone().set_mcp_server_token(id, token).await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_clear_mcp_server_token(
+    transport: State<'_, Transport>,
+    id: String,
+    reason: String,
+) -> Result<ConfigWriteResult, String> {
+    transport.inner().clone().clear_mcp_server_token(id, reason).await
+}
+
+/// One ephemeral connection against a possibly-unsaved spec.
+#[tauri::command(rename_all = "snake_case")]
+async fn op_test_mcp_server(
+    transport: State<'_, Transport>,
+    server: MCPServerConfigSpec,
+) -> Result<MCPServerTestResult, String> {
+    transport.inner().clone().test_mcp_server(server).await
+}
+
+/// Contract 0096: bind a system organ to the generator that serves it.
+///
+/// The TS client has called this since the RoleMap grid was built; nothing
+/// served it, so clicking a radio produced `Command op_set_role_assignment not
+/// found` -- the same missing-bridge failure op_save_generator once had.
+#[tauri::command(rename_all = "snake_case")]
+async fn op_set_role_assignment(
+    transport: State<'_, Transport>,
+    role: String,
+    generator_id: String,
+    reason: String,
+) -> Result<ConfigWriteResult, String> {
+    transport
+        .inner()
+        .clone()
+        .set_role_assignment(role, generator_id, reason)
+        .await
+}
+
 /// One real call against the live endpoint.
 ///
 /// A failed probe is a SUCCESSFUL command carrying `reachable: false` -- the
@@ -1825,6 +1901,13 @@ pub fn run() {
             op_get_config_schema,
             op_list_generators,
             op_list_role_assignments,
+            op_set_role_assignment,
+            op_list_mcp_servers,
+            op_save_mcp_server,
+            op_remove_mcp_server,
+            op_set_mcp_server_token,
+            op_clear_mcp_server_token,
+            op_test_mcp_server,
             op_test_generator,
             op_save_generator,
             op_remove_generator,

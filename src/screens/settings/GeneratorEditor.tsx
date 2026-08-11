@@ -31,6 +31,12 @@ export function GeneratorEditor({ generator, canMutate, onClose }: GeneratorEdit
   const [key, setKey] = useState('');
   const [written, setWritten] = useState<ConfigWriteOutcome | null>(null);
 
+  // An empty id means this editor was opened from "Add generator": the id and
+  // protocol become authorable, and the probe is withheld — the kernel tests a
+  // CONFIGURED generator by id, and this one exists nowhere until it is saved
+  // and the kernel restarts.
+  const isNew = generator.id === '';
+
   const test = useMutation(async () => {
     const r = await ipc.testGenerator(draft.id);
     setResult(r);
@@ -79,7 +85,9 @@ export function GeneratorEditor({ generator, canMutate, onClose }: GeneratorEdit
   return (
     <div className="flex flex-col gap-5">
       <div className="flex items-baseline gap-3">
-        <h2 className="text-[17px] font-medium tracking-[-0.01em]">{draft.id}</h2>
+        <h2 className="text-[17px] font-medium tracking-[-0.01em]">
+          {isNew ? 'New generator' : draft.id}
+        </h2>
         <button
           type="button"
           onClick={onClose}
@@ -92,11 +100,16 @@ export function GeneratorEditor({ generator, canMutate, onClose }: GeneratorEdit
       {/* Test first: it is the primary action, not a footer utility. */}
       <section className="flex flex-col gap-3 rounded-[var(--radius-lg)] bg-[var(--bg-surface)] p-3.5 shadow-[var(--elevation-1)]">
         <div className="flex flex-wrap items-center gap-3">
-          <Button onClick={() => void test.mutate()} disabled={!canMutate || test.isLoading}>
+          <Button
+            onClick={() => void test.mutate()}
+            disabled={!canMutate || test.isLoading || isNew}
+          >
             {test.isLoading ? 'Calling the endpoint…' : 'Test this generator'}
           </Button>
           <span className="text-[11.5px] text-[var(--fg-muted)]">
-            One real call against the live endpoint. It is billed like any other.
+            {isNew
+              ? 'The probe tests a configured generator — save this one and restart the kernel first.'
+              : 'One real call against the live endpoint. It is billed like any other.'}
           </span>
         </div>
 
@@ -106,6 +119,24 @@ export function GeneratorEditor({ generator, canMutate, onClose }: GeneratorEdit
       </section>
 
       <section className="grid gap-4 sm:grid-cols-2">
+        {isNew && (
+          <Field
+            label="Id"
+            value={draft.id}
+            onChange={(v) => setDraft((d) => ({ ...d, id: v }))}
+            disabled={!canMutate}
+            consequence="Permanent — roles will refer to it, so it cannot be renamed later."
+          />
+        )}
+        {isNew && (
+          <Field
+            label="Protocol"
+            value={draft.protocol}
+            onChange={(v) => setDraft((d) => ({ ...d, protocol: v }))}
+            disabled={!canMutate}
+            consequence="The wire protocol the endpoint speaks (openai, ollama, gemini) — not the vendor."
+          />
+        )}
         <Field
           label="Endpoint"
           value={draft.endpoint}
@@ -192,8 +223,16 @@ export function GeneratorEditor({ generator, canMutate, onClose }: GeneratorEdit
 
       <div className="flex flex-wrap items-center gap-2">
         <Button
-          onClick={() => void save.mutate('generator settings changed from the console')}
-          disabled={!canMutate || save.isLoading}
+          onClick={() =>
+            void save.mutate(
+              isNew ? 'generator added from the console' : 'generator settings changed from the console',
+            )
+          }
+          disabled={
+            !canMutate ||
+            save.isLoading ||
+            (isNew && (!draft.id.trim() || !draft.model.trim() || !draft.protocol.trim()))
+          }
         >
           {save.isLoading ? 'Saving…' : 'Save'}
         </Button>

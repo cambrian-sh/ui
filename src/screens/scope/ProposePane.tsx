@@ -357,6 +357,12 @@ function ProposalReview({
             , {simulation.newly_allowed} newly allowed, {simulation.unchanged} unchanged.
           </span>
         )}
+        {/* ADR-0121 D1c: the journal never recorded parties, so a party-scoped
+            draft inflates the denial count. Said here rather than left implicit,
+            because this number is the one an operator decides on. */}
+        {simulation?.row_scope_note && (
+          <p className="mt-2 text-xs text-[var(--fg-secondary)]">{simulation.row_scope_note}</p>
+        )}
       </div>
 
       <div className="flex items-center gap-3 border-t border-[var(--border-subtle)] pt-3">

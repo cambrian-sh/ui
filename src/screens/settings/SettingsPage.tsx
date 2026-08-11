@@ -46,6 +46,9 @@ const SECTIONS: SectionSpec[] = [
   { id: 'appearance', label: 'Appearance & density', kernel: false },
   { id: 'keyboard', label: 'Keyboard', kernel: false },
   { id: 'providers', label: 'Models & providers', kernel: true },
+  // MCP servers deliberately have NO section here: the /mcp screen in the main
+  // nav is the ONE surface (owner decision, 2026-08-11) — config and runtime
+  // state are the same list, and a second pane would drift from it.
   { id: 'embedding', label: 'Embedding', kernel: true },
   { id: 'dispatch', label: 'Dispatch & retrieval', kernel: true },
   { id: 'integrations', label: 'Integrations', kernel: true },

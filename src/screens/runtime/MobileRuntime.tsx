@@ -1,5 +1,7 @@
 import { useStore } from '@/store/useStore';
 import { projectionStore } from '@/store/projection';
+import { ipc } from '@/ipc';
+import { useKernelQuery } from '@/lib/useKernelQuery';
 
 /**
  * Runtime, on a phone.
@@ -20,12 +22,15 @@ export function MobileRuntime() {
   const agents = state?.agents ?? [];
   const tools = state?.tools ?? [];
   const skills = state?.skills ?? [];
-  const servers = state?.mcp_servers ?? [];
+  // MCP servers are request/response state (contract 0097), not a feed
+  // projection — this read is the same one the /mcp screen renders.
+  const mcp = useKernelQuery(['mcp-server-configs'], () => ipc.listMCPServerConfigs());
+  const servers = mcp.data ?? [];
   const watches = state?.watch_configs ?? [];
 
   const surveilled = state?.verifier_pool.surveillance_triggers.length ?? 0;
   const inferred = tools.filter((t) => t.effects_inferred).length;
-  const serversDown = servers.filter((s) => s.connection_state !== 'Up').length;
+  const serversDown = servers.filter((s) => !s.connected).length;
   const failingWatches = watches.filter((w) => w.last_fire_status === 'error').length;
 
   return (
@@ -73,15 +78,18 @@ export function MobileRuntime() {
 
       <Tile
         label="MCP servers"
-        value={servers.length === 0 ? 'unknown' : String(servers.length)}
+        value={mcp.error ? 'unknown' : String(servers.length)}
         tone={serversDown > 0 ? 'var(--status-err)' : undefined}
         sentence={
-          servers.length === 0
-            ? // Structurally empty on every current kernel — never claim zero.
-              'This kernel does not project its MCP servers, so the console cannot tell an empty deployment from an unreported one.'
-            : serversDown > 0
-              ? `${serversDown} unreachable — anything routed to them will fail its step.`
-              : 'All reachable at their last health check.'
+          mcp.error
+            ? // Only an ERROR is "unknown" now — the list read exists
+              // (contract 0097), so an empty answer is a real zero.
+              'This kernel does not serve the MCP list, so the console cannot tell an empty deployment from an unreported one.'
+            : servers.length === 0
+              ? 'None configured.'
+              : serversDown > 0
+                ? `${serversDown} unreachable — the kernel keeps retrying; anything routed to them fails its step meanwhile.`
+                : 'All connected.'
         }
       />
 

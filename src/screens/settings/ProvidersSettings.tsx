@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import {
+  Button,
   Card,
   CardContent,
   CardDescription,
@@ -8,16 +9,50 @@ import {
 } from '@/design-system/components';
 import { ipc } from '@/ipc';
 import { useKernelQuery } from '@/lib/useKernelQuery';
+import { useMutation } from '@/lib/useMutation';
+import { queryClient } from '@/lib/queryClient';
 import { formatRelativeTime, formatTokens } from '@/lib/format';
 import { cn } from '@/design-system/lib/utils';
 import type {
   BreakerState,
+  ConfigWriteOutcome,
   GeneratorRole,
   GeneratorSpec,
   RoleAssignment,
 } from '@/ipc/types';
 import { GENERATOR_ROLES } from '@/ipc/types';
 import { GeneratorEditor } from './GeneratorEditor';
+
+/**
+ * The editor's starting state for a generator that does not exist yet. Every
+ * measured field is its honest zero — the card metrics never render for a
+ * draft, only the form does.
+ */
+function newGeneratorDraft(): GeneratorSpec {
+  return {
+    id: '',
+    protocol: 'openai',
+    endpoint: '',
+    model: '',
+    timeout_ms: 0,
+    capability_tags: [],
+    native_tools: false,
+    disable_thinking: false,
+    breaker: 'closed',
+    recent_failures: 0,
+    p50_latency_ms: 0,
+    p99_latency_ms: 0,
+    tokens_today: -1,
+    calls_today: -1,
+    latency_samples: [],
+    key_configured: false,
+    key_last_four: '',
+    key_added_at: '',
+    key_last_used_at: '',
+    last_tested_at: '',
+    last_test_ok: false,
+  };
+}
 
 const BREAKER: Record<BreakerState, { label: string; colour: string; note: string }> = {
   closed: { label: 'healthy', colour: 'var(--status-live)', note: 'accepting calls' },
@@ -92,14 +127,23 @@ export function ProvidersSettings({ canMutate }: { canMutate: boolean }) {
 
   return (
     <div className="flex flex-col gap-5">
-      <div>
-        <h2 className="text-[17px] font-medium leading-[1.25] tracking-[-0.01em]">
-          Models &amp; providers
-        </h2>
-        <p className="mt-1 text-[12.5px] text-[var(--fg-muted)]">
-          {list.length} generator{list.length === 1 ? '' : 's'}. Every figure here is a token
-          count — a completion response never carries a price.
-        </p>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h2 className="text-[17px] font-medium leading-[1.25] tracking-[-0.01em]">
+            Models &amp; providers
+          </h2>
+          <p className="mt-1 text-[12.5px] text-[var(--fg-muted)]">
+            {list.length} generator{list.length === 1 ? '' : 's'}. Every figure here is a token
+            count — a completion response never carries a price.
+          </p>
+        </div>
+        <Button
+          size="sm"
+          onClick={() => setEditing(newGeneratorDraft())}
+          disabled={!canMutate}
+        >
+          Add generator
+        </Button>
       </div>
 
       <div className="grid gap-3 lg:grid-cols-2">
@@ -229,6 +273,23 @@ function RoleMap({
   canMutate: boolean;
 }) {
   const assigned = new Map(roles.map((r) => [r.role, r]));
+  const [written, setWritten] = useState<ConfigWriteOutcome | null>(null);
+
+  const assign = useMutation(async (role: GeneratorRole, generatorId: string) => {
+    const res = await ipc.setRoleAssignment(role, generatorId, `assign ${role} to ${generatorId}`);
+    const outcome = res.outcomes.length > 0 ? res.outcomes[0] : null;
+    setWritten(outcome);
+    // A rejected write is a FAILED assignment. The kernel reports it per key
+    // rather than as an RPC error, so it must be raised here or the grid would
+    // sit silent over a store that refused it.
+    if (outcome && outcome.effect === 'rejected') {
+      throw new Error(outcome.error || 'the kernel refused this assignment');
+    }
+    // Role assignments are a request/response read, not a feed projection — no
+    // fold will ever refresh them, so the write path is the only place that can.
+    await queryClient.invalidateQueries({ queryKey: ['role-assignments'] });
+    return res;
+  });
 
   return (
     <Card>
@@ -279,9 +340,9 @@ function RoleMap({
                           type="radio"
                           name={`role-${role}`}
                           checked={selected}
-                          disabled={!canMutate}
+                          disabled={!canMutate || assign.isLoading}
                           onChange={() => {
-                            void ipc.setRoleAssignment(role, g.id, `assign ${role} to ${g.id}`);
+                            void assign.mutate(role, g.id);
                           }}
                           aria-label={`${role} → ${g.id}`}
                         />
@@ -293,6 +354,26 @@ function RoleMap({
             })}
           </tbody>
         </table>
+
+        {assign.error && (
+          <p className="mt-2 text-[12px] text-[var(--status-err)]">{assign.error}</p>
+        )}
+        {written && !assign.error && written.effect === 'live' && (
+          <p className="mt-2 text-[12px] text-[var(--status-live)]">
+            Stored and applied — the organ's next call goes to the new generator.
+          </p>
+        )}
+        {written && !assign.error && written.effect === 'shadowed' && (
+          <p className="mt-2 text-[12px] text-[var(--status-warn)]">
+            Stored, but <code className="font-mono">{written.shadowed_by}</code> supplies the
+            live value and outranks the store. This takes effect when that variable is removed.
+          </p>
+        )}
+        {written && !assign.error && written.effect === 'restart_required' && (
+          <p className="mt-2 text-[12px] text-[var(--fg-secondary)]">
+            Stored. It takes effect the next time the kernel starts.
+          </p>
+        )}
       </CardContent>
     </Card>
   );

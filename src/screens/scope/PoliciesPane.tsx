@@ -22,7 +22,7 @@ const BLANK: PolicySpec = {
   id: '',
   name: '',
   version: 0,
-  rule: { required_tags: [], any_of_tags: [], forbidden_tags: [], granted_tags: [] },
+  rule: { required_tags: [], any_of_tags: [], forbidden_tags: [], granted_tags: [], party_scoped_tags: [] },
   effects: { allow: [], deny: [] },
   mode: 'enforced',
   expires_at_unix_ms: 0,
@@ -275,6 +275,20 @@ export function PoliciesPane({
               hint="Any one of these disqualifies the resource. A deny can never be removed by another policy."
               selected={draft.rule.forbidden_tags}
               onChange={(t) => setDraft({ ...draft, rule: { ...draft.rule, forbidden_tags: t } })}
+              vocabulary={vocabulary}
+              tone="deny"
+            />
+            {/* Party-scoping sits WITH the narrowing terms, because that is what it
+                is: it can only remove rows. It is offered unconditionally, unlike
+                Grants, since it may name any tag — crippling grants bounds the blast
+                radius of adding access, and this only takes away (ADR-0121). */}
+            <TagPicker
+              label="Only own rows"
+              hint="Qualifies a tag this policy already grants: the reader sees a record carrying it only if they are a party to that record — 'orders, but only your own'. It can only remove rows, never add any. A reader who is a party to nothing sees none of them."
+              selected={draft.rule.party_scoped_tags}
+              onChange={(t) =>
+                setDraft({ ...draft, rule: { ...draft.rule, party_scoped_tags: t } })
+              }
               vocabulary={vocabulary}
               tone="deny"
             />

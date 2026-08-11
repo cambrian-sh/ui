@@ -38,7 +38,6 @@ function makeState(agents: AgentSummary[] = []): StateOfRecord {
     agents,
     tools: [],
     skills: [],
-    mcp_servers: [],
     scope: {},
     watch_configs: [],
     lifecycle: {
@@ -79,7 +78,7 @@ const POLICY: PolicySpec = {
   id: 'p1',
   name: 'No customer PII on Telegram',
   version: 1,
-  rule: { required_tags: [], any_of_tags: [], forbidden_tags: [], granted_tags: [] },
+  rule: { required_tags: [], any_of_tags: [], forbidden_tags: [], granted_tags: [], party_scoped_tags: [] },
   effects: { allow: [], deny: [] },
   mode: 'enforced',
   expires_at_unix_ms: 0,
@@ -156,12 +155,15 @@ describe('SurfaceRegistryPane', () => {
     expect(screen.queryByText('NOTHING REGISTERS THIS')).not.toBeInTheDocument();
   });
 
-  it('reads an empty registry as a correct deployment, not a missing step', async () => {
+  // Correct only when nothing is armed — and this pane cannot see the studio, so
+  // it says so rather than reassuring a deployment whose entry points were never
+  // registered.
+  it('qualifies an empty registry rather than calling it correct outright', async () => {
     projectionStore.getState().hydrate(makeState());
     render(<SurfaceRegistryPane />);
 
     await waitFor(() =>
-      expect(screen.getByText(/correct deployment, not a missing step/)).toBeInTheDocument(),
+      expect(screen.getByText(/correct deployment if nothing/)).toBeInTheDocument(),
     );
   });
 });

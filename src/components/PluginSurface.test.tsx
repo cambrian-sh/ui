@@ -26,7 +26,6 @@ function makeState(capabilities: string[], plugins: PluginState[]): StateOfRecor
     agents: [],
     tools: [],
     skills: [],
-    mcp_servers: [],
     scope: {},
     watch_configs: [],
     lifecycle: {

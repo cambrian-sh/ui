@@ -310,14 +310,10 @@ pub struct SkillSummary {
     pub last_loaded_at: String,
 }
 
-#[derive(Clone, Serialize, Default)]
-pub struct MCPServerSummary {
-    pub id: String,
-    pub connection_state: String,
-    pub tool_count: i32,
-    pub last_health_check_at: String,
-    pub default_price: f64,
-}
+// MCPServerSummary is GONE (2026-08-11): the field existed since UI-IMPL-21a
+// and nothing ever wrote to it — no snapshot carries MCP servers and no feed op
+// folds them, so the /mcp screen read an empty list on every deployment. The
+// real shape is MCPServerConfigSpec (contract 0097), a request/response read.
 
 #[derive(Clone, Serialize, Default)]
 pub struct ScopeSummary {
@@ -746,7 +742,6 @@ pub struct StateOfRecord {
     pub agents: Vec<AgentSummary>,
     pub tools: Vec<ToolSummary>,
     pub skills: Vec<SkillSummary>,
-    pub mcp_servers: Vec<MCPServerSummary>,
     pub scope: HashMap<String, ScopeSummary>,
     pub watch_configs: Vec<WatchConfigSummary>,
     pub lifecycle: LifecycleState,
@@ -879,7 +874,6 @@ impl StateOfRecord {
         self.agents.clear();
         self.tools.clear();
         self.skills.clear();
-        self.mcp_servers.clear();
         self.scope.clear();
         // Live readings do not survive a resync: they describe what is
         // happening now, and the kernel republishes a full snapshot on connect.
@@ -1876,6 +1870,42 @@ pub struct GeneratorTestResult {
     pub tokens_in: i64,
     pub tokens_out: i64,
     pub tokens_cached: i64,
+    pub error: String,
+}
+
+/// One MCP server as the operator plane reports it (contract 0097): the
+/// declared half an editor round-trips, plus live connection facts. Distinct
+/// from `MCPServerSummary`, which is the feed-projection shape the ops screen
+/// folds; this one backs the settings editor over the request/response read.
+#[derive(Clone, Serialize, Deserialize, Default)]
+pub struct MCPServerConfigSpec {
+    pub id: String,
+    /// "stdio" | "http" | "sse".
+    pub transport: String,
+    /// A URL for http/sse, a command for stdio.
+    pub endpoint: String,
+    pub args: Vec<String>,
+    /// "none" | "bearer" | "header"; `auth_header` only when "header".
+    pub auth_type: String,
+    pub auth_header: String,
+    pub classification_tags: Vec<String>,
+
+    pub connected: bool,
+    pub last_error: String,
+    pub tool_count: i32,
+    /// The only credential facts on the wire — there is no token field and no
+    /// RPC that returns one.
+    pub token_configured: bool,
+    pub token_source: String,
+}
+
+#[derive(Clone, Serialize, Default)]
+pub struct MCPServerTestResult {
+    pub ok: bool,
+    pub latency_ms: i64,
+    /// What the server ACTUALLY advertises — the fact worth one real
+    /// connection. Empty with ok=true means "answered, offers nothing".
+    pub tool_names: Vec<String>,
     pub error: String,
 }
 

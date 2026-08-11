@@ -166,6 +166,15 @@ function WhatIf({ policies, onChanged }: RolloutPaneProps) {
               <Figure n={result.unchanged} label="unchanged" tone="muted" />
             </div>
 
+            {/* ADR-0121 D1c. Placed directly under the counts, because it is a
+                statement ABOUT them: a party-scoped draft cannot be replayed
+                faithfully, so "newly denied" is a ceiling and not a forecast. */}
+            {result.row_scope_note && (
+              <p className="rounded-[var(--radius-sm,3px)] border border-[var(--border-subtle)] p-2 text-xs text-[var(--fg-secondary)]">
+                {result.row_scope_note}
+              </p>
+            )}
+
             {result.newly_denied === 0 && result.newly_allowed === 0 ? (
               <p className="text-sm text-[var(--color-status-ok)]">
                 Nothing in the replayed history changes. Enforcing this policy would have been

@@ -10,7 +10,7 @@ use tauri::{AppHandle, Emitter};
 use tokio::sync::{Mutex as AsyncMutex, Notify};
 use tonic::codegen::InterceptedService;
 use tonic::service::Interceptor;
-use tonic::transport::Channel;
+use tonic::transport::{Channel, ClientTlsConfig};
 use tonic::{Request, Status};
 
 use crate::pb;
@@ -22,6 +22,7 @@ use crate::state::{DuplicateEffectKey, NodeItem, NodeReads, PipelineDryRun, Pipe
     AuthoredStep, ClassifiedInput, ConfigSchema, ConfigWriteOutcome, ConfigWriteResult,
     ConnectionStatus, ConversationMessage,
     ConversationSummary, GeneratorSpec, GeneratorTestResult, InterviewOption, InterviewQuestion,
+    MCPServerConfigSpec, MCPServerTestResult,
     PlanProposal, PlanProposalResponse, PlanValidationIssue, PreviewCandidate, PreviewRanked,
     PreviewRouteResult, RoleAssignment, SkillSummary, StateOfRecord, SubmitPlanResult, ToolSummary,
     WatchAction, WatchBacktestVerdict, WatchConfigFull, WatchConfigSummary, WatchDeadLetter,
@@ -279,7 +280,50 @@ impl Default for Transport {
     }
 }
 
+/// Normalize what the operator typed into a dialable endpoint URI.
+///
+/// An explicit `http://`/`https://` scheme is honoured as-is. A bare
+/// `localhost`/IP-literal target is the local plaintext case (`http://`).
+/// Anything else is a remote DOMAIN — e.g. `cambrian.dorkodu.com` behind the
+/// Cloudflare gRPC proxy — and gets `https://`: TLS on the remote hop is the
+/// rule here, and the kernel's SEC-03 loopback posture means a remote
+/// plaintext dial could never reach a kernel anyway.
+fn normalize_endpoint(raw: &str) -> String {
+    let ep = raw.trim();
+    if ep.starts_with("http://") || ep.starts_with("https://") {
+        return ep.to_string();
+    }
+    let host = ep.strip_prefix('[').map_or_else(
+        || ep.split(':').next().unwrap_or(ep).to_string(),
+        |rest| rest.split(']').next().unwrap_or(rest).to_string(),
+    );
+    let local = host == "localhost" || host.parse::<std::net::IpAddr>().is_ok();
+    if local {
+        format!("http://{ep}")
+    } else {
+        format!("https://{ep}")
+    }
+}
+
 impl Transport {
+    /// Dial an endpoint, with TLS (native roots) whenever the normalized URI is
+    /// `https://`. Shared by `client()` and `authed_channel()` so the two can
+    /// never disagree about transport security.
+    async fn dial(ep_raw: &str) -> Result<Channel, String> {
+        let ep = normalize_endpoint(ep_raw);
+        let mut endpoint =
+            Channel::from_shared(ep.clone()).map_err(|e| format!("bad endpoint: {e}"))?;
+        if ep.starts_with("https://") {
+            endpoint = endpoint
+                .tls_config(ClientTlsConfig::new().with_native_roots())
+                .map_err(|e| format!("tls: {e}"))?;
+        }
+        endpoint
+            .connect()
+            .await
+            .map_err(|e| format!("connect: {e}"))
+    }
+
     /// Connect (lazily) and return a client with the auth interceptor attached.
     pub(crate) async fn client(&self) -> Result<ConsoleClient, String> {
         let mut guard = self.channel.lock().await;
@@ -290,11 +334,7 @@ impl Transport {
                 .await
                 .clone()
                 .ok_or_else(|| "not connected: call login first".to_string())?;
-            let channel = Channel::from_shared(ep)
-                .map_err(|e| format!("bad endpoint: {e}"))?
-                .connect()
-                .await
-                .map_err(|e| format!("connect: {e}"))?;
+            let channel = Self::dial(&ep).await?;
             *guard = Some(channel);
         }
         let channel = guard.as_ref().unwrap().clone();
@@ -336,11 +376,7 @@ impl Transport {
                 .await
                 .clone()
                 .ok_or_else(|| "not connected: call login first".to_string())?;
-            let channel = Channel::from_shared(ep)
-                .map_err(|e| format!("bad endpoint: {e}"))?
-                .connect()
-                .await
-                .map_err(|e| format!("connect: {e}"))?;
+            let channel = Self::dial(&ep).await?;
             *guard = Some(channel);
         }
         Ok((
@@ -2078,6 +2114,33 @@ impl Transport {
             .collect())
     }
 
+    /// Contract 0096: the WRITE half of `list_role_assignments`.
+    ///
+    /// The kernel stores the binding durably (per-role key on the ADR-0101
+    /// store) and hot-applies it to the live provider, so the reported effect
+    /// is `live` — the organ's next call goes to the new generator. The
+    /// verdict travels through untouched for the same reason save_generator's
+    /// does: `shadowed` and `rejected` are states the operator must see.
+    pub async fn set_role_assignment(
+        &self,
+        role: String,
+        generator_id: String,
+        reason: String,
+    ) -> Result<ConfigWriteResult, String> {
+        let mut client = self.client().await?;
+        let resp = client
+            .set_role_assignment(Request::new(pb::SetRoleAssignmentOpRequest {
+                command_id: new_command_id(),
+                reason,
+                role,
+                generator_id,
+            }))
+            .await
+            .map_err(map_status)?
+            .into_inner();
+        Ok(config_write_result(resp))
+    }
+
     pub async fn test_generator(&self, id: String) -> Result<GeneratorTestResult, String> {
         let mut client = self.client().await?;
         let resp = client
@@ -2214,6 +2277,155 @@ impl Transport {
             command_id: ack.command_id,
             deduped: ack.deduped,
             outcomes: Vec::new(),
+        })
+    }
+
+    // ── MCP servers (contract 0097) ──────────────────────────────────────────
+
+    /// The settings editor's read: declared config + live connection facts.
+    /// Distinct from the ops screen's feed projection.
+    pub async fn list_mcp_servers(&self) -> Result<Vec<MCPServerConfigSpec>, String> {
+        let mut client = self.client().await?;
+        let resp = client
+            .list_mcp_servers(Request::new(pb::ListMcpServersOpRequest {}))
+            .await
+            .map_err(map_status)?
+            .into_inner();
+        Ok(resp
+            .servers
+            .into_iter()
+            .map(|s| MCPServerConfigSpec {
+                id: s.name,
+                transport: s.transport,
+                endpoint: s.endpoint,
+                args: s.args,
+                auth_type: s.auth_type,
+                auth_header: s.auth_header,
+                classification_tags: s.classification_tags,
+                connected: s.connected,
+                last_error: s.last_error,
+                tool_count: s.tool_count,
+                token_configured: s.token_configured,
+                token_source: s.token_source,
+            })
+            .collect())
+    }
+
+    fn mcp_spec_op(server: &MCPServerConfigSpec) -> pb::McpServerSpecOp {
+        pb::McpServerSpecOp {
+            id: server.id.clone(),
+            transport: server.transport.clone(),
+            endpoint: server.endpoint.clone(),
+            args: server.args.clone(),
+            auth_type: server.auth_type.clone(),
+            auth_header: server.auth_header.clone(),
+            classification_tags: server.classification_tags.clone(),
+        }
+    }
+
+    /// Create or replace an MCP server. The kernel arms it LIVE — the effect
+    /// travels through so the pane can say "connecting" rather than "restart".
+    pub async fn save_mcp_server(
+        &self,
+        server: MCPServerConfigSpec,
+        reason: String,
+    ) -> Result<ConfigWriteResult, String> {
+        let mut client = self.client().await?;
+        let resp = client
+            .save_mcp_server(Request::new(pb::SaveMcpServerOpRequest {
+                server: Some(Self::mcp_spec_op(&server)),
+                command_id: new_command_id(),
+                reason,
+            }))
+            .await
+            .map_err(map_status)?
+            .into_inner();
+        Ok(config_write_result(resp))
+    }
+
+    pub async fn remove_mcp_server(
+        &self,
+        id: String,
+        reason: String,
+    ) -> Result<ConfigWriteResult, String> {
+        let mut client = self.client().await?;
+        let resp = client
+            .remove_mcp_server(Request::new(pb::RemoveMcpServerOpRequest {
+                server_id: id,
+                command_id: new_command_id(),
+                reason,
+            }))
+            .await
+            .map_err(map_status)?
+            .into_inner();
+        Ok(config_write_result(resp))
+    }
+
+    /// Write-only, like a generator key: the token goes in and only
+    /// `token_configured`/`token_source` ever come back.
+    pub async fn set_mcp_server_token(
+        &self,
+        id: String,
+        token: String,
+    ) -> Result<ConfigWriteResult, String> {
+        let mut client = self.client().await?;
+        let resp = client
+            .set_mcp_server_token(Request::new(pb::SetMcpServerTokenOpRequest {
+                server_id: id.clone(),
+                token,
+                command_id: new_command_id(),
+                // Names the server, never the credential — this lands in the
+                // audit log.
+                reason: format!("operator installed a token for mcp server {id}"),
+            }))
+            .await
+            .map_err(map_status)?
+            .into_inner();
+        Ok(config_write_result(resp))
+    }
+
+    pub async fn clear_mcp_server_token(
+        &self,
+        id: String,
+        reason: String,
+    ) -> Result<ConfigWriteResult, String> {
+        let mut client = self.client().await?;
+        let ack = client
+            .clear_mcp_server_token(Request::new(pb::ClearMcpServerTokenOpRequest {
+                server_id: id,
+                command_id: new_command_id(),
+                reason,
+            }))
+            .await
+            .map_err(map_status)?
+            .into_inner();
+        // A CommandAck carries no per-key outcome, so none is invented.
+        Ok(ConfigWriteResult {
+            command_id: ack.command_id,
+            deduped: ack.deduped,
+            outcomes: Vec::new(),
+        })
+    }
+
+    /// One ephemeral connection against the SUBMITTED spec — possibly unsaved.
+    /// The tool names it returns are what the server actually advertises.
+    pub async fn test_mcp_server(
+        &self,
+        server: MCPServerConfigSpec,
+    ) -> Result<MCPServerTestResult, String> {
+        let mut client = self.client().await?;
+        let resp = client
+            .test_mcp_server(Request::new(pb::TestMcpServerOpRequest {
+                server: Some(Self::mcp_spec_op(&server)),
+            }))
+            .await
+            .map_err(map_status)?
+            .into_inner();
+        Ok(MCPServerTestResult {
+            ok: resp.ok,
+            latency_ms: resp.latency_ms,
+            tool_names: resp.tool_names,
+            error: resp.error,
         })
     }
 

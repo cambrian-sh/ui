@@ -59,7 +59,6 @@ function makeState(capabilities: string[] = []): StateOfRecord {
     agents: [],
     tools: [],
     skills: [],
-    mcp_servers: [],
     scope: {},
     watch_configs: [],
     lifecycle: {

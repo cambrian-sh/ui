@@ -137,6 +137,7 @@ The reconnect loop is otherwise unstoppable by design, so `op_disconnect` sets a
 - Store the token in the **OS keychain**, never passed to the webview in the clear beyond what a session needs.
 - **Secure-by-default:** the kernel only has accounts if seeded (env on the kernel side). No creds ⇒ login fails — surface it, don't retry blindly.
 - **TLS** is required on the remote kernel hop (additive to the credential — TLS authenticates the server, not the client). Loopback dev may be plaintext.
+- **As-built (`transport.rs::normalize_endpoint` + `Transport::dial`):** the endpoint the operator types is normalized in the Rust core — an explicit `http(s)://` scheme is honoured; a bare `localhost`/IP-literal target becomes `http://` (local plaintext dev); any bare DOMAIN becomes `https://` and the channel gets `ClientTlsConfig::with_native_roots()`. This is what lets the console dial a kernel published as native gRPC behind the Cloudflare proxy (e.g. `cambrian.dorkodu.com`: edge TLS + zone gRPC toggle → tunnel `http2Origin` h2c → kernel loopback :50051, SEC-03 intact). Both `client()` and `authed_channel()` go through the one `dial`, so the two planes can never disagree about transport security.
 
 ## Commands
 

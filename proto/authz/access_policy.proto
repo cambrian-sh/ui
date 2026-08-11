@@ -76,6 +76,24 @@ service AccessPolicyAdmin {
   // registration rather than trusting the address it bound earlier.
   rpc DeregisterIngress(DeregisterIngressRequest) returns (AckResponse);
 
+  // ── Party identities: WHO A READER IS (contract 0094, ADR-0121 D3) ────────
+  // Row-level entitlement asks whether the reader is a party to a record, and
+  // this table is the answer. It decides who reads what, so it sits on this
+  // plane behind the same operator auth and is protected as policy is.
+  //
+  // It must NEVER be fed from the knowledge substrate it authorizes: a record
+  // asserting `assignee: mallory` would otherwise make Mallory a party to it,
+  // and any source that can write a record could widen its own audience.
+  rpc ListPartyIdentities(ListPartyIdentitiesRequest) returns (ListPartyIdentitiesResponse);
+  // AssignPartyIdentities REPLACES the identities a principal holds. Replace
+  // rather than append, because an append-only surface makes removing a
+  // relationship the one operation nobody can express — and that is the
+  // operation that matters when somebody changes role.
+  rpc AssignPartyIdentities(AssignPartyIdentitiesRequest) returns (AckResponse);
+  // RevokePartyIdentities removes every identity a principal holds. Afterwards
+  // they are a party to nothing, so every party-scoped record refuses them.
+  rpc RevokePartyIdentities(RevokePartyIdentitiesRequest) returns (AckResponse);
+
   // ── Authoring assistant: English in, a VALIDATED PROPOSAL out ─────────────
   // ProposePolicy asks a model to draft a policy from a description and returns it
   // validated and simulated. It PROPOSES and never enforces: nothing is persisted,
@@ -149,6 +167,24 @@ message ScopeRule {
   // tag someone declared closed, and it can never override forbidden_tags. A grant
   // on an open tag is refused at write time, since it would confer nothing.
   repeated string granted_tags = 4;
+  // party_scoped_tags QUALIFY a tag this policy already grants: the reader sees a
+  // record carrying one only if they are a party to that record (ADR-0121,
+  // contract 0095). "Orders, but only your own."
+  //
+  // A RESTRICTION, never a grant — it can only remove rows, so it composes by
+  // union like forbidden_tags and survives Block Inheritance. Unlike granted_tags
+  // it may name ANY tag, open or closed: crippling grants bounds the blast radius
+  // of ADDING access, and this only takes away.
+  //
+  // Naming a tag no policy grants is NOT refused: the restriction is routinely
+  // authored in one policy and the grant in another, and what other policies grant
+  // is not knowable when this one is saved.
+  //
+  // It IS checked against the controlled vocabulary, harder than any other term,
+  // because a typo here fails OPEN — "if the record carries this tag you must be a
+  // party to it" is vacuously satisfied by a tag no record carries, so a
+  // misspelling deletes the restriction rather than narrowing it.
+  repeated string party_scoped_tags = 5;
 }
 
 // EffectRule is the verb half: grant broadly, subtract narrowly. Deny always
@@ -267,6 +303,23 @@ message ResultantPolicyResponse {
   string unsatisfiable_reason = 6;
   // groups lists the containers the principal resolved into, outermost first.
   repeated string groups = 7;
+  // row_scope_note is set when the effective predicate carries party-scoped tags
+  // (ADR-0121 D1c, contract 0095). Everything else in this response is a statement
+  // about TAGS, which is a complete answer — this one term is not: access to a
+  // party-scoped tag is decided per record, against identities resolved at query
+  // time, so which rows the principal actually reads cannot be enumerated without
+  // running the query.
+  //
+  // It is stated rather than implied because the failure is silent and one-sided:
+  // a party-scoped grant rendered as a plain grant reads as "this customer can see
+  // every order", and an administrator checking their work would be told the
+  // opposite of the truth.
+  string row_scope_note = 8;
+  // party_identities is what the resolver returns for this principal RIGHT NOW —
+  // the other half of the answer, and empty is the diagnosis worth having: a
+  // principal who is a party to nothing reads NO party-scoped record, which looks
+  // identical to an empty database.
+  repeated string party_identities = 9;
 }
 
 message SimulatePolicyRequest {
@@ -296,6 +349,21 @@ message SimulatePolicyResponse {
   int32 newly_denied = 2; // allowed today, denied under the draft — the blast radius
   int32 newly_allowed = 3;
   int32 unchanged = 4;
+  // row_scope_note is set when a draft policy carries party_scoped_tags
+  // (ADR-0121 D1c, contract 0095), and it qualifies the counts above.
+  //
+  // The simulation replays the decision journal, which records each resource's
+  // TAGS but not which parties it named — parties are a property of the record,
+  // resolved in the query plane, and were never journalled. Re-asking a
+  // party-scoped question therefore has no party to check against, and the
+  // party-blind path fails closed, so every replayed record carrying such a tag
+  // counts as newly denied.
+  //
+  // That makes newly_denied an UPPER BOUND rather than a prediction. Failing
+  // closed is the right default, but silently overstating a blast radius is how a
+  // correct policy gets abandoned — so the number is qualified rather than
+  // presented as fact.
+  string row_scope_note = 5;
 }
 
 message ExportDecisionsRequest {
@@ -342,6 +410,36 @@ message ListIngressesResponse { repeated IngressSpec ingresses = 1; }
 
 message RegisterIngressRequest { IngressSpec ingress = 1; }
 message DeregisterIngressRequest { string agent_id = 1; }
+
+message ListPartyIdentitiesRequest {
+  // principal_id filters to one principal; empty lists every assignment.
+  string principal_id = 1;
+}
+
+message PartyIdentityBinding {
+  string principal_id = 1;
+  repeated string identities = 2;
+}
+
+message ListPartyIdentitiesResponse {
+  repeated PartyIdentityBinding bindings = 1;
+}
+
+message AssignPartyIdentitiesRequest {
+  string principal_id = 1;
+  // identities REPLACES what this principal held. Sending an empty list is the
+  // same as revoking: it says "this principal is a party to nothing", which is
+  // a statement rather than an omission.
+  repeated string identities = 2;
+  // reason is recorded. Changing who may read what is the kind of act somebody
+  // asks about later.
+  string reason = 3;
+}
+
+message RevokePartyIdentitiesRequest {
+  string principal_id = 1;
+  string reason = 2;
+}
 
 // ── Vocabulary (ADR-0091) ───────────────────────────────────────────────────
 

@@ -47,7 +47,7 @@ function pushLive(pipeline_meters: Record<string, PipelineMeters> | undefined) {
     role: 'operator',
     kernel_version: '', contract_version: '', capabilities: [], contract_skew: 0,
     plugins: [], cursor: 1, plans: [], sessions: [], audit_tail: [],
-    pending_hitl: [], agents: [], tools: [], skills: [], mcp_servers: [],
+    pending_hitl: [], agents: [], tools: [], skills: [],
     scope: {}, watch_configs: [],
     lifecycle: {} as never, verifier_pool: {} as never, cost_dashboard: {} as never,
     pipeline_meters,

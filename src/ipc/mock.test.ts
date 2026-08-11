@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { ipc } from '@/ipc/mock';
-import type { AgentSummary, ToolSummary, SkillSummary, MCPServerSummary, ScopeSummary } from '@/ipc/types';
+import type { AgentSummary, ToolSummary, SkillSummary, ScopeSummary } from '@/ipc/types';
 
 function makeAgent(id: string): AgentSummary {
   return { id, trait: 'Cognitive', scope_summary: 'read:*,write:*', trust_score: 0.85, last_activity_at: new Date().toISOString(), last_state: 'ready' };
@@ -12,10 +12,6 @@ function makeTool(id: string): ToolSummary {
 
 function makeSkill(id: string): SkillSummary {
   return { id, description: `Skill ${id}`, scope_tags: ['tag1'], loaded_in_count: 3, last_loaded_at: new Date().toISOString() };
-}
-
-function makeMCPServer(id: string): MCPServerSummary {
-  return { id, connection_state: 'Up', tool_count: 4, last_health_check_at: new Date().toISOString(), default_price: 0.01 };
 }
 
 function makeScope(agentId: string): ScopeSummary {
@@ -41,7 +37,6 @@ describe('mock IPC — subsystem entities (UI-IMPL-21a)', () => {
       agents: [],
       tools: [],
       skills: [],
-      mcp_servers: [],
       scope: {},
       watch_configs: [],
       lifecycle: { scheduler_state: 'idle', pending_jobs: 0, last_consolidation: null, dormancy_events: [] },
@@ -55,7 +50,6 @@ describe('mock IPC — subsystem entities (UI-IMPL-21a)', () => {
     expect(state.agents).toEqual([]);
     expect(state.tools).toEqual([]);
     expect(state.skills).toEqual([]);
-    expect(state.mcp_servers).toEqual([]);
     expect(state.scope).toEqual({});
   });
 
@@ -63,20 +57,17 @@ describe('mock IPC — subsystem entities (UI-IMPL-21a)', () => {
     const agents = [makeAgent('a1'), makeAgent('a2')];
     const tools = [makeTool('t1'), makeTool('t2'), makeTool('t3')];
     const skills = [makeSkill('s1'), makeSkill('s2')];
-    const mcpServers = [makeMCPServer('m1')];
     const scope: Record<string, ScopeSummary> = { a1: makeScope('a1') };
 
     ipc.__seedAgents(agents);
     ipc.__seedTools(tools);
     ipc.__seedSkills(skills);
-    ipc.__seedMCPServers(mcpServers);
     ipc.__seedScope(scope);
 
     const state = await ipc.getState();
     expect(state.agents).toHaveLength(2);
     expect(state.tools).toHaveLength(3);
     expect(state.skills).toHaveLength(2);
-    expect(state.mcp_servers).toHaveLength(1);
     expect(state.scope.a1).toEqual(scope.a1);
   });
 

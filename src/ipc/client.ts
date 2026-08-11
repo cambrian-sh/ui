@@ -788,12 +788,45 @@ export const ipc = {
   listRoleAssignments: (): Promise<t.RoleAssignment[]> =>
     invoke<t.RoleAssignment[]>('op_list_role_assignments'),
 
+  // ── MCP servers (contract 0097) ──────────────────────────────────────────
+  // The settings surface: declared config + live connection facts, and writes
+  // that land on the ADR-0101 store AND the running kernel — a saved server's
+  // health loop is armed immediately, so `live` here means live.
+
+  listMCPServerConfigs: (): Promise<t.MCPServerConfig[]> =>
+    invoke<t.MCPServerConfig[]>('op_list_mcp_servers'),
+
+  saveMCPServer: (server: t.MCPServerConfig, reason: string): Promise<t.ConfigWriteResult> =>
+    invoke<t.ConfigWriteResult>('op_save_mcp_server', { server, reason }),
+
+  removeMCPServer: (id: string, reason: string): Promise<t.ConfigWriteResult> =>
+    invoke<t.ConfigWriteResult>('op_remove_mcp_server', { id, reason }),
+
+  /** Write-only, like a generator key: only token_configured/token_source come
+   *  back. Setting a token bounces the connection so it is actually presented. */
+  setMCPServerToken: (id: string, token: string): Promise<t.ConfigWriteResult> =>
+    invoke<t.ConfigWriteResult>('op_set_mcp_server_token', { id, token }),
+
+  clearMCPServerToken: (id: string, reason: string): Promise<t.ConfigWriteResult> =>
+    invoke<t.ConfigWriteResult>('op_clear_mcp_server_token', { id, reason }),
+
+  /** One ephemeral dial of the SUBMITTED spec — works before saving. */
+  testMCPServer: (server: t.MCPServerConfig): Promise<t.MCPServerTestResult> =>
+    invoke<t.MCPServerTestResult>('op_test_mcp_server', { server }),
+
+  /**
+   * Contract 0096: the write half of `listRoleAssignments`. The result carries
+   * the kernel's per-key `effect`, which for roles is `live` — the provider
+   * resolves roles per call, so the organ's next call goes to the new
+   * generator. `rejected` and `shadowed` travel through for the same reason
+   * saveGenerator's do.
+   */
   setRoleAssignment: (
     role: t.GeneratorRole,
     generatorId: string,
     reason: string,
-  ): Promise<t.SaveOutcome> =>
-    invoke<t.SaveOutcome>('op_set_role_assignment', {
+  ): Promise<t.ConfigWriteResult> =>
+    invoke<t.ConfigWriteResult>('op_set_role_assignment', {
       role,
       generator_id: generatorId,
       reason,

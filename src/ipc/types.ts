@@ -416,7 +416,6 @@ export interface StateOfRecord {
   agents: AgentSummary[];
   tools: ToolSummary[];
   skills: SkillSummary[];
-  mcp_servers: MCPServerSummary[];
   scope: Record<string, ScopeSummary>;
   watch_configs: WatchConfigSummary[];
   lifecycle: LifecycleState;
@@ -644,18 +643,10 @@ export interface SkillDetail extends SkillSummary {
   where_loaded: string[];
 }
 
-export interface MCPServerSummary {
-  id: string;
-  connection_state: string; // "Up" | "Reconnecting" | "Down"
-  tool_count: number;
-  last_health_check_at: string; // ISO 8601
-  default_price: number;
-}
-
-export interface MCPServerDetail extends MCPServerSummary {
-  health_check_history: string[];
-  discovered_tools: string[];
-}
+// MCPServerSummary / MCPServerDetail (the mock-era feed-projection shapes) are
+// GONE (2026-08-11): no kernel ever emitted them — the /mcp screen showed "no
+// servers registered" on every deployment forever. The real shape is
+// MCPServerConfig below, served by ListMCPServers (contract 0097).
 
 export interface ScopeSummary {
   agent_id: string;
@@ -1214,6 +1205,16 @@ export interface ScopeRule {
    * explain from the form they just filled in.
    */
   granted_tags: string[];
+  /**
+   * Qualifies a tag the policy already grants: the reader sees a record carrying
+   * it only if they are a party to that record (ADR-0121) — "orders, but only
+   * your own". A restriction, never a grant, so it can only remove rows.
+   *
+   * Present here because `savePolicy` sends this whole object back. A field the
+   * projection omits is a restriction deleted by the act of editing something
+   * else, and the policy that comes back reads as a full grant.
+   */
+  party_scoped_tags: string[];
 }
 
 /**
@@ -1597,6 +1598,23 @@ export interface ResultantPolicy {
   unsatisfiable_reason: string;
   /** The containers the principal resolved into, outermost first. */
   groups: string[];
+  /**
+   * Set when the effective predicate carries party-scoped tags (ADR-0121 D1c).
+   * Every other field here is a statement about TAGS and is a complete answer;
+   * this one is not, because access is decided per record against identities
+   * resolved when the query runs.
+   *
+   * MUST be rendered wherever the effective rule is. A party-scoped grant shown
+   * as a plain grant tells the administrator the opposite of the truth — "this
+   * customer sees every order" for a policy that means "only their own".
+   */
+  row_scope_note: string;
+  /**
+   * What the resolver returns for this principal right now. An empty list is the
+   * diagnosis, not a missing value: a principal who is a party to nothing reads
+   * NO party-scoped record, which looks exactly like an empty database.
+   */
+  party_identities: string[];
 }
 
 export interface SimulatedDecision {
@@ -1618,6 +1636,15 @@ export interface SimulationResult {
   newly_denied: number;
   newly_allowed: number;
   unchanged: number;
+  /**
+   * Set when a draft party-scopes a tag (ADR-0121 D1c). The decision journal
+   * records each resource's TAGS but never its parties, so a replayed
+   * party-scoped question fails closed and every such record counts as denied —
+   * `newly_denied` is then an UPPER BOUND, not a prediction. Show it beside the
+   * number: silently overstating a blast radius is how a correct policy gets
+   * abandoned.
+   */
+  row_scope_note: string;
 }
 
 /**
@@ -1812,6 +1839,40 @@ export interface GeneratorSpec {
 
   last_tested_at: string;
   last_test_ok: boolean;
+}
+
+/**
+ * One MCP server as the settings editor round-trips it (contract 0097).
+ * The one MCP server shape: it backs the request/response read plus the write
+ * surface (the mock-era feed projection it was once "distinct from" is gone).
+ */
+export interface MCPServerConfig {
+  /** Permanent — tool names are namespaced `mcp:<id>/<tool>`. */
+  id: string;
+  transport: 'stdio' | 'http' | 'sse' | string;
+  /** A URL for http/sse, a command for stdio. */
+  endpoint: string;
+  args: string[];
+  auth_type: 'none' | 'bearer' | 'header' | string;
+  auth_header: string;
+  /** Applied to every tool this server advertises — an untagged tool is one no
+   *  policy can restrict. */
+  classification_tags: string[];
+
+  connected: boolean;
+  last_error: string;
+  tool_count: number;
+  /** The only credential facts on the wire. There is no token field. */
+  token_configured: boolean;
+  token_source: string;
+}
+
+export interface MCPServerTestResult {
+  ok: boolean;
+  latency_ms: number;
+  /** What the server ACTUALLY advertises — worth one real connection. */
+  tool_names: string[];
+  error: string;
 }
 
 /** The roles a generator can be pointed at. */

@@ -32,7 +32,7 @@ const EMPTY_RULE: ScopeRule = {
   required_tags: [],
   any_of_tags: [],
   forbidden_tags: [],
-  granted_tags: [],
+  granted_tags: [], party_scoped_tags: [],
 };
 
 /**
