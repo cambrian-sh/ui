@@ -47,6 +47,7 @@ function newGeneratorDraft(): GeneratorSpec {
     latency_samples: [],
     key_configured: false,
     key_last_four: '',
+    key_source: '',
     key_added_at: '',
     key_last_used_at: '',
     last_tested_at: '',

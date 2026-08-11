@@ -1834,6 +1834,11 @@ export interface GeneratorSpec {
   key_configured: boolean;
   /** Enough to tell which key this is, not enough to leak it. */
   key_last_four: string;
+  /** "env:<VAR>" or "store" — where the ACTIVE credential comes from, so an
+   *  operator can see why a pasted key had no effect. This field was missing
+   *  from this interface while the Rust struct carried it; the drift surfaced
+   *  as a serde error the moment a draft was built client-side. */
+  key_source: string;
   key_added_at: string;
   key_last_used_at: string;
 

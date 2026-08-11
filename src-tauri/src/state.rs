@@ -1810,7 +1810,14 @@ pub struct ConfigWriteResult {
     pub outcomes: Vec<ConfigWriteOutcome>,
 }
 
+// serde(default): this shape ROUND-TRIPS — the webview sends it back on saves,
+// and a draft constructed client-side (Add generator) may lack fields the Rust
+// struct grew later. Requiring every field turned that drift into a hard
+// runtime error ("missing field `key_source`") on the primary add-model flow;
+// missing fields defaulting to zero values is correct here because the write
+// path deliberately ignores everything measured.
 #[derive(Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
 pub struct GeneratorSpec {
     pub id: String,
     pub protocol: String,
@@ -1878,6 +1885,7 @@ pub struct GeneratorTestResult {
 /// from `MCPServerSummary`, which is the feed-projection shape the ops screen
 /// folds; this one backs the settings editor over the request/response read.
 #[derive(Clone, Serialize, Deserialize, Default)]
+#[serde(default)] // round-trips like GeneratorSpec — see the note there
 pub struct MCPServerConfigSpec {
     pub id: String,
     /// "stdio" | "http" | "sse".

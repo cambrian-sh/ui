@@ -31,11 +31,18 @@ export function GeneratorEditor({ generator, canMutate, onClose }: GeneratorEdit
   const [key, setKey] = useState('');
   const [written, setWritten] = useState<ConfigWriteOutcome | null>(null);
 
+  // For a NEW draft: has it been saved this session? A key can only be filed
+  // against a generator the kernel knows (it validates against the
+  // store-effective list), so the credential panel stays locked until the
+  // save lands.
+  const [savedNew, setSavedNew] = useState(false);
+
   // An empty id means this editor was opened from "Add generator": the id and
   // protocol become authorable, and the probe is withheld — the kernel tests a
   // CONFIGURED generator by id, and this one exists nowhere until it is saved
   // and the kernel restarts.
   const isNew = generator.id === '';
+  const keyLocked = isNew && !savedNew;
 
   const test = useMutation(async () => {
     const r = await ipc.testGenerator(draft.id);
@@ -53,6 +60,9 @@ export function GeneratorEditor({ generator, canMutate, onClose }: GeneratorEdit
     if (outcome && outcome.effect === 'rejected') {
       throw new Error(outcome.error || 'the kernel refused this configuration');
     }
+    // A stored NEW generator is now a valid credential target: the kernel
+    // validates keys against the store-effective list, so the panel unlocks.
+    setSavedNew(true);
     return res;
   });
 
@@ -187,16 +197,28 @@ export function GeneratorEditor({ generator, canMutate, onClose }: GeneratorEdit
         />
       </section>
 
-      <CredentialPanel
-        generator={draft}
-        keyValue={key}
-        onKeyChange={setKey}
-        onSave={() => void saveKey.mutate()}
-        onClear={() => void clearKey.mutate()}
-        busy={saveKey.isLoading || clearKey.isLoading}
-        error={saveKey.error ?? clearKey.error}
-        canMutate={canMutate}
-      />
+      {keyLocked ? (
+        <section className="flex flex-col gap-1.5 rounded-[var(--radius-lg)] bg-[var(--bg-surface)] p-3.5 shadow-[var(--elevation-1)]">
+          <h3 className="font-mono text-[9.5px] uppercase tracking-[0.14em] text-[var(--fg-muted)]">
+            Credential
+          </h3>
+          <p className="text-[12px] leading-[1.55] text-[var(--fg-muted)]">
+            Save the generator first — a key is filed against a generator the kernel knows,
+            and this one does not exist until it is saved. The panel unlocks right after.
+          </p>
+        </section>
+      ) : (
+        <CredentialPanel
+          generator={draft}
+          keyValue={key}
+          onKeyChange={setKey}
+          onSave={() => void saveKey.mutate()}
+          onClear={() => void clearKey.mutate()}
+          busy={saveKey.isLoading || clearKey.isLoading}
+          error={saveKey.error ?? clearKey.error}
+          canMutate={canMutate}
+        />
+      )}
 
       <section className="flex flex-col gap-2 rounded-[var(--radius-lg)] bg-[var(--bg-surface)] p-3.5 shadow-[var(--elevation-1)]">
         <h3 className="font-mono text-[9.5px] uppercase tracking-[0.14em] text-[var(--fg-muted)]">
