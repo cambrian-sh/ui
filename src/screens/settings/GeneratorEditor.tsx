@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Button, Input } from '@/design-system/components';
 import { ErrorState } from '@/design-system/components/cambrian/error-state';
 import { ipc } from '@/ipc';
+import { queryClient } from '@/lib/queryClient';
 import { useMutation } from '@/lib/useMutation';
 import { formatRelativeTime, formatTokens } from '@/lib/format';
 import { cn } from '@/design-system/lib/utils';
@@ -63,6 +64,13 @@ export function GeneratorEditor({ generator, canMutate, onClose }: GeneratorEdit
     // A stored NEW generator is now a valid credential target: the kernel
     // validates keys against the store-effective list, so the panel unlocks.
     setSavedNew(true);
+    // The kernel applies generator writes LIVE (ADR-0124), but the providers
+    // list is a useKernelQuery read with staleTime: Infinity and every refetch
+    // disabled — without this invalidation a saved generator NEVER appears in
+    // the list, which reads as "it did not get saved". Roles too: the saved
+    // generator changes which assignments resolve.
+    void queryClient.invalidateQueries({ queryKey: ['generators'] });
+    void queryClient.invalidateQueries({ queryKey: ['role-assignments'] });
     return res;
   });
 
@@ -79,12 +87,16 @@ export function GeneratorEditor({ generator, canMutate, onClose }: GeneratorEdit
       throw new Error(outcome.error || 'the credential store refused this key');
     }
     setWritten(outcome);
+    // Key status (configured / last-four / source) renders on the provider
+    // cards, which read the same permanently-stale query.
+    void queryClient.invalidateQueries({ queryKey: ['generators'] });
     return res;
   });
 
   const clearKey = useMutation(async () => {
     const res = await ipc.clearGeneratorKey(draft.id, 'operator removed the key');
     setKey('');
+    void queryClient.invalidateQueries({ queryKey: ['generators'] });
     return res;
   });
 
