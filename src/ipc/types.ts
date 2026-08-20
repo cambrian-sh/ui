@@ -2915,3 +2915,57 @@ export interface KnowledgeEntity {
   predicates: string[];
   last_seen: string;
 }
+
+// ── The identity plane's review lane (contract 0098) ──────────────────────
+//
+// Mirrors `src-tauri/src/links.rs`. A link is an ASSERTION, not a fact: the
+// endpoints say what was claimed, and `mechanism`/`producer`/`confidence`/
+// `evidence_id` say whether to believe it. Both halves are on the card.
+
+/** One assertion about two typed refs. Times are unix ms; 0 = unset. */
+export interface Link {
+  id: string;
+  namespace_id: string;
+  /** "identity" | "relation" | "lineage". */
+  family: string;
+  /** Typed refs — "entity:customer/C-1042", "event:<id>", "evidence:<id>". */
+  from_ref: string;
+  to_ref: string;
+  /** The verb. DATA — declared by the deployment, never branched on here. */
+  relation: string;
+  /** "candidate" | "confirmed" | "retracted" — the lane, not a score bucket. */
+  state: string;
+  /**
+   * HOW the assertion was made: declared | record | reference | shared_object |
+   * witnessed | derived | scored | human | correlation. It carries the trust
+   * ceiling — the last of those can never write `confirmed` on its own.
+   */
+  mechanism: string;
+  /** name@version of the producing pass — the batch-revocation key. */
+  producer: string;
+  /** Orders the queue. It does not lift a mechanism's ceiling. */
+  confidence: number;
+  evidence_id: string;
+  asserted_by: string;
+  asserted_at_unix_ms: number;
+  recorded_at_unix_ms: number;
+  /** When the relation HELD, as distinct from when it was asserted. 0 = open. */
+  valid_from_unix_ms: number;
+  valid_to_unix_ms: number;
+  /** 0 for a live row. */
+  retracted_at_unix_ms: number;
+  /** The source's native reference, unqualified — no "@r<rev>". */
+  source_ref: string;
+}
+
+/**
+ * What a confirmation did. `link` is the APPENDED human-mechanism row, not the
+ * candidate that was confirmed — the candidate stays exactly as it was, and
+ * rendering the confirmation in its place would erase the producer-behaviour
+ * record the lane exists to build.
+ */
+export interface LinkConfirmation {
+  command_id: string;
+  deduped: boolean;
+  link: Link | null;
+}

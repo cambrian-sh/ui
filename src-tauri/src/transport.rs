@@ -2005,7 +2005,7 @@ struct TokenChunk {
     text: String,
 }
 
-fn new_command_id() -> String {
+pub(crate) fn new_command_id() -> String {
     uuid::Uuid::new_v4().to_string()
 }
 

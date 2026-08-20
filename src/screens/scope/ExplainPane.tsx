@@ -17,7 +17,10 @@ import { DecisionCard } from './DecisionCard';
 import type { Vocabulary } from './useVocabulary';
 
 const RESOURCE_KINDS = ['memory', 'skill', 'agent', 'tool', 'artifact'] as const;
-const SURFACE_KINDS = ['', 'operator', 'agent', 'chat', 'reactive', 'internal'] as const;
+// `mcp` is the inbound Cambrian MCP endpoint (ADR-0126 D4). External coding
+// agents arrive on it, so an operator asking "why can this client not read that?"
+// has to be able to pick the surface they arrived through.
+const SURFACE_KINDS = ['', 'operator', 'agent', 'chat', 'reactive', 'internal', 'mcp'] as const;
 
 interface ExplainPaneProps {
   vocabulary: Vocabulary;

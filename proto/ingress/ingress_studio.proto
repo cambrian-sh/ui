@@ -39,6 +39,43 @@ service IngressStudioAdmin {
   // optionally resuming — an armed door always runs an immutable pairing,
   // so rolling back is pinning older, never editing in place.
   rpc Rollback(RollbackRequest) returns (Ack);
+  // SetHistoryLane adds, replaces or clears the HISTORY transport of an ingress
+  // that is already ARMED or PAUSED (ADR-0119 D2) — the flagship case, where
+  // Slack is live and the ability to read its past arrives later.
+  //
+  // It mints a release copying the pinned one's live pair VERBATIM and re-pins.
+  // Legal on an armed ingress precisely because the live half is bit-identical:
+  // nothing about what the ingress is doing right now changes, so a fill already
+  // running is unaffected. Without it, the only route to a new release would be
+  // Pause → MAPPED → DRY_RUN → Arm: a full re-rehearsal of a live lane that is
+  // not changing.
+  rpc SetHistoryLane(SetHistoryLaneRequest) returns (Ack);
+
+  // ── History backfill ──
+  //
+  // Wiring a customer's Slack gives us every message from that moment. Their
+  // value is in the two years before it, and an ingress models the live tail
+  // only. These three verbs are how the other half is asked for.
+  //
+  // A VERB, not a lifecycle state. Catching up is a fact about an ingress the
+  // way health is a fact about it — orthogonal, not a place in the state
+  // machine — so the ingress's own state is untouched by all three and the
+  // progress lives in a record of its own.
+  //
+  // Being a verb is also what satisfies "declared intent, never a side effect
+  // of editing a transport". Re-reading a source's whole history used to be
+  // something you triggered by changing a URL, because a new transport revision
+  // starts without a cursor; now it is something you ask for by name.
+  rpc StartBackfill(StartBackfillRequest) returns (Ack);
+  // GetBackfill answers "is it still catching up, how far through, and when
+  // will it finish" — the question nothing could answer before, which is why a
+  // benchmark judge had to invent a client-side "waiting on backfill" state and
+  // score everything older than the deployment as a retrieval failure until it
+  // did.
+  rpc GetBackfill(IngressRef) returns (BackfillStatus);
+  // CancelBackfill stops a running fill. Reason required: abandoning a
+  // half-loaded history is a decision somebody will want explained later.
+  rpc CancelBackfill(TransitionRequest) returns (Ack);
 
   // ── Specs & revisions ──
   rpc SaveTransportSpec(SaveSpecRequest) returns (SaveSpecResponse);
@@ -204,9 +241,36 @@ message IngressStatus {
   int32 armed_transport_revision = 5;
   int32 armed_mapping_revision = 6;
   int32 capture_samples = 7;
+  // delivery_count is how many deliveries this ingress has PRESERVED — the
+  // number that answers "is Cambrian keeping up".
+  //
+  // capture_samples above is not that number and was mistaken for it: it counts
+  // redacted bodies gathered during CAPTURING, so an ingress armed straight
+  // through by an installer has zero of them while consuming thousands of
+  // records a day. A console reading it reported every healthy ingress as
+  // having ingested nothing.
+  int64 delivery_count = 14;
   int32 failure_count = 8;
   repeated CredentialStatus credentials = 9;
   string egress_policy_json = 10;
+  // catching_up reports that a history fill is running, WITHOUT the ingress
+  // having a lifecycle state for it — the same treatment health gets, and for
+  // the same reason: it is a fact about the ingress, not a place in its state
+  // machine. A console can say "catching up" from this; GetBackfill says how
+  // far through.
+  bool catching_up = 11;
+  // The HISTORY lane (ADR-0119 D2), 0 when absent — the same sentinel
+  // ArmRequest uses.
+  //
+  // armed_ is the history spec the PINNED release runs, and is what a fill
+  // actually walks. latest_ is what lets a console show "a history spec exists
+  // but is not pinned yet", which is precisely the state SetHistoryLane exists
+  // to consume. Both are on the wire because a console can only show what the
+  // wire carries.
+  //
+  // latest_transport_revision (field 2) keeps meaning the LIVE lane.
+  int32 armed_history_transport_revision = 12;
+  int32 latest_history_transport_revision = 13;
 }
 
 message CredentialStatus {
@@ -227,6 +291,78 @@ message ArmRequest {
   int32 transport_revision = 2;
   int32 mapping_revision = 3;
   string reason = 4;
+  // history_transport_revision pins the HISTORY lane beside the live one
+  // (ADR-0119 D2). 0 means this ingress has no history lane — safe as a
+  // sentinel because revisions start at 1.
+  //
+  // Named, never implicit. Pinning "whatever history revision is newest at arm
+  // time" would be the one place this system pins newest rather than named,
+  // which is exactly what it forbids for the mapping and for fills.
+  //
+  // Consequently an arm pins exactly what it names: RE-ARMING an ingress
+  // without this field DROPS a history lane it already had. Deliberate, and
+  // reported in the Ack rather than left to be discovered — a caller that means
+  // to keep the lane must name it again, and SetHistoryLane restores one that
+  // was dropped.
+  int32 history_transport_revision = 5;
+}
+
+message SetHistoryLaneRequest {
+  string ingress_id = 1;
+  // history_transport_revision names the revision to pin on the history lane.
+  // 0 CLEARS the lane, which is how an ingress stops being fillable through a
+  // history transport without being re-armed.
+  int32 history_transport_revision = 2;
+  string reason = 3;
+}
+
+message StartBackfillRequest {
+  string ingress_id = 1;
+  // from is where to start reading, in the SOURCE's own cursor vocabulary —
+  // whatever `cursor_param` carries for this transport. Empty means the
+  // earliest the source will serve.
+  //
+  // Not a timestamp: the ingress cannot convert one into a cursor for an
+  // arbitrary source, and a field that looks like a date but is passed through
+  // as an opaque string would be a lie about what it does.
+  string from = 2;
+  // mode is how far the fill goes. "once" — run until caught up, then stop —
+  // is the only mode, and it is named rather than assumed so a second one can
+  // arrive without changing this message.
+  string mode = 3;
+  // reason is recorded. A fill can be expensive and long-running, and the
+  // operator who finds it going tomorrow deserves to know who asked and why.
+  string reason = 4;
+}
+
+// BackfillStatus is the progress record, which is deliberately NOT part of the
+// ingress lifecycle. Empty `backfill_id` means this ingress has never been
+// filled — absence, reported as absence.
+message BackfillStatus {
+  string ingress_id = 1;
+  string backfill_id = 2;
+  // state ∈ running | caught_up | cancelled | failed.
+  string state = 3;
+  string mode = 4;
+  string from = 5;
+  // cursor is how far the fill has read. It is the FILL's cursor and never the
+  // live poller's: sharing one would make asking for history rewind the live
+  // lane, which is the accident this whole verb exists to replace.
+  string cursor = 6;
+  int64 records_done = 7;
+  int64 pages_done = 8;
+  // source_total is the source's own count of what is to come, where it
+  // publishes one. 0 means UNKNOWN, not zero — most sources cannot say.
+  int64 source_total = 9;
+  int32 transport_revision = 10;
+  string started_at = 11;
+  string updated_at = 12;
+  // caught_up_at is set only when the fill actually finished. It is the answer
+  // to "is the history loaded", and nothing else in the system can give it.
+  string caught_up_at = 13;
+  // detail says why a fill stopped, or what it is waiting on.
+  string detail = 14;
+  string reason = 15;
 }
 
 message RollbackRequest {

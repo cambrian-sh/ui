@@ -155,7 +155,14 @@ service SubstrateRetrieval {
 
 message QueryRequest {
   // "point" | "history" | "as_of" | "current" | "contradictions" |
-  // "aggregate" | "events" | "traverse" | "evidence"
+  // "aggregate" | "events" | "traverse" | "evidence" | "entity" | "why"
+  //
+  // "entity" and "why" arrived with the identity plane (five-planes step 2;
+  // FIVE-PLANES-BUILD.md). They read LINKS — assertions ABOUT refs — rather than
+  // observations, and their guarantee labels say so: an entity answer is exact
+  // over stored links with identity "as asserted", and a why answer labels every
+  // hop with the mechanism that produced it because a correlation hop is not a
+  // causal one.
   string kind = 1;
   string entity_id = 2;
   string predicate = 3;
@@ -169,11 +176,31 @@ message QueryRequest {
   int32 hops = 11;
   int32 limit = 12;
   string evidence_id = 13;
+  // expand_aliases widens the SUBJECT of an entity-scoped shape (point, history,
+  // aggregate, events, traverse, entity) across the entity's CONFIRMED identity
+  // closure. The closure verbs come from the deployment's relation registry; the
+  // kernel never names one.
+  //
+  // It widens the subject and nothing else. Every row still passes the caller's
+  // own scope on that row's own classification and parties, so a confirmed link
+  // can add rows a caller may read and can never add rows a caller may not.
+  // Requesting it on a shape with no entity subject is REFUSED rather than
+  // ignored — a silently dropped flag makes a narrow answer look complete.
+  //
+  // Guards: depth 2 by default, hard cap 3, at most 8 entities in the set (over
+  // that the query is refused, never truncated), and an entity claimed by more
+  // than 16 links of one mechanism is flagged and excluded from expansion.
+  bool expand_aliases = 14;
 }
 
 message QueryResponse {
   string guarantee = 1;
   repeated string rows = 2; // JSON objects
+  // closure_size is how many ALIASES beyond the subject an expand_aliases answer
+  // was drawn over; 0 for every unexpanded query. The guarantee already says so
+  // in words, and this says it in a number — a consumer should not have to parse
+  // a sentence to learn how wide the question it asked actually was.
+  int32 closure_size = 3;
 }
 
 message CheckPolicyRequest {

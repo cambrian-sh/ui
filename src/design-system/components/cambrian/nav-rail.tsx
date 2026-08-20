@@ -16,7 +16,7 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import { Blocks, Library } from "lucide-react";
+import { Blocks, GitMerge, Library } from "lucide-react";
 import { cn } from "@/design-system/lib/utils";
 
 interface NavEntry {
@@ -73,6 +73,21 @@ export const NAV_GROUPS: readonly NavGroup[] = [
         label: "Knowledge",
         icon: Library,
         requires: "substrate-query",
+      },
+      {
+        // Contract 0098: the identity plane's review lane. Work rather than
+        // Governance because it is a QUEUE — proposals a machine was not
+        // trusted to confirm on its own, waiting on a person — and it sits
+        // beside Knowledge because confirming one changes what Knowledge
+        // answers.
+        //
+        // Gated on `links`, which a kernel without a link store never
+        // advertises. That deployment is CORRECT, and a rail entry leading to
+        // a surface with nothing behind it is a lie.
+        path: "/links",
+        label: "Link review",
+        icon: GitMerge,
+        requires: "links",
       },
     ],
   },

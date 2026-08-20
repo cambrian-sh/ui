@@ -33,6 +33,8 @@ const KERNEL_ADVERTISES = [
   'native-tool-calling',
   'agent-steps',
   'session-lifecycle',
+  // OSS base: the identity plane's review lane (contract 0098)
+  'links',
   // conditional
   'llm-exchange',
   'memory-answer',

@@ -831,6 +831,42 @@ export const ipc = {
       generator_id: generatorId,
       reason,
     }),
+
+  // -- The identity plane's review lane (contract 0098) ---------------------
+  // Gated on the `links` capability. A read plus two mutations: the command_id
+  // is generated in the Rust core, so a retry from here is a second command by
+  // design (see lib/useMutation.ts) rather than a silent replay.
+
+  /** The review inbox: unretracted proposals, highest confidence first. */
+  listLinkCandidates: (namespaceId?: string, limit?: number): Promise<t.Link[]> =>
+    invoke<t.Link[]>('op_links_candidates', {
+      namespace_id: namespaceId ?? '',
+      limit: limit ?? 0,
+    }),
+
+  /** Promote one candidate. Returns the APPENDED human row, not the candidate. */
+  confirmLink: (
+    linkId: string,
+    reason: string,
+    namespaceId?: string,
+  ): Promise<t.LinkConfirmation> =>
+    invoke<t.LinkConfirmation>('op_links_confirm', {
+      link_id: linkId,
+      reason,
+      namespace_id: namespaceId ?? '',
+    }),
+
+  /** Reject one candidate. Stamps state + retracted_at; never a delete. */
+  retractLink: (
+    linkId: string,
+    reason: string,
+    namespaceId?: string,
+  ): Promise<t.CommandAck> =>
+    invoke<t.CommandAck>('op_links_retract', {
+      link_id: linkId,
+      reason,
+      namespace_id: namespaceId ?? '',
+    }),
 } as const;
 
 

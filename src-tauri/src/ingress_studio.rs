@@ -387,6 +387,10 @@ impl Transport {
                 ingress_id,
                 transport_revision,
                 mapping_revision,
+                // History-lane field newly vendored by the proto sync; 0 is the
+                // wire default (no history transport pinned) — the console does
+                // not arm history transports yet.
+                history_transport_revision: 0,
                 reason,
             }))
             .await

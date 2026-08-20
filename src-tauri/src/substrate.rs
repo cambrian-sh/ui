@@ -155,6 +155,9 @@ fn iso_ts(s: &str) -> Option<prost_types::Timestamp> {
 fn to_wire(q: &CompiledQuery) -> pb::substrate::QueryRequest {
     pb::substrate::QueryRequest {
         kind: q.kind.clone(),
+        // Contract 0098: alias expansion exists on the wire; the Knowledge
+        // console does not surface it yet, so the compiled query never asks.
+        expand_aliases: false,
         entity_id: q.entity_id.clone(),
         predicate: q.predicate.clone(),
         item_kind: q.item_kind.clone(),

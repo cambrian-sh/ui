@@ -184,7 +184,24 @@ pub const RETENTION_FEED_CAPABILITY: &str = "retention-feed";
 ///   new credential is actually presented), and `TestMCPServer` (one ephemeral
 ///   dial of a possibly-unsaved spec, returning the tool names the server
 ///   actually advertises). `MCPServerOp` gains the declared half + token facts.
-pub const PINNED_CONTRACT_VERSION: &str = "0097";
+/// - **0098** the identity plane's REVIEW lane: `ListLinkCandidates` reads the
+///   inbox (unretracted proposals, highest confidence first) and
+///   `ConfirmLink`/`RetractLink`/`RetractLinksByProducer` act on it, carried by
+///   the new `LinkOp`. Confirmation APPENDS a human-mechanism row and leaves the
+///   machine's proposal untouched — a console that renders the confirmation in
+///   its place erases the producer-behaviour record the lane exists to build —
+///   and retraction stamps state + retracted_at only, never a delete. Batch
+///   revocation returns the COUNT it revoked, because "undo that producer" with
+///   no number says nothing about what just happened. Capability `links`:
+///   without it a kernel can answer over links but cannot review them, and the
+///   queue must be hidden rather than drawn with dead buttons. The premium
+///   substrate plane moved with it — `entity` and `why` query kinds,
+///   `expand_aliases` on QueryRequest and `closure_size` on QueryResponse (the
+///   guarantee says "across N confirmed aliases" for a reader; the field says N
+///   for a consumer) — which is why the vendored
+///   `proto/substrate/substrate.proto` changed in the same step, and why that
+///   copy is finally listed in core's `scripts/sync-protos.sh`.
+pub const PINNED_CONTRACT_VERSION: &str = "0098";
 
 /// The plugin versions this console was BUILT against, by plugin id (ADR-0089).
 ///

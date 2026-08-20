@@ -202,6 +202,13 @@ const KNOWN: Record<string, Omit<CapabilitySurface, 'capability'>> = {
       'the natural-language ask box, the holdings overview and the entity explorer over the knowledge substrate; reported only when the substrate plugin found Postgres',
     gatesSurface: true,
   },
+  // -- OSS base: the identity plane's review lane (contract 0098) ----------
+  links: {
+    surface: 'Link review',
+    consequence:
+      'the candidate queue and the confirm/reject/revoke writes over it \u2014 without it a kernel can answer over links but nothing can promote a proposal, so the queue is hidden rather than drawn with dead buttons',
+    gatesSurface: true,
+  },
 };
 
 /** Map the handshake's capability list onto the surfaces they gate. */

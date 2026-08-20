@@ -5,6 +5,7 @@
 //! client (`transport`), and the Tauri command/event bridge to the webview.
 
 mod ingress_studio;
+pub mod links;
 pub mod logs;
 pub mod pb;
 pub mod policy;
@@ -1841,6 +1842,58 @@ async fn op_submit_plan(
         .await
 }
 
+// ---- The identity plane's review lane (contract 0098) ---------------------
+//
+// `ListLinkCandidates` is a plain read. The two mutations carry the operator's
+// reason across the bridge and nothing else: the `command_id` is generated in
+// `links.rs`, because a webview-chosen key would make a double-click
+// indistinguishable from a deliberate resend.
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_links_candidates(
+    transport: State<'_, Transport>,
+    namespace_id: Option<String>,
+    limit: Option<i32>,
+) -> Result<Vec<crate::links::Link>, String> {
+    transport
+        .inner()
+        .clone()
+        .list_link_candidates(namespace_id.unwrap_or_default(), limit.unwrap_or(0))
+        .await
+}
+
+/// Promote one candidate. The returned link is the APPENDED human-mechanism row,
+/// not the candidate that was confirmed -- see `links.rs`.
+#[tauri::command(rename_all = "snake_case")]
+async fn op_links_confirm(
+    transport: State<'_, Transport>,
+    link_id: String,
+    reason: String,
+    namespace_id: Option<String>,
+) -> Result<crate::links::LinkConfirmation, String> {
+    transport
+        .inner()
+        .clone()
+        .confirm_link(link_id, reason, namespace_id.unwrap_or_default())
+        .await
+}
+
+/// Reject one candidate. Stamps state + retracted_at; never a delete.
+#[tauri::command(rename_all = "snake_case")]
+async fn op_links_retract(
+    transport: State<'_, Transport>,
+    link_id: String,
+    reason: String,
+    namespace_id: Option<String>,
+) -> Result<CommandAck, String> {
+    let deduped = transport
+        .inner()
+        .clone()
+        .retract_link(link_id, reason, namespace_id.unwrap_or_default())
+        .await?;
+    Ok(CommandAck { deduped })
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -1991,6 +2044,9 @@ pub fn run() {
             op_resultant_policy,
             op_simulate_policy,
             op_export_decisions,
+            op_links_candidates,
+            op_links_confirm,
+            op_links_retract,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
