@@ -1,167 +1,65 @@
-# Rust Core (`src-tauri`) — CONTEXT.md
+# CONTEXT.md — Rust Core (`src-tauri`)
 
-**Scope:** the Tauri **Rust core** — the transport client, the client-side **state of record**, and the bridge to the webview. This file owns the **full transport contract and recovery rules**. Read the project root `../CONTEXT.md` first; the wire types are in `../proto/operator.proto`.
+The Tauri **Rust core** — the transport client, the client-side **state of
+record**, and the bridge to the webview. The **only** thing that talks gRPC
+to the runtime-core. The webview never does.
 
-The Rust core is the **only** thing that talks gRPC to the runtime-core. The webview never does.
-
----
-
-## Status
-
-**IMPLEMENTED** (transport layer). `cargo check` + `cargo clippy` clean. Deps added to `Cargo.toml`: `tonic` (+tls), `prost`, `prost-types`, `tokio` (full), `tokio-stream`, `uuid`, `keyring`, `thiserror`, `tracing`; build-dep `tonic-build`. Connects to the kernel's gRPC TCP port (`http://host:<server.port>` — the same listener the Operator Transport Plane is registered on).
+Read `../CONTEXT.md` for the project overview. Wire types are in
+`../proto/operator.proto`. For per-ADR status see `cambrian-knowledge/adrs/`.
 
 ---
 
-## As-built module map
+## Module Map
 
 | File | Responsibility |
 |---|---|
-| `build.rs` | `tonic-build` codegen — generates the `OperatorConsole` **client** (no server stubs) from `../proto/operator.proto`; `rerun-if-changed` on the proto. |
-| `src/pb.rs` | `tonic::include_proto!("cambrian")` + `PINNED_CONTRACT_VERSION` (currently `0085`), plus `PINNED_PLUGIN_VERSIONS` and `plugin_skew()` — the per-plugin version expectation this build was compiled against (ADR-0089). Also the capability constants (`RECORD_LANE_CAPABILITY`, `RETENTION_FEED_CAPABILITY`, …). The generated `tonic`/`prost` types live here; **nothing outside the core references them**. |
-| `src/records.rs` | The record lane (ADR-0102): alerts, the drift tally, refusals, retention runs, coverage and push status. **Reads only** — the console never calls `IngestRecords`, `IngestMessages` or `ReportCoverage`. Reporting coverage is a connector's job, and an operator console asserting what a daemon can see would be inventing the denominator that surface exists to make honest. |
-| `src/links.rs` | The identity plane's **review lane** (contract 0098). Unlike every other module here it is not a separate plane: `ListLinkCandidates` / `ConfirmLink` / `RetractLink` / `RetractLinksByProducer` are RPCs on `OperatorConsole` itself, so it rides `Transport::client` rather than `authed_channel`. Carries the whole `LinkOp` — a link is an ASSERTION, and `mechanism`/`producer`/`confidence`/`evidence_id` are the half that decides whether to believe it, so none of them are dropped in the projection. A confirmation returns the APPENDED human-mechanism row, never the candidate it confirmed. |
-| `src/state.rs` | The **state of record**: `StateOfRecord` (connection, role, handshake, cursor, plans-by-id, sessions, audit tail, pending HITL) + an **idempotent absolute-state `fold`** (last-writer-wins by id; `token` events return `false` and are excluded) + `apply_snapshot` + `reset_live`. The fold also populates **subsystem caches**: `AgentReadyOp` → `agents`, `WatchTriggeredOp` → `watch_configs` (idempotent by id). `tools`/`skills`/`watch_configs` are additionally upserted from the `List*` RPCs. Serde-serializable (it IS the projection). |
-| `src/transport.rs` | The gRPC client + **`AuthInterceptor`** (bearer token), `login` (+ OS-keychain persistence), the **command senders**, and the **feed loop** (`run_feed`/`drain`/`backoff`): snapshot-seed → subscribe-from-cursor → fold+emit → `Resync` re-snapshot → reconnect with exponential backoff → `Unreachable`. |
-| `src/lib.rs` | The **Tauri bridge**: managed `Transport` state + the `op_*` commands + `run()`. |
+| `build.rs` | `tonic-build` codegen — generates `OperatorConsole` client from `../proto/operator.proto`. |
+| `src/pb.rs` | `tonic::include_proto!("cambrian")` + `PINNED_CONTRACT_VERSION` (currently `0085`) + plugin skew table. |
+| `src/records.rs` | Record lane (ADR-0102): alerts, drift tally, refusals, retention. Read-only. |
+| `src/links.rs` | Identity plane review lane (contract 0098): candidates, confirm, retract. |
+| `src/state.rs` | `StateOfRecord` — idempotent absolute-state fold (last-writer-wins by id). |
+| `src/transport.rs` | gRPC client + `AuthInterceptor` (bearer), login, feed loop (`run_feed`/`drain`/`backoff`). |
+| `src/lib.rs` | Tauri bridge: managed `Transport` state + `op_*` commands + `run()`. |
 
-`internal` rule (enforced): all gRPC/`tonic`/`prost` types stay in `pb.rs`/`transport.rs`; the webview receives only plain serde projection types (`StateOfRecord`, token chunks) over Tauri events.
-
----
-
-## The Tauri bridge surface (what the webview calls / listens to)
-
-**Commands** (`invoke('op_*', { … })`), all async, errors are `String`:
-
-| Command | Args | Returns |
-|---|---|---|
-| `op_login` | `endpoint, username, password` | `role` (`"operator"`/`"viewer"`) — also records `connection.endpoint` and starts the feed loop |
-| `op_disconnect` | — | `()` — stops the feed loop, drops the channel, deletes the keychain token, resets to `down` |
-| `op_get_state` | — | `StateOfRecord` (for hydration on mount) |
-| `op_create_session` | `goal, reason` | `session_id` |
-| `op_send_message` | `session_id, text, reason` | `deduped: bool` |
-| `op_inject_correction` | `session_id, instruction, reason` | `deduped: bool` |
-| `op_pause_session` / `op_resume_session` | `session_id, reason` | `deduped: bool` |
-| `op_resolve_hitl` | `intervention_id, approve, reason` | `deduped: bool` |
-| `op_set_tool_grant` | `agent_id, tool_name, granted, reason` | `deduped: bool` |
-| `op_ingest_memory` | `text, content, filename, content_type, context, tags, importance, source, session_id, reason` | `(doc_id, deduped)` |
-| `op_query_memory` | `query, top_k, source, session, min_importance` | `MemoryQueryResult` — `{hits, policy_note}` |
-| `op_list_documents` | `limit, cursor, unlabelled_only, id_prefix` | `DocumentPage` — `{documents, next_cursor, total_matching}` |
-| **Access policy (ADR-0085/0086/0087)** | | |
-| `op_explain_access` | `principal_id, principal_kind?, surface_*, resource_*, tags?, effects?` | `AccessDecision` — OSS contract |
-| `op_list_classification_tags` | — | `string[]` — OSS contract |
-| `op_list_groups` / `op_save_group` / `op_delete_group` | — / `group` / `id` | `GroupSpec[]` / `SaveOutcome` / — |
-| `op_list_policies` / `op_save_policy` / `op_delete_policy` | — / `policy` / `id` | `PolicySpec[]` / `SaveOutcome` / — |
-| `op_list_links` / `op_link_policy` / `op_unlink_policy` | — / `link` / `policy_id, container_kind, target_id` | `LinkSpec[]` / — / — |
-| `op_resultant_policy` | `principal_id, principal_kind?, surface_*` | `ResultantPolicy` |
-| `op_simulate_policy` | `draft_policies?, draft_links?, limit?` | `SimulationResult` |
-| `op_export_decisions` | `limit?, denials_only?` | `DecisionRecord[]` |
-| `op_list_tools` | — | `ToolSummary[]` — also **upserts** `tools` into `StateOfRecord` and re-emits `kernel://state` |
-| `op_list_skills` | — | `SkillSummary[]` — also **upserts** `skills` into `StateOfRecord` and re-emits `kernel://state` |
-| `op_list_watches` | — | `WatchConfigSummary[]` — also **upserts** `watch_configs` into `StateOfRecord` and re-emits `kernel://state` |
-
-> `command_id` (UUID) is generated **inside the core** per call; `reason` is mandatory (the kernel rejects empty). The webview never sends a token or actor — auth is the core's interceptor.
-
-**Documents (contract `0070`, capability `document-listing`).** `op_list_documents` enumerates documents by ROW, and is the counterpart to `op_query_memory` rather than a variant of it. Search answers "find the document that says X"; this answers "which of my documents have no labels?" — a question with **no query text**, because the operator does not yet know what those documents say. Access policy acts only on labels and never on a document by name, so an unlabelled document is not denied, it is *invisible to the policy model*; enumeration is the only instrument that finds one. Paging is **keyset** (`next_cursor` = the last id served, exclusive), not OFFSET, so a concurrent ingest cannot shift the window and skip a row — and a newly ingested document is exactly the row an operator most needs to see. `total_matching` ignores paging on purpose: "422 of 1163" says how much of the corpus no rule can reach, "50 shown" does not. Rows carry no document body. Gate the browse lane on the `document-listing` capability; an older kernel answers `Unimplemented`.
-
-**Memory (contract `0057`, capability `memory-ingest-binary`).** `op_ingest_memory` has two mutually exclusive body lanes: `text` (markdown/plain) or `content` (raw file bytes) + `filename`. The kernel rejects both-or-neither and rejects `content` without a `filename` — the extension is what routes the chunker and what opens the docling_agent's binary-parse gate. Bytes cross the IPC bridge as a JS array, NOT a path: the kernel may not be on this machine, so a path it cannot read would be a lie. `context` is folded into the document body kernel-side (metadata is never chunked, so a note stored beside the document could never affect retrieval). `op_query_memory` returns ranked **evidence, not an answer** — `MemoryHit.text` is the quotable chunk and `section_path` its structural breadcrumb; `summary` is a truncated preview and must never be quoted as a source. Gate the file-upload affordance on the `memory-ingest-binary` capability: an older kernel silently ingests text-only. The core also folds `MemoryWrittenOp` into a bounded `memory_written` tail (cap 500) so the ingest queue derives its status from the feed instead of polling: one event per chunk, so the count for a `doc_id` **is** the chunk count. `MemoryWrittenOp` carries no id of its own and one document emits many, so the dedup key is the event `seq` — deduping by `doc_id` would collapse distinct chunks into one.
-
-**Events** (`listen('kernel://*')`):
-- `kernel://state` → the full `StateOfRecord` projection, emitted on connection change, snapshot, and each structural feed event.
-- `kernel://token` → `{ session_id, step_index, text }`, the live-only token lane (never part of `StateOfRecord`).
-
-**Pending (follow-ups, not blocking):** outbound ACK/retry queue for commands mid-reconnect; backoff jitter (single client — low value); TLS endpoint selection; per-class batching at the bridge (currently emit-per-structural-event, which is low-frequency); a richer `llm_health` projection.
-
-**Two entries left this list on 2026-08-08, in opposite directions.** *Token-restore-from-keychain on startup* is **done** — `saved_connection` persists `(endpoint, username)` and `reconnect_saved` auto-connects on launch, with an explicit write-back verification because `keyring`'s mock store once accepted every write and forgot it, so "remember me" reported success and stored nothing. *A richer auction projection* is **cancelled, not pending** — ADR-0100 P3 deleted the auction, the UI's own settings surface is now `DispatchSettings`/`dispatchFields`, and that screen is never landing. The `auction` feed class and `AuctionEventOp` remain on the wire by deliberate choice (the proto was left unchanged to hold the contract at `0093`); they now carry capability-typed **selection** events.
+**Internal rule**: all `tonic`/`prost` types stay in `pb.rs`/`transport.rs`.
+The webview receives only plain serde types over Tauri events.
 
 ---
 
-## The contract: the operator PLANE (two services, one connection)
+## Recovery State Machine (implement exactly)
 
-The core speaks the pinned OSS service plus every premium plane compiled into this build, and it is important that they are not peers:
+The kernel retains a bounded in-memory spool (~120 s). Two moves:
 
-1. **`cambrian.OperatorConsole`** — the pinned OSS contract, generated from `../proto/operator.proto`. Version-handshaked (`PINNED_CONTRACT_VERSION`, currently `0070`) with a skew banner. Since ADR-0089 the same handshake also carries every declared plugin with its own version line; `StateOfRecord.plugins` holds the kernel's report plus this build's skew verdict, computed here rather than in the webview because the pinned table is a property of the compiled client.
-2. **`cambrian.premium.authz.AccessPolicyAdmin`** — a PREMIUM-owned plane (ADR-0073/0088), generated from `../proto/authz/access_policy.proto`, mounted on the same kernel server behind the same operator auth interceptors. It rides the **same channel and the same bearer token** via `Transport::authed_channel` — a second connection would be a second thing to authenticate, reconnect and reason about, and would make the premium plane look like a side door rather than the extension it is.
-3. **`cambrian.premium.telegram.TelegramAdmin`** and **`cambrian.premium.telemetry.*`** — the ingress and Langfuse administration planes, on the same terms.
-4. **`cambrian.premium.records.RecordLane`** — the drift product's plane (ADR-0102), generated from `../proto/records/records.proto`, on the same terms as the rest. `src/records.rs` holds the client and its serde DTOs; `op_list_alerts` / `op_get_drift_stats` / `op_list_refusals` / `op_list_retention_runs` are the Tauri commands.
+1. **Subscribe with cursor.** `StreamEvents(last_seq)` — in-window replays
+   the gap then continues live.
+2. **On `ResyncRequired`** — cursor aged out: call `Snapshot`, replace state,
+   resubscribe from `Snapshot.as_of_seq`.
 
-   Two things here are contract facts rather than choices. **`GetDriftStats.available` is not a count** — false means this deployment has no reconciler, and it is carried to the webview untouched because a tally of zeros beside an absent detector is exactly what the field exists to prevent. And **`record-lane` is reported after Build, not declared in the manifest**: the lane needs Postgres, so a kernel with the plugin and no database correctly never advertises it. That makes the capability's absence meaningful rather than a fault.
+**Idempotent-fold contract**: `Snapshot.as_of_seq` is a lower bound; duplicates
+are harmless (absolute-state). Gaps are impossible. `token` events have `seq=0`,
+are live-only, never replayed.
 
-5. **`cambrian.premium.ingress.IngressStudioAdmin`** — the Ingress Studio plane (ADR-0112 §13), generated from `../proto/ingress/ingress_studio.proto`, on the same terms. `src/ingress_studio.rs` holds the client and serde DTOs; the `op_studio_*` commands cover the full lifecycle (create/capture/confirm/dry-run/arm/pause/resume/retire/rollback), spec revisions + diff, drafting, the ephemeral dry-run preview, shadow reprocessing + promotion, and **write-only credentials** — `op_studio_set_credential` passes the value straight through and nothing anywhere returns one; status carries `configured` + `last_four` only. Specs travel as JSON strings validated KERNEL-side by the same strict parsers as hand-written specs — this layer adds no second grammar. The `ingress-studio` capability is reported post-Build (the record-lane precedent): a kernel without Postgres or evidence capture is a correct deployment that never advertises it.
-
-6. **`cambrian.premium.substrate.SubstrateLane`** — the knowledge substrate's plane (ADR-0118), generated from `../proto/substrate/substrate.proto`, on the same terms. `src/substrate.rs` holds the client and serde DTOs; `op_knowledge_ask` / `op_knowledge_query` / `op_knowledge_overview` / `op_knowledge_entities` are the Tauri commands. Three contract facts: **an `AskOutcome` is exactly one of ANSWERED or REFUSED** and a refusal is a first-class answer (the substrate refuses rather than guesses — the webview renders it as the plane working, never as an error); **the compiled query travels with every answer** (the transparency contract — dropping it here would make the ask box a black box downstream); and **rows stay JSON strings end to end** (the plane's v1 wire shape — decoding into fixed structs here would force every new row shape through a Rust release). The `substrate-query` capability is reported post-Build (the record-lane precedent). Times cross this seam as RFC-3339 strings, and unset stays ABSENT on the wire — a zero-value Timestamp is 1970, not "no window".
-
-7. **The identity plane's review lane** is NOT a premium plane — it is contract `0098` on `cambrian.OperatorConsole` itself, so `src/links.rs` uses `Transport::client` like any other operator command. `op_links_candidates` reads the inbox (unretracted proposals, highest confidence first); `op_links_confirm` and `op_links_retract` are audited mutations that generate their own `command_id` and require the caller's `reason`. Three contract facts: **confirmation APPENDS** a `human`-mechanism row and leaves the machine's proposal untouched (overwriting it would erase the producer-behaviour record the lane exists to build); **retraction stamps `state` + `retracted_at` and nothing else** — never a delete (ADR-0093 D6), because a rejected proposal has to stay queryable or its producer proposes it again forever; and **`RetractLinksByProducer` returns the COUNT it revoked**, since "undo that producer" with no number says nothing about what happened. Gated on the `links` capability: a kernel with no link store advertises nothing and the queue is hidden rather than drawn with dead buttons.
-
-Neither is the agent-facing `Orchestrator`/`AgentService`, and the core never carries an `x-agent-id` principal. That was always the point of the rule and it is unchanged.
-
-**A premium plane has no version handshake.** It is versioned by its plugin, not by the operator contract, so a UI built against an older plugin fails at the RPC rather than at a banner. Acceptable while premium and the UI ship together; it needs its own handshake the moment they do not (ADR-0088 Risks).
-
-**Capability gating is the rendering contract.** The kernel folds a plugin's capability strings into the handshake without interpreting them (ADR-0082 D2). The premium client is compiled in unconditionally — what varies is whether the SERVER exists — so every premium RPC answers `Unimplemented` without the plugin. The webview gates on the capability (`access-policy`) so that becomes a good empty state instead of an error.
-
-### RPCs
-
-- **`Login(username, password) → {token, role}`** — the only unauthenticated RPC.
-- **`StreamEvents(SubscribeRequest{last_seq}) → stream OperatorEvent`** — the realtime feed.
-- **`Snapshot() → SnapshotResponse`** — bounded live state + the capability/version handshake.
-- **`QueryAudit(filter) → entries`** — paged audit log (any role).
-- **Commands** (Operator-only, idempotent, audited) → `CommandAck{command_id, deduped}` (except `CreateSession` → `{session_id}`): `CreateSession`, `SendMessage`, `InjectCorrection`, `PauseSession`, `ResumeSession`, `ResolveHITL`, `SetToolGrant`, `TagMemory`, `SetScope`, `RegisterSkill`, `RegisterMCP`, `TriggerConsolidation`.
-
-### `OperatorEvent` (the feed envelope)
-
-`{ seq: u64, ts, session_id, payload: oneof }`. `seq` is a **global monotonic** cursor across all classes/sessions. Payloads are **absolute-state** (the new value, not increments). Classes: `resync` (control), `auction` (the wire name; it carries capability-typed **selection** events — the mechanism was deleted by ADR-0100 P3 and the proto deliberately was not, so the class name outlived the auction), `agent_ready`, `session_dormant`, `session_completed`, `memory_pressure`, `daemon_crashed` (premium), `watch_triggered` (premium), `memory_written`, `hitl_raised`, `verifier_round`, `llm_health`, `plan_state`, `audit`, `token` (live-only).
-
----
-
-## Recovery state machine (implement exactly)
-
-The kernel retains a bounded in-memory spool (~**120 s**). Two moves:
-
-1. **Subscribe with the cursor.** `StreamEvents(last_seq)` where `last_seq` = highest `seq` seen (`0` = start of the retained window). In-window → the kernel replays the gap then continues live.
-2. **On a `resync` (`ResyncRequired`) event** — your cursor aged out: call `Snapshot`, **replace** the state of record from it, then **resubscribe from `Snapshot.as_of_seq`**.
-
-### The idempotent-fold contract (correctness-critical)
-
-- `Snapshot.as_of_seq` is a **lower bound**. Resume from `as_of_seq + 1`; you **may** re-receive events the snapshot already reflected — **harmless**, because the fold is idempotent (absolute-state, last-writer-wins by id). **Gaps are impossible; duplicates are fine.** Never treat an event as an increment.
-- **`token` events have `seq = 0`, are live-only, and are NEVER replayed.** Append their text to the active step's live buffer; on reconnect, do not replay chunks — the accumulated text is reconstructed from the snapshot / a content pull.
-
-### Reconnect (Rust core ↔ kernel)
-
-Backoff + jitter on the one connection: `base=1s, factor=2, cap=30s, jitter=±10%`; cap attempts ~2–5 min, then emit a first-class **"kernel unreachable"** projection. Before reconnecting, refresh the token if expired. The webview↔core hop is in-process — not given network-grade resilience; a webview reload re-hydrates from the still-live core.
-
-### Operator-requested disconnect
-
-The reconnect loop is otherwise unstoppable by design, so `op_disconnect` sets a stop flag **and** wakes the loop through a `Notify`: `drain` selects over `stream.message()` (a quiet kernel would otherwise park there indefinitely) and `backoff` selects over its sleep. The loop then re-checks the flag at the top and after `drain`, and exits. Disconnect also clears the folded state, role, capabilities and version handshake — a disconnected console must not keep rendering a previous kernel's data as though it were current. Reconnecting is a fresh `op_login`; there is no resume.
+**Reconnect**: backoff (base=1s, factor=2, cap=30s, jitter=±10%); after ~2-5 min
+emit "kernel unreachable". `op_disconnect` sets a stop flag + wakes the loop.
 
 ---
 
 ## Auth
 
-- `Login` once → token bound to `{principal, role}`. Send `authorization: Bearer <token>` on **every** call (interceptor), including `StreamEvents` open. Missing/invalid ⇒ `Unauthenticated`.
-- Store the token in the **OS keychain**, never passed to the webview in the clear beyond what a session needs.
-- **Secure-by-default:** the kernel only has accounts if seeded (env on the kernel side). No creds ⇒ login fails — surface it, don't retry blindly.
-- **TLS** is required on the remote kernel hop (additive to the credential — TLS authenticates the server, not the client). Loopback dev may be plaintext.
-- **As-built (`transport.rs::normalize_endpoint` + `Transport::dial`):** the endpoint the operator types is normalized in the Rust core — an explicit `http(s)://` scheme is honoured; a bare `localhost`/IP-literal target becomes `http://` (local plaintext dev); any bare DOMAIN becomes `https://` and the channel gets `ClientTlsConfig::with_native_roots()`. This is what lets the console dial a kernel published as native gRPC behind the Cloudflare proxy (e.g. `cambrian.dorkodu.com`: edge TLS + zone gRPC toggle → tunnel `http2Origin` h2c → kernel loopback :50051, SEC-03 intact). Both `client()` and `authed_channel()` go through the one `dial`, so the two planes can never disagree about transport security.
+- `Login` once → token bound to `{principal, role}`. Bearer on every call.
+- Token stored in **OS keychain**, never passed to webview in the clear.
+- Endpoint normalization: bare localhost → `http://`, bare domain → `https://` + TLS.
+- `command_id` (UUID) generated per action; reuse across retries (kernel dedups).
+- `reason` mandatory on every mutation (empty → `InvalidArgument`).
 
-## Commands
+---
 
-- Generate a **`command_id` (UUID)** per user action; **reuse it across retries** (the kernel dedups → `CommandAck{deduped:true}`, no double mutation). Hold un-ACKed commands in the outbound queue across a reconnect and replay them.
-- **`reason` is mandatory** on every mutation (empty ⇒ `InvalidArgument`). The `actor` is derived from the token server-side — never send it in the body.
-- Semantics to honor: `InjectCorrection` needs a **live execution** (`FailedPrecondition` otherwise); `SendMessage` returns immediately (watch `plan_state`/`token`); `ResolveHITL` keys on the `intervention_id` from a `hitl_raised` event; `TagMemory` add=widen / remove=narrow (vocabulary-validated server-side).
+## The Operator Plane (two services, one connection)
 
-## Capability + version handshake
+1. **`cambrian.OperatorConsole`** — pinned OSS contract, version-handshaked.
+2. **Premium planes** (AccessPolicyAdmin, TelegramAdmin, RecordLane,
+   IngressStudioAdmin, SubstrateLane, Telemetry) — same channel + bearer token.
+   No separate version handshake; gated by capability strings.
 
-`Snapshot` carries `kernel_version`, `contract_version`, `capabilities[]`. Compare `contract_version` to the pinned `0057`. Emit a projection that lets the webview **hide unsupported surfaces** (e.g. watch/daemon when absent) and **warn on skew**. A newer kernel serves your pinned calls; pinned-ahead calls return `Unimplemented` — degrade gracefully.
-
-## The Tauri bridge
-
-- Expose user intents as `#[tauri::command]`s that call the gRPC client and return/ack.
-- Emit **projection events** (typed, serde) to the webview as the state of record changes. **Batch** high-frequency classes (`token`, `plan_state` ticks) at ~60fps / 100ms; deliver **control** classes (`hitl_raised`, `audit`, errors, `llm_health`) immediately and un-batched.
-- The webview holds no kernel state the core didn't give it; a webview reload re-requests the current projection.
-
-**Retention on the feed (contract `0084`, capability `retention-feed`, ADR-0102 A1).** The fold pushes `RetentionRunOp` into a bounded `retention_runs` list (cap 100). Three details are load-bearing:
-
-- It is **source-agnostic**. The record compactor and the reactive-journal GC publish the same shape, so `source` is read rather than assumed and one console panel serves both.
-- The dedup key is **`(source, run_id)`**, not `seq`. `run_id` is the source's own id and is only unique within a source, and the list survives a resync — so the same pass can legitimately arrive twice, once live and once replayed.
-- `reset_live` deliberately does **not** clear it. A snapshot carries no retention history, so clearing on resync would let an ordinary cursor event erase the evidence that a pass failed — in a product whose argument is auditability. The webview merges this with `ListRetentionRuns` on the record lane so a pass from before login is still visible on the first paint.
-
-`undefined` and `[]` are different answers here: a core that cannot report retention and a kernel that has run no pass are different facts, and only the second is evidence about deletion.
+Neither is the agent-facing `Orchestrator`/`AgentService`. The core never
+carries an `x-agent-id` principal.
