@@ -41,4 +41,10 @@ keyring = { version = "3", features = ["apple-native", "windows-native", "sync-s
 thiserror = "1"
 tracing = "0.1"
 chrono = "0.4"
+# Dev bridge only (feature `dev-bridge`, debug builds): a localhost WebSocket so a
+# browser tab can drive this core. axum 0.7 is already in the tree via tonic.
+axum = { version = "0.7", default-features = false, features = ["ws", "http1", "tokio"], optional = true }
+
+[features]
+dev-bridge = ["dep:axum"]
 

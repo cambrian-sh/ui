@@ -70,6 +70,28 @@ kernel connection in Studio and log in with the kernel's credentials. Studio
 checks the pinned operator contract and surfaces version skew; use compatible
 Core and Studio revisions when testing integration.
 
+### Live Studio in a browser tab (dev bridge)
+
+```sh
+bun run studio
+```
+
+This starts the local kernel if one is not already listening on `:50051`
+(`~/.cambrian/bin/cambrian start`), then runs the desktop app with the dev
+bridge on. The bridge is a localhost WebSocket (`127.0.0.1:1430`) that relays the
+webview's IPC to the running Rust core, so `http://localhost:1420` in any browser
+shows the same live session as the native window: useful for browser devtools
+and automated UI review against a real kernel. Sign in once in the native window
+with **Remember** ticked; both then reconnect on launch. Set
+`CAMBRIAN_KERNEL_PORT=0` to skip the local kernel when Studio connects to a remote
+one.
+
+The bridge is compiled only into debug builds with the `dev-bridge` feature,
+starts only when `CAMBRIAN_STUDIO_BRIDGE=1`, and accepts only the Vite dev
+server's origin. In a browser tab the native file picker is unavailable. After
+adding or changing a Tauri command, run `bun run gen:dev-bridge` (a Rust test
+fails while the bridge is stale).
+
 ## Development checks
 
 Run from the repository root:

@@ -14,6 +14,8 @@ pub mod state;
 pub mod substrate;
 mod telegram;
 pub mod transport;
+#[cfg(all(feature = "dev-bridge", debug_assertions))]
+mod dev_bridge;
 
 use tauri::{AppHandle, State};
 
@@ -2048,6 +2050,11 @@ pub fn run() {
             op_links_confirm,
             op_links_retract,
         ])
+        .setup(|_app| {
+            #[cfg(all(feature = "dev-bridge", debug_assertions))]
+            dev_bridge::start(_app.handle());
+            Ok(())
+        })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

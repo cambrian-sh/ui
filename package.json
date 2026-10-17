@@ -8,6 +8,8 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "tauri": "tauri",
+    "studio": "bash scripts/studio.sh",
+    "gen:dev-bridge": "python3 scripts/gen-dev-bridge.py",
     "lint": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
