@@ -1,30 +1,48 @@
 import { Component, ReactNode, ErrorInfo } from "react";
+import { AlertTriangle } from "lucide-react";
 
 interface ErrorBoundaryProps {
   children: ReactNode;
   fallback?: ReactNode;
+  /**
+   * When this value changes, a caught error is cleared. The shell passes the
+   * route path, so a screen that crashed does not keep every other screen
+   * blank until the window is reloaded.
+   */
+  resetKey?: string;
 }
 
 interface ErrorBoundaryState {
   hasError: boolean;
   error: Error | null;
+  resetKey?: string;
 }
 
 export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   constructor(props: ErrorBoundaryProps) {
     super(props);
-    this.state = { hasError: false, error: null };
+    this.state = { hasError: false, error: null, resetKey: props.resetKey };
   }
 
-  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
+  static getDerivedStateFromError(error: Error): Partial<ErrorBoundaryState> {
     return { hasError: true, error };
+  }
+
+  static getDerivedStateFromProps(
+    props: ErrorBoundaryProps,
+    state: ErrorBoundaryState,
+  ): Partial<ErrorBoundaryState> | null {
+    if (props.resetKey !== state.resetKey) {
+      return { hasError: false, error: null, resetKey: props.resetKey };
+    }
+    return null;
   }
 
   componentDidCatch(error: Error, info: ErrorInfo) {
     console.error("ErrorBoundary caught an error:", error, info);
   }
 
-  handleDismiss = () => {
+  handleRetry = () => {
     this.setState({ hasError: false, error: null });
   };
 
@@ -35,35 +53,27 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
       }
 
       return (
-        <div className="flex h-full w-full flex-col items-center justify-center bg-[var(--bg-surface)] text-[var(--fg-primary)] p-8">
-          <div className="flex max-w-md flex-col gap-4 rounded-lg border border-[var(--border-subtle)] p-6 shadow-sm">
-            <div className="flex items-center gap-2 text-[var(--status-err)]">
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="24"
-                height="24"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                className="shrink-0"
-              >
-                <circle cx="12" cy="12" r="10" />
-                <line x1="12" y1="8" x2="12" y2="12" />
-                <line x1="12" y1="16" x2="12.01" y2="16" />
-              </svg>
-              <h2 className="text-lg font-semibold text-[var(--fg-primary)]">Something went wrong</h2>
+        <div role="alert" className="flex h-full w-full items-center justify-center p-8">
+          <div className="flex max-w-md flex-col gap-3 rounded-[var(--radius-lg)] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-6">
+            <div className="flex items-center gap-2">
+              <AlertTriangle aria-hidden="true" size={18} className="shrink-0 text-[var(--status-err)]" />
+              <h2 className="text-base font-semibold text-[var(--fg-primary)]">
+                This screen stopped working
+              </h2>
             </div>
-            <p className="text-sm text-[var(--fg-muted)]">
-              {this.state.error?.message || "An unexpected error occurred."}
+            <p className="text-sm text-[var(--fg-secondary)]">
+              The rest of Cambrian Studio is unaffected — you can keep using the sidebar. The
+              error was:
             </p>
+            <pre className="whitespace-pre-wrap break-words rounded-[var(--radius-md)] bg-[var(--bg-elevated)] px-3 py-2 font-mono text-xs text-[var(--fg-primary)]">
+              {this.state.error?.message || "An unexpected error occurred."}
+            </pre>
             <button
-              onClick={this.handleDismiss}
-              className="mt-2 self-end rounded px-4 py-2 text-sm font-medium border border-[var(--border-subtle)] hover:bg-[var(--bg-canvas)] transition-colors"
+              type="button"
+              onClick={this.handleRetry}
+              className="mt-1 self-start rounded-[var(--radius-md)] border border-[var(--border-strong)] px-3 py-1.5 text-sm font-medium transition-colors hover:bg-[var(--list-row-bg-hover)]"
             >
-              Dismiss
+              Try again
             </button>
           </div>
         </div>

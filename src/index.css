@@ -9,6 +9,8 @@
  */
 
 @import "tailwindcss";
+@import "@fontsource-variable/inter";
+@import "@fontsource-variable/geist-mono";
 @import "./design-system/styles/tokens.css";
 @import "./design-system/styles/globals.css";
 @import "./design-system/styles/motion.css";

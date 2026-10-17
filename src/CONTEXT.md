@@ -41,9 +41,23 @@ React screens ──invoke('op_*')──> Rust core ──gRPC──> kernel
 
 ---
 
+## Themes
+
+`data-theme` on `<html>` selects `light`, `dark` or `nocturne`; the operator's
+preference (`system` | `light` | `dark` | `nocturne`) lives in `shellStore`,
+is saved to `localStorage` (`cambrian-studio:theme`, `cambrian-studio:density`),
+and is applied before React mounts by `public/theme-boot.js`. `system` follows
+the OS. Fonts (Inter, Geist Mono) are bundled via `@fontsource-variable/*` — no
+remote font fetch. Base styles are in `@layer base` so Tailwind utilities win.
+
+---
+
 ## Shell Composition
 
-Header, grouped nav rail, routed main pane, and an **inspector slot**
+Full-height sidebar (brand, search, Home, Inbox, then Work / Agents &
+automation / Governance / System groups, Settings at the foot), a header in
+the main column (breadcrumb, alerts, token rate, connection popover), the
+routed main pane, and an **inspector slot**
 (`InspectorSlot.tsx`) mounted only while a screen is inspecting something.
 No screen renders its own permanent aside. No bottom status strip.
 

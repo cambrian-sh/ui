@@ -19,10 +19,13 @@
 }
 
 /* Focus rings: brand accent, 2 px, offset 2 px, never removed. */
-*:focus-visible {
-  outline: 2px solid var(--accent-bg);
-  outline-offset: 2px;
-  border-radius: var(--radius-sm);
+/* Layered so a component's own focus treatment (a ring utility) can win, and
+   without a border-radius override so a control keeps its shape when focused. */
+@layer base {
+  *:focus-visible {
+    outline: 2px solid var(--accent-bg);
+    outline-offset: 2px;
+  }
 }
 
 /* Skip link: visible on focus, hidden otherwise. */

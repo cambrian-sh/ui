@@ -1,22 +1,32 @@
 import { Link, useRouterState } from "@tanstack/react-router";
 import {
   Activity,
+  Blocks,
+  Bot,
   Database,
   Gavel,
-  LayoutGrid,
+  GitMerge,
+  Home,
+  Inbox,
+  Library,
   ListChecks,
-  Workflow,
   MessagesSquare,
   Network,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Radio,
   Receipt,
   Scale as ScaleIcon,
   ScrollText,
   Search,
+  Send,
   Settings,
   ShieldCheck,
+  TerminalSquare,
+  Waypoints,
+  Workflow,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import { Blocks, GitMerge, Library } from "lucide-react";
 import { cn } from "@/design-system/lib/utils";
 
 interface NavEntry {
@@ -39,7 +49,7 @@ interface NavEntry {
 }
 
 interface NavGroup {
-  /** The uppercase kicker. Groups answer a question; the label names it. */
+  /** The group heading. Groups answer a question; the label names it. */
   label: string;
   entries: readonly NavEntry[];
 }
@@ -47,13 +57,14 @@ interface NavGroup {
 export type NavCountKey = "plans" | "sessions" | "agents" | "watches";
 
 /**
- * Fourteen flat entries at equal weight is not navigation — it is a list of
- * everything, and it makes the operator re-read the whole rail on every hop.
+ * Four groups, each answering one question:
+ *   Work                  what am I doing
+ *   Agents & automation   what can act here, and what starts it
+ *   Governance            what is allowed, what happened, what did it cost
+ *   System                how the kernel itself is running
  *
- * Three groups, each answering one question:
- *   Work        what am I doing
- *   Execution   what can act here, and what is it doing
- *   Governance  what is allowed, what happened, what did it cost
+ * Home and Inbox sit above the groups: they are where an operator starts, and
+ * the inbox is the one blocking question that must be visible from everywhere.
  */
 export const NAV_GROUPS: readonly NavGroup[] = [
   {
@@ -75,15 +86,10 @@ export const NAV_GROUPS: readonly NavGroup[] = [
         requires: "substrate-query",
       },
       {
-        // Contract 0098: the identity plane's review lane. Work rather than
-        // Governance because it is a QUEUE — proposals a machine was not
-        // trusted to confirm on its own, waiting on a person — and it sits
-        // beside Knowledge because confirming one changes what Knowledge
-        // answers.
-        //
-        // Gated on `links`, which a kernel without a link store never
-        // advertises. That deployment is CORRECT, and a rail entry leading to
-        // a surface with nothing behind it is a lie.
+        // Contract 0098: the identity plane's review lane. A QUEUE — proposals
+        // a machine was not trusted to confirm on its own, waiting on a person —
+        // beside Knowledge because confirming one changes what Knowledge answers.
+        // Gated on `links`, which a kernel without a link store never advertises.
         path: "/links",
         label: "Link review",
         icon: GitMerge,
@@ -92,91 +98,98 @@ export const NAV_GROUPS: readonly NavGroup[] = [
     ],
   },
   {
-    // The group is "Execution" and the merged destination inside it is
-    // "Runtime": naming both the same made the row look like a group header.
-    label: "Execution",
+    label: "Agents & automation",
     entries: [
       // Agents, Tools & Skills and MCP are one destination with three tabs —
-      // see RuntimeTabs. They answered one question from three rail entries.
+      // see RuntimeTabs.
       {
         path: "/agents",
-        label: "Runtime",
-        icon: LayoutGrid,
+        label: "Agents & tools",
+        icon: Bot,
         count: "agents",
         matches: ["/tools", "/mcp"],
       },
       {
-        // A door into the system that carries real people. It is a destination
-        // rather than a settings pane because its people, its activity and its
-        // credential are three different jobs on three different clocks — and
-        // because a page you reach by expanding a card on an index page is a
-        // page you scroll past to get to.
-        path: "/telegram",
-        label: "Telegram",
-        icon: MessagesSquare,
-        requires: "telegram-ingress",
-      },
-      {
         path: "/watch",
-        label: "Watch & Reactive",
-        icon: ListChecks,
+        label: "Reactive pipelines",
+        icon: Waypoints,
         count: "watches",
         requires: "watches-read",
       },
       {
         // The Ingress Studio (ADR-0112): where external sources become armed
-        // ingresses. Execution because it answers "what arrives here and how"
-        // — a door into the substrate, not a record of what happened.
-        //
-        // Gated on `ingress-studio`, reported only after the plugin's Build
-        // finds Postgres and evidence capture: a deployment without either is
-        // CORRECT and the entry stays absent rather than leading to a refusal.
+        // ingresses. Gated on `ingress-studio`, reported only after the plugin's
+        // Build finds Postgres and evidence capture.
         path: "/ingress-studio",
         label: "Ingress Studio",
-        icon: Workflow,
+        icon: Radio,
         requires: "ingress-studio",
       },
-      { path: "/verifier", label: "Verifier Pool", icon: Gavel },
-      { path: "/lifecycle", label: "Lifecycle", icon: Activity },
+      {
+        // A door into the system that carries real people: its people, its
+        // activity and its credential are three jobs on three clocks.
+        path: "/telegram",
+        label: "Telegram",
+        icon: Send,
+        requires: "telegram-ingress",
+      },
     ],
   },
   {
     label: "Governance",
     entries: [
       { path: "/scope", label: "Scope & Access", icon: ShieldCheck },
+      { path: "/audit", label: "Audit", icon: ScrollText },
       {
-        // The drift product's own output (ADR-0102). Governance rather than
-        // Execution: it answers "what did we promise, and does the record
-        // agree" — a question about what happened, not about what can act.
-        //
-        // Gated on `record-lane`, which the plugin reports only after it finds a
-        // store. A deployment with the plugin and no Postgres is CORRECT, and a
-        // rail entry leading to a surface that answers Unimplemented is a lie.
+        // The drift product's own output (ADR-0102): "what did we promise, and
+        // does the record agree". Gated on `record-lane`, reported only after
+        // the plugin finds a store.
         path: "/drift",
         label: "Drift",
         icon: ScaleIcon,
         requires: "record-lane",
       },
-      { path: "/audit", label: "Audit", icon: ScrollText },
+      { path: "/cost", label: "Cost & Energy", icon: Receipt },
+    ],
+  },
+  {
+    label: "System",
+    entries: [
+      { path: "/verifier", label: "Verifier Pool", icon: Gavel },
+      { path: "/lifecycle", label: "Lifecycle", icon: Activity },
       {
-        // What the PROCESS did, as opposed to who changed what (Audit) or what
-        // is true now (the feed). Operator-only at the kernel, so the nav entry
-        // is absent for a Viewer rather than leading to a refusal.
+        // What the PROCESS did, as opposed to who changed what (Audit).
+        // Operator-only at the kernel, so absent for a Viewer.
         path: "/logs",
         label: "Logs",
-        icon: ScrollText,
+        icon: TerminalSquare,
         requires: "kernel-logs",
       },
-      { path: "/cost", label: "Cost & Energy", icon: Receipt },
       { path: "/plugins", label: "Plugins", icon: Blocks },
     ],
   },
 ];
 
+/** Where a path sits in the navigation — for the header's breadcrumb. */
+export function navLocation(pathname: string): { group?: string; label: string } | null {
+  if (pathname === "/") return { label: "Home" };
+  if (pathname === "/inbox" || pathname.startsWith("/inbox/")) return { label: "Inbox" };
+  if (pathname === "/settings" || pathname.startsWith("/settings/")) return { label: "Settings" };
+  for (const group of NAV_GROUPS) {
+    for (const entry of group.entries) {
+      const paths = [entry.path, ...(entry.matches ?? [])];
+      if (paths.some((p) => pathname === p || pathname.startsWith(p + "/"))) {
+        return { group: group.label, label: entry.label };
+      }
+    }
+  }
+  return null;
+}
+
 export interface NavRailProps {
   collapsed: boolean;
   onToggle: () => void;
-  /** `pending_hitl.length`. The row is absent entirely at zero. */
+  /** `pending_hitl.length`. Drives the Inbox badge, which is absent at zero. */
   needsYouCount: number;
   /** Right-aligned row counts, keyed as in `NavCountKey`. */
   counts?: Partial<Record<NavCountKey, number>>;
@@ -184,7 +197,32 @@ export interface NavRailProps {
   liveCounts?: Partial<Record<NavCountKey, boolean>>;
   /** The handshake's capability list — destinations gate on it. */
   capabilities?: readonly string[];
+  /** The signed-in role, shown in the rail footer. */
+  role?: string | null;
   onOpenPalette: () => void;
+}
+
+const rowBase =
+  "group flex h-8 items-center gap-2.5 rounded-[var(--radius-nav)] px-2 text-[13px] transition-colors " +
+  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--focus-ring)]";
+const rowIdle =
+  "text-[var(--fg-secondary)] hover:bg-[var(--nav-item-hover)] hover:text-[var(--fg-primary)]";
+const rowActive = "bg-[var(--nav-item-active)] font-medium text-[var(--fg-primary)]";
+
+function RowIcon({ icon: Icon, active }: { icon: LucideIcon; active?: boolean }) {
+  return (
+    <Icon
+      aria-hidden="true"
+      size={16}
+      strokeWidth={1.75}
+      className={cn(
+        "shrink-0",
+        active
+          ? "text-[var(--fg-primary)]"
+          : "text-[var(--fg-muted)] group-hover:text-[var(--fg-primary)]",
+      )}
+    />
+  );
 }
 
 export function NavRail({
@@ -194,169 +232,203 @@ export function NavRail({
   counts,
   liveCounts,
   capabilities = [],
+  role,
   onOpenPalette,
 }: NavRailProps) {
   const routerState = useRouterState();
   const currentPath = routerState.location.pathname;
 
+  const matchesPath = (path: string) =>
+    path === "/" ? currentPath === "/" : currentPath === path || currentPath.startsWith(path + "/");
   const isActive = (entry: NavEntry) =>
-    currentPath === entry.path ||
-    currentPath.startsWith(entry.path + "/") ||
-    (entry.matches?.some(
-      (m) => currentPath === m || currentPath.startsWith(m + "/"),
-    ) ??
-      false);
+    matchesPath(entry.path) || (entry.matches?.some(matchesPath) ?? false);
+
+  const inboxActive = matchesPath("/inbox");
+  const homeActive = matchesPath("/");
+  const settingsActive = matchesPath("/settings");
 
   return (
     <nav
       aria-label="Primary"
-      className="flex h-full flex-none flex-col bg-[var(--bg-surface)] shadow-[inset_-1px_0_0_var(--border-subtle)]"
+      className="flex h-full flex-none flex-col bg-[var(--bg-sidebar)] shadow-[inset_-1px_0_0_var(--border-subtle)]"
       style={{
-        width: collapsed
-          ? "var(--nav-rail-collapsed-w)"
-          : "var(--nav-rail-w)",
+        width: collapsed ? "var(--nav-rail-collapsed-w)" : "var(--nav-rail-w)",
       }}
     >
-      <div className="flex-1 overflow-y-auto px-2 py-3">
-        {/* Never rendered at zero. A "Needs you: 0" row trains the operator to
-            ignore the one row that must never be ignored. */}
-        {needsYouCount > 0 && (
-          <Link
-            to="/inbox"
-            className={cn(
-              "mb-4 flex items-center gap-2 rounded-[var(--radius-nav)] px-2.5 py-2 transition-colors",
-              "tint-fill tint-ring hover:brightness-110",
-            )}
-            style={{ "--tint": "var(--status-warn)" } as React.CSSProperties}
-            title={collapsed ? `Needs you — ${needsYouCount}` : undefined}
-          >
-            <span
-              aria-hidden="true"
-              className="cambrian-live-pulse size-1.5 shrink-0 rounded-full bg-[var(--status-warn)]"
-            />
-            {!collapsed && (
-              <>
-                <span className="flex-1 text-[13px] font-medium text-[var(--fg-primary)]">
-                  Needs you
-                </span>
-                <span className="font-mono text-[10.5px] font-semibold text-[var(--status-warn)]">
-                  {needsYouCount}
-                </span>
-              </>
-            )}
-          </Link>
+      {/* Brand — same height as the header beside it, so the two read as one bar. */}
+      <div
+        className={cn(
+          "flex h-[var(--header-h)] flex-none items-center gap-2.5",
+          collapsed ? "justify-center px-0" : "px-4",
         )}
+      >
+        <img src="/cambrian-mark.svg" alt="" aria-hidden="true" className="size-5 flex-none" />
+        {!collapsed && (
+          <span className="truncate text-[14px] font-semibold tracking-[-0.01em] text-[var(--fg-primary)]">
+            Cambrian <span className="font-normal text-[var(--fg-muted)]">Studio</span>
+          </span>
+        )}
+      </div>
 
-        <div className="flex flex-col gap-4">
-          {NAV_GROUPS.map((group) => (
-            <div key={group.label}>
+      <div className="flex-1 overflow-y-auto px-2 pb-3">
+        <ul className="flex flex-col gap-px">
+          <li>
+            <button
+              type="button"
+              onClick={onOpenPalette}
+              aria-label="Search and jump"
+              title={collapsed ? "Search and jump (⌘K)" : undefined}
+              className={cn(rowBase, rowIdle, "w-full", collapsed && "justify-center px-0")}
+            >
+              <RowIcon icon={Search} />
               {!collapsed && (
-                <div className="px-2.5 pb-[7px] font-mono text-[9.5px] uppercase tracking-[0.14em] text-[color-mix(in_srgb,var(--fg-muted)_35%,transparent)]">
-                  {group.label}
-                </div>
+                <>
+                  <span className="flex-1 text-left">Search</span>
+                  <kbd className="rounded border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-1 font-mono text-[10.5px] text-[var(--fg-muted)]">
+                    ⌘K
+                  </kbd>
+                </>
               )}
-              <ul className="flex flex-col gap-0.5">
-                {group.entries
-                  .filter((e) => !e.requires || capabilities.includes(e.requires))
-                  .map((entry) => {
-                  const active = isActive(entry);
-                  const count = entry.count ? counts?.[entry.count] : undefined;
-                  const live = entry.count ? liveCounts?.[entry.count] : false;
-                  const Icon = entry.icon;
-                  return (
-                    <li key={entry.path}>
-                      <Link
-                        to={entry.path}
-                        aria-current={active ? "page" : undefined}
-                        title={collapsed ? entry.label : undefined}
-                        className={cn(
-                          "flex items-center gap-2 rounded-[var(--radius-nav)] px-2.5 py-[7px] text-[13px] transition-colors",
-                          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--focus-ring)]",
-                          collapsed && "justify-center px-0",
-                          active
-                            ? "bg-[color-mix(in_srgb,var(--accent-bg)_13%,transparent)] font-medium text-[var(--fg-primary)] shadow-[inset_2px_0_0_var(--accent-bg)]"
-                            : "text-[color-mix(in_srgb,var(--fg-secondary)_72%,transparent)] hover:bg-[var(--list-row-bg-hover)] hover:text-[var(--fg-primary)]",
-                        )}
-                      >
-                        <Icon
-                          aria-hidden="true"
-                          size={15}
-                          strokeWidth={1.75}
-                          className="shrink-0"
-                        />
-                        {!collapsed && (
-                          <>
-                            <span className="flex-1 truncate">{entry.label}</span>
-                            {count != null && count > 0 && (
-                              <span
-                                className={cn(
-                                  "font-mono text-[10px]",
-                                  live
-                                    ? "text-[var(--color-accent-400)]"
-                                    : "text-[var(--fg-muted)]",
-                                )}
-                              >
-                                {count}
-                              </span>
-                            )}
-                          </>
-                        )}
-                      </Link>
-                    </li>
-                  );
-                })}
-              </ul>
-            </div>
-          ))}
+            </button>
+          </li>
+          <li>
+            <Link
+              to="/"
+              aria-current={homeActive ? "page" : undefined}
+              title={collapsed ? "Home" : undefined}
+              className={cn(rowBase, homeActive ? rowActive : rowIdle, collapsed && "justify-center px-0")}
+            >
+              <RowIcon icon={Home} active={homeActive} />
+              {!collapsed && <span className="flex-1 truncate">Home</span>}
+            </Link>
+          </li>
+          <li>
+            {/* The one row that must never be ignored: it changes tone when a
+                plan is held waiting on the operator, and carries no zero badge. */}
+            <Link
+              to="/inbox"
+              aria-current={inboxActive ? "page" : undefined}
+              title={collapsed ? (needsYouCount > 0 ? `Inbox — ${needsYouCount} need you` : "Inbox") : undefined}
+              className={cn(rowBase, inboxActive ? rowActive : rowIdle, collapsed && "relative justify-center px-0")}
+            >
+              <RowIcon icon={Inbox} active={inboxActive} />
+              {!collapsed && <span className="flex-1 truncate">Inbox</span>}
+              {needsYouCount > 0 &&
+                (collapsed ? (
+                  <span
+                    aria-hidden="true"
+                    className="absolute right-3 top-1.5 size-2 rounded-full bg-[var(--status-warn)]"
+                  />
+                ) : (
+                  <span
+                    className="flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-[var(--status-warn)] px-1.5 text-[11px] font-semibold text-[var(--bg-canvas)]"
+                    aria-label={`${needsYouCount} need you`}
+                  >
+                    {needsYouCount}
+                  </span>
+                ))}
+            </Link>
+          </li>
+        </ul>
+
+        <div className="mt-4 flex flex-col gap-4">
+          {NAV_GROUPS.map((group) => {
+            const entries = group.entries.filter(
+              (e) => !e.requires || capabilities.includes(e.requires),
+            );
+            if (entries.length === 0) return null;
+            return (
+              <div key={group.label}>
+                {collapsed ? (
+                  <div aria-hidden="true" className="mx-3 mb-2 h-px bg-[var(--border-subtle)]" />
+                ) : (
+                  <div className="px-2 pb-1 text-[11.5px] font-medium text-[var(--fg-muted)]">
+                    {group.label}
+                  </div>
+                )}
+                <ul className="flex flex-col gap-px">
+                  {entries.map((entry) => {
+                    const active = isActive(entry);
+                    const count = entry.count ? counts?.[entry.count] : undefined;
+                    const live = entry.count ? liveCounts?.[entry.count] : false;
+                    return (
+                      <li key={entry.path}>
+                        <Link
+                          to={entry.path}
+                          aria-current={active ? "page" : undefined}
+                          title={collapsed ? entry.label : undefined}
+                          className={cn(
+                            rowBase,
+                            active ? rowActive : rowIdle,
+                            collapsed && "justify-center px-0",
+                          )}
+                        >
+                          <RowIcon icon={entry.icon} active={active} />
+                          {!collapsed && (
+                            <>
+                              <span className="flex-1 truncate">{entry.label}</span>
+                              {count != null && count > 0 && (
+                                <span
+                                  className={cn(
+                                    "flex items-center gap-1 text-[11.5px] tabular-nums",
+                                    live
+                                      ? "text-[var(--status-live)]"
+                                      : "text-[var(--fg-muted)]",
+                                  )}
+                                >
+                                  {live && (
+                                    <span
+                                      aria-hidden="true"
+                                      className="size-1.5 rounded-full bg-[var(--status-live)]"
+                                    />
+                                  )}
+                                  {count}
+                                </span>
+                              )}
+                            </>
+                          )}
+                        </Link>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            );
+          })}
         </div>
       </div>
 
-      {/* The `g x` hints used to be drawn next to every label, at 10px, heavier
-          than the labels themselves. The bindings still exist — they moved into
-          the palette and the shortcut sheet, where they are looked up. */}
-      <div className="flex flex-none items-center gap-1.5 p-2 shadow-[inset_0_1px_0_var(--border-subtle)]">
-        <button
-          type="button"
-          onClick={onOpenPalette}
-          className={cn(
-            "flex h-[30px] flex-1 items-center gap-2 rounded-md px-2 text-[12px] transition-colors",
-            "border border-[var(--button-secondary-border)] text-[var(--fg-secondary)]",
-            "hover:bg-[var(--list-row-bg-hover)] hover:text-[var(--fg-primary)]",
-            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)]",
-          )}
-          aria-label="Search and jump"
+      <div className="flex flex-none flex-col gap-px border-t border-[var(--border-subtle)] p-2">
+        <Link
+          to="/settings"
+          aria-current={settingsActive ? "page" : undefined}
+          title={collapsed ? "Settings" : undefined}
+          className={cn(rowBase, settingsActive ? rowActive : rowIdle, collapsed && "justify-center px-0")}
         >
-          <Search aria-hidden="true" size={14} strokeWidth={1.75} />
-          {!collapsed && (
-            <>
-              <span className="flex-1 text-left">Search &amp; jump</span>
-              <kbd className="font-mono text-[10px] text-[var(--fg-muted)]">⌘K</kbd>
-            </>
+          <RowIcon icon={Settings} active={settingsActive} />
+          {!collapsed && <span className="flex-1 truncate">Settings</span>}
+        </Link>
+        <div className={cn("flex items-center", collapsed ? "justify-center" : "justify-between pl-2")}>
+          {!collapsed && role && (
+            <span className="text-[11.5px] text-[var(--fg-muted)]" title="Your role on this kernel">
+              Signed in as <span className="capitalize">{role}</span>
+            </span>
           )}
-        </button>
-        {!collapsed && (
-          <Link
-            to="/settings"
-            aria-label="Settings"
-            className={cn(
-              "flex size-[30px] flex-none items-center justify-center rounded-md transition-colors",
-              "border border-[var(--button-secondary-border)] text-[var(--fg-secondary)]",
-              "hover:bg-[var(--list-row-bg-hover)] hover:text-[var(--fg-primary)]",
-            )}
+          <button
+            type="button"
+            onClick={onToggle}
+            aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+            title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+            className="flex size-8 items-center justify-center rounded-[var(--radius-nav)] text-[var(--fg-muted)] transition-colors hover:bg-[var(--nav-item-hover)] hover:text-[var(--fg-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)]"
           >
-            <Settings aria-hidden="true" size={15} strokeWidth={1.75} />
-          </Link>
-        )}
+            {collapsed ? (
+              <PanelLeftOpen aria-hidden="true" size={16} strokeWidth={1.75} />
+            ) : (
+              <PanelLeftClose aria-hidden="true" size={16} strokeWidth={1.75} />
+            )}
+          </button>
+        </div>
       </div>
-
-      <button
-        type="button"
-        onClick={onToggle}
-        aria-label={collapsed ? "Expand nav rail" : "Collapse nav rail"}
-        className="flex-none px-2 pb-2 text-[10px] text-[var(--fg-muted)] hover:text-[var(--fg-primary)]"
-      >
-        {collapsed ? "›" : "‹ Collapse"}
-      </button>
     </nav>
   );
 }

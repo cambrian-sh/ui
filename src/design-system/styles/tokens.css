@@ -1,54 +1,218 @@
-/* Tokens.css - Cambrian Design System (4-layer Token System)
+/* Tokens.css — Cambrian Studio design tokens
  *
- * Architecture: primitive → semantic → component → density
- * - Primitive: raw color/spacing/typography values
- * - Semantic: contextual meaning (canvas, surface, fg-primary, etc)
- * - Component: component-specific (button-primary-bg, etc)
- * - Density: spacing variants (compact, default, spacious)
+ * Architecture: primitive → semantic → component → density.
+ * Components and screens consume SEMANTIC tokens (--bg-*, --fg-*, --border-*,
+ * --accent-*, --status-*). A theme is a value swap of those, nothing more.
  *
- * The 4-layer token system is the foundation. Everything else builds on this.
- * Tailwind v4 reads these as @theme tokens and generates utilities.
+ * Themes (data-theme on <html>, resolved by public/theme-boot.js + shellStore):
+ *   light     default when the OS is light. Neutral, paper-white, Vercel/Notion-like.
+ *   dark      default when the OS is dark. Neutral charcoal, no tint.
+ *   nocturne  the original lavender mission-control palette, kept as an option.
  *
- * Palette: "Nocturne" (UX refactor). The three alarm tones are the accent's own
- * lightness and chroma rotated in hue (289° → 70° → 25°), so they read as one
- * family and no state shouts louder than its severity. Roughly 1 in 12 men
- * cannot separate the warn/err pair by colour, so every state in the UI also
- * carries a word and a shape — never drop the label to save space.
+ * Status colour never stands alone: every state also carries a word and a shape.
  */
 
-:root {
-  /* === Primitives: Accent ramp ===
-   * Used as a line and a glow, never as a flood. */
+:root,
+[data-theme="light"] {
+  color-scheme: light;
+
+  /* === Primitives: Accent ramp (blue) ===
+   * --color-accent-400 is "accent text on this theme's ground"; many call sites
+   * use it directly, so each theme redefines the ramp rather than the callers. */
+  --color-accent-100: #eff6ff;
+  --color-accent-200: #dbeafe;
+  --color-accent-300: #bfdbfe;
+  --color-accent-400: #1d4ed8;
+  --color-accent-500: #2563eb;
+  --color-accent-600: #2563eb;
+  --color-accent-700: #dbeafe;
+  --color-accent-800: #dbeafe;
+  --color-accent-900: #eff6ff;
+
+  /* === Primitives: Neutral ramp (zinc) === */
+  --color-neutral-100: #f4f4f5;
+  --color-neutral-200: #e4e4e7;
+  --color-neutral-300: #d4d4d8;
+  --color-neutral-400: #a1a1aa;
+  --color-neutral-500: #71717a;
+  --color-neutral-600: #71717a;
+  --color-neutral-700: #52525b;
+  --color-neutral-800: #3f3f46;
+  --color-neutral-900: #27272a;
+
+  /* === Semantic: grounds ===
+   * canvas = the work area; surface = chrome, cards, panels; elevated = inputs,
+   * hovered/selected controls, floating content. */
+  --bg-canvas: #ffffff;
+  --bg-surface: #ffffff;
+  --bg-elevated: #f4f4f5;
+  --bg-sidebar: #fafafa;
+  --nav-item-hover: #f0f0f1;
+  --nav-item-active: #ebebed;
+  --bg-pulse: #dbeafe;
+
+  --fg-primary: #18181b;
+  --fg-secondary: #52525b;
+  --fg-muted: #71717a;
+  --fg-on-accent: #ffffff;
+
+  --accent-bg: #2563eb;
+  --accent-fg: #ffffff;
+
+  --border-subtle: #e4e4e7;
+  --border-strong: #d4d4d8;
+
+  --status-live: #2563eb; /* running · live · connected   */
+  --status-warn: #b45309; /* waiting on you · degraded    */
+  --status-err: #dc2626;  /* failed · down · denied       */
+  --status-done: #71717a; /* completed                    */
+  --status-idle: #a1a1aa; /* pending · dormant            */
+
+  /* Primary actions are ink, not accent — the accent is reserved for focus,
+   * links, selection and "live". */
+  --button-primary-bg: #18181b;
+  --button-primary-bg-hover: #3f3f46;
+  --button-primary-fg: #ffffff;
+
+  --input-bg: #ffffff;
+  --list-row-bg-hover: #f4f4f5;
+  --list-row-bg-selected: #eff6ff;
+
+  --dialog-overlay-bg: rgb(0 0 0 / 0.32);
+  --elevation-1: 0 0 0 1px var(--border-subtle);
+  --elevation-2: 0 0 0 1px var(--border-subtle), 0 4px 12px rgb(0 0 0 / 0.06);
+  --elevation-3: 0 0 0 1px var(--border-subtle), 0 12px 32px rgb(0 0 0 / 0.12);
+  --elevation-sheet: 0 -1px 0 var(--border-subtle), 0 -16px 40px rgb(0 0 0 / 0.1);
+}
+
+[data-theme="dark"] {
+  color-scheme: dark;
+
+  --color-accent-100: #eff6ff;
+  --color-accent-200: #dbeafe;
+  --color-accent-300: #bfdbfe;
+  --color-accent-400: #60a5fa;
+  --color-accent-500: #3b82f6;
+  --color-accent-600: #3b82f6;
+  --color-accent-700: #1e3a5f;
+  --color-accent-800: #1e3050;
+  --color-accent-900: #172033;
+
+  --color-neutral-100: #ededed;
+  --color-neutral-200: #d4d4d4;
+  --color-neutral-300: #b4b4b4;
+  --color-neutral-400: #a1a1a1;
+  --color-neutral-500: #8f8f8f;
+  --color-neutral-600: #6f6f6f;
+  --color-neutral-700: #4a4a4a;
+  --color-neutral-800: #333333;
+  --color-neutral-900: #262626;
+
+  --bg-canvas: #111111;
+  --bg-surface: #171717;
+  --bg-elevated: #222222;
+  --bg-sidebar: #161616;
+  --nav-item-hover: #1f1f1f;
+  --nav-item-active: #262626;
+  --bg-pulse: #1e3050;
+
+  --fg-primary: #ededed;
+  --fg-secondary: #a1a1a1;
+  --fg-muted: #8f8f8f;
+  --fg-on-accent: #ffffff;
+
+  --accent-bg: #3b82f6;
+  --accent-fg: #ffffff;
+
+  --border-subtle: #262626;
+  --border-strong: #363636;
+
+  --status-live: #60a5fa;
+  --status-warn: #f5a524;
+  --status-err: #f87171;
+  --status-done: #8f8f8f;
+  --status-idle: #6f6f6f;
+
+  --button-primary-bg: #ededed;
+  --button-primary-bg-hover: #ffffff;
+  --button-primary-fg: #111111;
+
+  --input-bg: #111111;
+  --list-row-bg-hover: #1f1f1f;
+  --list-row-bg-selected: #172033;
+
+  --dialog-overlay-bg: rgb(0 0 0 / 0.6);
+  --elevation-1: 0 0 0 1px var(--border-subtle);
+  --elevation-2: 0 0 0 1px var(--border-strong), 0 8px 24px rgb(0 0 0 / 0.5);
+  --elevation-3: 0 0 0 1px var(--border-strong), 0 16px 40px rgb(0 0 0 / 0.6);
+  --elevation-sheet: 0 -1px 0 var(--border-strong), 0 -20px 50px rgb(0 0 0 / 0.6);
+}
+
+/* Nocturne — the original lavender mission-control palette. Opt-in. */
+[data-theme="nocturne"] {
+  color-scheme: dark;
+
   --color-accent-100: #f5f4ff;
   --color-accent-200: #e7e5fe;
   --color-accent-300: #d2cefd;
-  --color-accent-400: #b5abfc; /* accent text on the dark ground */
+  --color-accent-400: #b5abfc;
   --color-accent-500: #968ae0;
   --color-accent-600: #796cbf;
   --color-accent-700: #5d5294;
-  --color-accent-800: #423a6a; /* tag fills */
+  --color-accent-800: #423a6a;
   --color-accent-900: #2b2741;
 
-  /* === Primitives: Neutral ramp === */
   --color-neutral-100: #f3f5fe;
   --color-neutral-200: #e4e7f5;
   --color-neutral-300: #cfd3e5;
   --color-neutral-400: #b2b6ca;
-  --color-neutral-500: #9397ab; /* done */
-  --color-neutral-600: #75798c; /* pending / dormant */
+  --color-neutral-500: #9397ab;
+  --color-neutral-600: #75798c;
   --color-neutral-700: #595d6c;
   --color-neutral-800: #3f424d;
   --color-neutral-900: #292b31;
 
-  /* === Primitives: Ground ramp ===
-   * The three surfaces the dark theme is built from. */
-  --color-ground-canvas: #161826;
-  --color-ground-surface: #1b1d2c;
-  --color-ground-elevated: #232532;
+  --bg-canvas: #161826;
+  --bg-surface: #1b1d2c;
+  --bg-elevated: #232532;
+  --bg-sidebar: #1b1d2c;
+  --nav-item-hover: color-mix(in srgb, #e9e9ed 5%, transparent);
+  --nav-item-active: color-mix(in srgb, #9184d9 13%, transparent);
+  --bg-pulse: #5d5294;
 
-  /* Legacy gray aliases. The pre-Nocturne palette addressed surfaces through
-   * --color-gray-*; these keep untouched call sites rendering while the
-   * migration finishes. Prefer --color-neutral-* in new code. */
+  --fg-primary: #e9e9ed;
+  --fg-secondary: rgba(233, 233, 237, 0.72);
+  --fg-muted: rgba(233, 233, 237, 0.5);
+  --fg-on-accent: #161826;
+
+  --accent-bg: #9184d9;
+  --accent-fg: #161826;
+
+  --border-subtle: rgba(233, 233, 237, 0.09);
+  --border-strong: rgba(233, 233, 237, 0.16);
+
+  --status-live: #9184d9;
+  --status-warn: #d9b184;
+  --status-err: #d98484;
+  --status-done: #9397ab;
+  --status-idle: #75798c;
+
+  --button-primary-bg: #9184d9;
+  --button-primary-bg-hover: #b5abfc;
+  --button-primary-fg: #161826;
+
+  --input-bg: #161826;
+  --list-row-bg-hover: color-mix(in srgb, #e9e9ed 5%, transparent);
+  --list-row-bg-selected: color-mix(in srgb, #9184d9 13%, transparent);
+
+  --elevation-1: 0 0 0 1px var(--border-subtle);
+  --elevation-2: 0 0 0 1px var(--border-subtle), 0 6px 18px rgba(0, 0, 0, 0.45);
+  --elevation-3: 0 0 0 1px var(--border-strong), 0 16px 40px rgba(0, 0, 0, 0.6);
+  --elevation-sheet: 0 -1px 0 rgba(233, 233, 237, 0.12), 0 -20px 50px rgba(0, 0, 0, 0.6);
+}
+
+:root {
+  /* Legacy gray aliases (pre-Nocturne call sites). Prefer --color-neutral-*. */
   --color-gray-50: var(--color-neutral-100);
   --color-gray-100: var(--color-neutral-200);
   --color-gray-200: var(--color-neutral-300);
@@ -57,34 +221,9 @@
   --color-gray-500: var(--color-neutral-600);
   --color-gray-600: var(--color-neutral-700);
   --color-gray-700: var(--color-neutral-800);
-  --color-gray-800: var(--color-ground-elevated);
-  --color-gray-900: var(--color-ground-surface);
-  --color-gray-950: var(--color-ground-canvas);
-
-  /* === Semantic: Ground + surfaces (dark is the default) === */
-  --bg-canvas: var(--color-ground-canvas);
-  --bg-surface: var(--color-ground-surface);
-  --bg-elevated: var(--color-ground-elevated);
-  --bg-pulse: var(--color-accent-700);
-
-  --fg-primary: #e9e9ed;
-  --fg-secondary: rgba(233, 233, 237, 0.72);
-  --fg-muted: rgba(233, 233, 237, 0.5);
-  --fg-on-accent: var(--color-ground-canvas);
-
-  --accent-bg: #9184d9;
-  --accent-fg: var(--color-ground-canvas);
-
-  --border-subtle: rgba(233, 233, 237, 0.09);
-  --border-strong: rgba(233, 233, 237, 0.16);
-
-  /* === Semantic: Status ===
-   * Five readings. Every one is paired with a word and a shape in the UI. */
-  --status-live: #9184d9; /* running · live · connected  (= accent) */
-  --status-warn: #d9b184; /* waiting on you · degraded · blocked    */
-  --status-err: #d98484; /* failed · down · denied · irreversible  */
-  --status-done: var(--color-neutral-500); /* completed              */
-  --status-idle: var(--color-neutral-600); /* pending · dormant      */
+  --color-gray-800: var(--bg-elevated);
+  --color-gray-900: var(--bg-surface);
+  --color-gray-950: var(--bg-canvas);
 
   /* Aliases so pre-Nocturne call sites keep working during the migration.
    * Remove each one as its last call site moves to a --status-* above. */
@@ -100,9 +239,6 @@
   --state-completed: var(--status-done);
 
   /* === Component: Button === */
-  --button-primary-bg: var(--accent-bg);
-  --button-primary-bg-hover: var(--color-accent-400);
-  --button-primary-fg: var(--accent-fg);
   --button-primary-border: transparent;
 
   --button-secondary-bg: transparent;
@@ -114,7 +250,6 @@
   --button-danger-fg: var(--fg-on-accent);
 
   /* === Component: Input === */
-  --input-bg: var(--bg-canvas);
   --input-border: var(--border-subtle);
   --input-fg: var(--fg-primary);
   --input-placeholder: var(--fg-muted);
@@ -131,7 +266,6 @@
   --tooltip-fg: var(--bg-canvas);
 
   /* === Component: Dialog (modal scrim) === */
-  --dialog-overlay-bg: oklch(0% 0 0 / 0.6);
   --dialog-padding: 1.5rem;
 
   /* === Component: Popover === */
@@ -142,8 +276,6 @@
 
   /* === Component: List === */
   --list-row-bg: transparent;
-  --list-row-bg-hover: color-mix(in srgb, var(--fg-primary) 5%, transparent);
-  --list-row-bg-selected: color-mix(in srgb, var(--accent-bg) 13%, transparent);
   --list-row-border: var(--border-subtle);
   --list-row-h: 32px;
   --list-row-padding-x: 0.75rem;
@@ -151,9 +283,9 @@
   /* === Layout: Geometric dimensions ===
    * The shell's fixed panels. The status strip is gone: connection and seq live
    * in the header pill, plan count on the rail, spend in the header. */
-  --header-h: 46px;
-  --nav-rail-w: 216px;
-  --nav-rail-collapsed-w: 52px;
+  --header-h: 48px;
+  --nav-rail-w: 240px;
+  --nav-rail-collapsed-w: 56px;
   --inspector-w: 332px;
   --ingest-pane-w: 392px;
   --audit-detail-w: 308px;
@@ -163,15 +295,6 @@
   --density-compact: 0.75rem;
   --density-default: 1rem;
   --density-spacious: 1.5rem;
-
-  /* === Elevation ===
-   * On a dark ground elevation is an inset hairline plus ambient darkness.
-   * Never stack heavy shadows. */
-  --elevation-1: 0 0 0 1px var(--border-subtle);
-  --elevation-2: 0 0 0 1px var(--border-subtle), 0 6px 18px rgba(0, 0, 0, 0.45);
-  --elevation-3: 0 0 0 1px var(--border-strong), 0 16px 40px rgba(0, 0, 0, 0.6);
-  --elevation-sheet: 0 -1px 0 rgba(233, 233, 237, 0.12),
-    0 -20px 50px rgba(0, 0, 0, 0.6);
 
   /* === Typography ===
    * Nothing below 9.5px, and nothing below 11px carries meaning that is not
@@ -185,9 +308,9 @@
   --text-xl: 1.1875rem; /* 19px  — screen title (h4) */
   --text-2xl: 1.375rem; /* 22px  — big number */
   --text-3xl: 1.625rem; /* 26px  — mobile screen title */
-  --font-sans: Inter, ui-sans-serif, system-ui, -apple-system,
+  --font-sans: "Inter Variable", Inter, ui-sans-serif, system-ui, -apple-system,
     BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
+  --font-mono: "Geist Mono Variable", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
     "Liberation Mono", monospace;
 
   /* === Motion: duration tokens === */
@@ -204,9 +327,9 @@
 
   /* === Radius === */
   --radius-sm: 4px; /* chips, tags, status pills */
-  --radius-nav: 7px; /* nav rows */
-  --radius-md: 8px; /* buttons, inputs */
-  --radius-lg: 10px; /* cards, panels */
+  --radius-nav: 6px; /* nav rows */
+  --radius-md: 6px; /* buttons, inputs */
+  --radius-lg: 8px; /* cards, panels */
   --radius-xl: 12px; /* mobile cards */
   --radius-sheet: 18px; /* mobile sheet top corners */
 }
@@ -233,46 +356,6 @@
   --list-row-h: 44px;
   --list-row-padding-x: 1rem;
   --card-padding: 1.25rem;
-}
-
-[data-theme="light"] {
-  --bg-canvas: #f7f7fb;
-  --bg-surface: #ffffff;
-  --bg-elevated: #eeeef4;
-  --bg-pulse: var(--color-accent-300);
-
-  --fg-primary: #1a1b26;
-  --fg-secondary: rgba(26, 27, 38, 0.72);
-  --fg-muted: rgba(26, 27, 38, 0.55);
-  --fg-on-accent: #ffffff;
-
-  --accent-bg: var(--color-accent-600);
-  --accent-fg: #ffffff;
-
-  --border-subtle: rgba(26, 27, 38, 0.1);
-  --border-strong: rgba(26, 27, 38, 0.18);
-
-  /* The alarm tones need more chroma to hold contrast on a light ground; the
-   * hue relationship (289° → 70° → 25°) is preserved. */
-  --status-live: var(--color-accent-600);
-  --status-warn: #a8712c;
-  --status-err: #b8474b;
-  --status-done: var(--color-neutral-600);
-  --status-idle: var(--color-neutral-500);
-
-  --button-primary-bg-hover: var(--color-accent-700);
-  --button-secondary-bg-hover: var(--bg-elevated);
-
-  --input-bg: #ffffff;
-  --input-border: var(--border-subtle);
-  --input-border-focus: var(--accent-bg);
-
-  --list-row-bg-hover: color-mix(in srgb, var(--fg-primary) 4%, transparent);
-
-  /* Light mode: add the brand-tinted drop shadow to floating elements per LD-7 §11. */
-  --elevation-2: 0 0 0 1px var(--border-subtle), 0 4px 12px oklch(0% 0 0 / 0.06);
-  --elevation-3: 0 0 0 1px var(--border-strong), 0 8px 24px oklch(0% 0 0 / 0.1);
-  --elevation-sheet: 0 -1px 0 var(--border-subtle), 0 -20px 50px oklch(0% 0 0 / 0.12);
 }
 
 /* -----------------------------------------------------------------------------

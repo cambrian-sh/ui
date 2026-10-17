@@ -28,24 +28,25 @@ function renderRail(props: Partial<React.ComponentProps<typeof NavRail>> = {}) {
 }
 
 describe('NavRail', () => {
-  it('renders nothing at all for "Needs you" when the count is zero', () => {
-    // Not a greyed row, not a zero — absent. A permanent "Needs you: 0" trains
-    // the operator to skip the one row that must never be skipped.
+  it('shows no Inbox badge when nothing is waiting', () => {
+    // Not a zero — absent. A permanent "0" trains the operator to skip the one
+    // row that must never be skipped.
     renderRail({ needsYouCount: 0 });
-    expect(screen.queryByText('Needs you')).not.toBeInTheDocument();
+    expect(screen.getByText('Inbox')).toBeInTheDocument();
+    expect(screen.queryByLabelText(/need you/)).not.toBeInTheDocument();
   });
 
-  it('pins "Needs you" above everything with its count once something is waiting', () => {
+  it('badges the Inbox with its count once something is waiting', () => {
     renderRail({ needsYouCount: 3 });
-    expect(screen.getByText('Needs you')).toBeInTheDocument();
-    expect(screen.getByText('3')).toBeInTheDocument();
+    expect(screen.getByLabelText('3 need you')).toHaveTextContent('3');
   });
 
-  it('groups navigation instead of listing fourteen flat entries', () => {
+  it('groups navigation instead of listing every destination flat', () => {
     renderRail();
     expect(screen.getByText('Work')).toBeInTheDocument();
-    expect(screen.getByText('Execution')).toBeInTheDocument();
+    expect(screen.getByText('Agents & automation')).toBeInTheDocument();
     expect(screen.getByText('Governance')).toBeInTheDocument();
+    expect(screen.getByText('System')).toBeInTheDocument();
   });
 
   it('does not draw keyboard hints next to every label', () => {
@@ -59,9 +60,9 @@ describe('NavRail', () => {
   it('marks the active destination, including when a sibling tab is open', () => {
     routerState.location.pathname = '/mcp';
     renderRail();
-    // Agents / Tools & Skills / MCP are one destination now, so MCP keeps the
-    // single Runtime row lit rather than lighting nothing.
-    const runtime = screen.getByText('Runtime');
+    // Agents / Tools & Skills / MCP are one destination, so MCP keeps the
+    // single "Agents & tools" row lit rather than lighting nothing.
+    const runtime = screen.getByText('Agents & tools');
     expect(runtime.closest('a')).toHaveAttribute('aria-current', 'page');
     routerState.location.pathname = '/sessions';
   });

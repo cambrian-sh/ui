@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
-import { Outlet } from "@tanstack/react-router";
+import { Outlet, useRouterState } from "@tanstack/react-router";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { HeaderBar } from "@/components/HeaderBar";
 import { MobileTabBar } from "@/components/MobileTabBar";
@@ -38,6 +38,7 @@ export function Shell() {
   const [shortcutOpen, setShortcutOpen] = useState(false);
   const breakpoint = useBreakpoint();
   const inspector = useInspectorHost();
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
 
   useEffect(() => {
     let cancelled = false;
@@ -129,10 +130,10 @@ export function Shell() {
     >
       {isHydrating ? (
         <div className="flex h-full items-center justify-center">
-          <span className="text-sm text-[var(--fg-muted)]">Connecting to kernel…</span>
+          <span className="text-sm text-[var(--fg-muted)]">Connecting to the kernel…</span>
         </div>
       ) : (
-        <ErrorBoundary>
+        <ErrorBoundary resetKey={pathname}>
           <Outlet />
         </ErrorBoundary>
       )}
@@ -143,19 +144,6 @@ export function Shell() {
     <div className="flex h-full flex-col bg-[var(--bg-canvas)] text-[var(--fg-primary)]">
       <a href="#main" className="cambrian-skip-link">Skip to main content</a>
 
-      <HeaderBar
-        connection={connection}
-        cursor={state?.cursor ?? 0}
-        kernelVersion={state?.kernel_version ?? ''}
-        contractVersion={state?.contract_version ?? ''}
-        contractSkew={state?.contract_skew ?? 0}
-        spendRateTokens={state?.cost_dashboard.spend_rate_usd ?? 0}
-        needsYouCount={needsYouCount}
-        degradedBreakers={degradedBreakers}
-        role={role}
-        compact={isMobile}
-      />
-
       <div className="flex min-h-0 flex-1">
         {!isMobile && (
           <NavRail
@@ -165,20 +153,39 @@ export function Shell() {
             counts={navCounts}
             liveCounts={{ plans: runningPlans > 0 }}
             capabilities={state?.capabilities ?? []}
+            role={role}
             onOpenPalette={() => setPaletteOpen(true)}
           />
         )}
 
-        {main}
-
-        {/* Mounted only when a screen is inspecting something. */}
-        {!isMobile && inspector.active && (
-          <aside
-            ref={inspector.ref}
-            className="flex-none bg-[var(--bg-surface)] shadow-[inset_1px_0_0_var(--border-subtle)]"
-            style={{ width: 'var(--inspector-w)' }}
+        <div className="flex min-w-0 flex-1 flex-col">
+          <HeaderBar
+            connection={connection}
+            cursor={state?.cursor ?? 0}
+            endpoint={state?.connection.endpoint ?? ''}
+            kernelVersion={state?.kernel_version ?? ''}
+            contractVersion={state?.contract_version ?? ''}
+            contractSkew={state?.contract_skew ?? 0}
+            spendRateTokens={state?.cost_dashboard.spend_rate_usd ?? 0}
+            needsYouCount={needsYouCount}
+            degradedBreakers={degradedBreakers}
+            role={role}
+            compact={isMobile}
           />
-        )}
+
+          <div className="flex min-h-0 flex-1">
+            {main}
+
+            {/* Mounted only when a screen is inspecting something. */}
+            {!isMobile && inspector.active && (
+              <aside
+                ref={inspector.ref}
+                className="flex-none bg-[var(--bg-surface)] shadow-[inset_1px_0_0_var(--border-subtle)]"
+                style={{ width: 'var(--inspector-w)' }}
+              />
+            )}
+          </div>
+        </div>
       </div>
 
       {isMobile && <MobileTabBar needsYouCount={needsYouCount} />}

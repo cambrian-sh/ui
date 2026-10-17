@@ -3,6 +3,10 @@
  * Per PRD-01 §4. The CSS is the source of truth; tokens.css defines the values.
  */
 
+/* In @layer base so Tailwind utilities (layer `utilities`) always win.
+ * Unlayered, the `a` and `button` rules below beat every `text-*` utility on a
+ * link or button — which is what painted every nav row in the accent colour. */
+@layer base {
 *, *::before, *::after {
   box-sizing: border-box;
 }
@@ -11,16 +15,14 @@ html, body {
   margin: 0;
   padding: 0;
   height: 100%;
-  font-family:
-    ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
-    "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-family: var(--font-sans);
   font-size: var(--text-base);
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   background: var(--bg-canvas);
   color: var(--fg-primary);
-  font-feature-settings: "cv11", "ss01", "ss03";
+  font-feature-settings: "cv11", "calt";
 }
 
 #root {
@@ -54,8 +56,7 @@ a:hover {
 }
 
 code, pre, kbd, samp {
-  font-family:
-    ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: 0.9em;
 }
 
@@ -63,4 +64,14 @@ hr {
   border: 0;
   border-top: 1px solid var(--border-subtle);
   margin: 0;
+}
+
+/* Machine values (ids, counts, timestamps) line up in columns. */
+.font-mono {
+  font-variant-numeric: tabular-nums;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--accent-bg) 25%, transparent);
+}
 }

@@ -96,5 +96,8 @@ export type Tokens = typeof tokens;
 
 export const themeAttr = "data-theme" as const;
 export const densityAttr = "data-density" as const;
-export type Theme = "dark" | "light";
+/** A theme the token layer can render (the value of `data-theme`). */
+export type Theme = "light" | "dark" | "nocturne";
+/** What the operator picks; `system` follows the OS light/dark setting. */
+export type ThemePreference = Theme | "system";
 export type Density = "compact" | "default" | "spacious";

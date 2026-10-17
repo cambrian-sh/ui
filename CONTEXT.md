@@ -1,6 +1,6 @@
-# CONTEXT.md — Cambrian UI
+# CONTEXT.md — Cambrian Studio
 
-A **Tauri 2 + React 19 + TypeScript** desktop app. Three layers:
+**Cambrian Studio** is a **Tauri 2 + React 19 + TypeScript** desktop app. Three layers:
 
 1. **Rust core** (`src-tauri/`) — the ONLY gRPC speaker; owns the transport,
    state of record, auth, and recovery. See `src-tauri/CONTEXT.md`.
