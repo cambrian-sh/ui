@@ -1,6 +1,9 @@
 
 
 import * as t from './types';
+import type { IPC as RealIPC } from './client';
+import * as fx from './mock-fixtures';
+import { ago } from './mock-fixtures';
 
 class MockIPC {
   private state: t.StateOfRecord = this.initialState();
@@ -326,7 +329,7 @@ class MockIPC {
   }
 
   async answerMemory(params: t.QueryMemoryParams): Promise<t.AnswerMemory> {
-    const hits = await this.queryMemory(params);
+    const { hits } = await this.queryMemory(params);
     if (hits.length === 0) {
       return { status: 'abstention', answer: 'not found in memory', citations: [] };
     }
@@ -348,9 +351,9 @@ class MockIPC {
     };
   }
 
-  async queryMemory(params: t.QueryMemoryParams): Promise<t.MemoryHit[]> {
-    if (params.query === '' || this.zeroHitsMode) return [];
-    return [
+  async queryMemory(params: t.QueryMemoryParams): Promise<t.MemoryQueryResult> {
+    if (params.query === '' || this.zeroHitsMode) return { hits: [], policy_note: '' };
+    const hits: t.MemoryHit[] = [
       {
         doc_id: 'mock-doc-0',
         summary: 'Ops review: two SEV-2s, both closed.',
@@ -382,6 +385,7 @@ class MockIPC {
         tags: ['platform'],
       },
     ];
+    return { hits, policy_note: '' };
   }
 
   async getConfigSchema(): Promise<t.ConfigSchema> {
@@ -600,6 +604,750 @@ class MockIPC {
   }
 
   // --------------------------------------------------------------------------
+  // Plugin planes and settings — backed by ./mock-fixtures so every screen has
+  // believable content in the browser. Writes update these copies, so a save
+  // shows up on the next list call within the same page session.
+  // --------------------------------------------------------------------------
+
+  /** Set by the 'empty' scenario: read-only plane fixtures come back empty too. */
+  private emptyPlanes = false;
+
+  private fx = {
+    watches: structuredClone(fx.watchConfigsFull),
+    documents: structuredClone(fx.documents),
+    groups: structuredClone(fx.groups),
+    policies: structuredClone(fx.policies),
+    links: structuredClone(fx.links),
+    generators: structuredClone(fx.generators),
+    roles: structuredClone(fx.roleAssignments),
+    mcp: structuredClone(fx.mcpServers),
+    telemetry: structuredClone(fx.telemetry),
+    bots: structuredClone(fx.telegramBots),
+    bindings: structuredClone(fx.identityBindings),
+    unbound: structuredClone(fx.unboundSenders),
+    ingresses: structuredClone(fx.ingresses),
+    studio: structuredClone(fx.studioIngresses),
+    linkCandidates: structuredClone(fx.linkCandidates),
+    strangers: {} as Record<string, t.StrangerPolicy>,
+  };
+
+  private ack(): t.CommandAck {
+    return { deduped: false };
+  }
+  private saved(version = 1): t.SaveOutcome {
+    return { ok: true, error: '', version };
+  }
+  private okAck(detail = ''): t.StudioAck & t.TelegramAck {
+    return { ok: true, error: '', detail };
+  }
+  private configWrite(key: string): t.ConfigWriteResult {
+    return {
+      command_id: `mock-${Date.now()}`,
+      deduped: false,
+      outcomes: [{ key, stored: true, effect: 'live', shadowed_by: '', error: '' }],
+    };
+  }
+
+  // ---- Reactive pipelines (watches) ----
+  async listWatchConfigs(): Promise<t.WatchConfigFull[]> {
+    return this.fx.watches;
+  }
+  async registerWatch(config: t.WatchConfigFull, _reason: string): Promise<t.CommandAck> {
+    this.fx.watches = [...this.fx.watches.filter((w) => w.id !== config.id), config];
+    return this.ack();
+  }
+  async deleteWatch(watchId: string, _reason: string): Promise<t.CommandAck> {
+    this.fx.watches = this.fx.watches.filter((w) => w.id !== watchId);
+    return this.ack();
+  }
+  async setWatchActive(watchId: string, active: boolean, _reason: string): Promise<t.CommandAck> {
+    this.fx.watches = this.fx.watches.map((w) => (w.id === watchId ? { ...w, active } : w));
+    return this.ack();
+  }
+  async listWatchDeadLetters(_limit = 0): Promise<t.WatchDeadLetter[]> {
+    return this.emptyPlanes ? [] : fx.watchDeadLetters;
+  }
+  async getWatchMetrics(): Promise<t.WatchMetrics[]> {
+    return this.emptyPlanes ? [] : fx.watchMetrics;
+  }
+  async backtestWatch(_config: t.WatchConfigFull, _afterSeq = 0): Promise<t.WatchBacktestVerdict[]> {
+    return this.emptyPlanes ? [] : fx.backtestVerdicts;
+  }
+  async previewRoute(
+    _taskDesc: string,
+    _requiredCapabilities: string[],
+    candidates: t.PreviewCandidate[],
+  ): Promise<t.PreviewRouteResult> {
+    const ranked = candidates
+      .map((c) => ({
+        agent_id: c.agent_id,
+        score: c.success_rate * 0.6 + c.trust_score * 0.4 - c.avg_cost_per_task * 0.1,
+        success_rate: c.success_rate,
+        trust_score: c.trust_score,
+        latency_term: (c.network_latency_ms + c.computation_latency_ms) / 10_000,
+        cost_term: c.avg_cost_per_task,
+        provisional: c.provisional,
+      }))
+      .sort((a, b) => b.score - a.score);
+    return { ranked, arm: 'exploit' };
+  }
+
+  // ---- Pipelines ----
+  async listNodeItems(_pipelineId: string, _nodeId: string, _limit = 25): Promise<t.NodeItem[]> {
+    return this.emptyPlanes ? [] : fx.nodeItems;
+  }
+  async getPipeline(pipelineId: string, _revision = 0): Promise<t.PipelineGraph> {
+    const [summary] = await this.listPipelines();
+    return {
+      refused: '',
+      summary: { ...summary, pipeline_id: pipelineId },
+      graph_json: fx.pipelineGraphJson,
+      refusals: [],
+      reads: [{ node: 'filter', paths: ['event.type'] }],
+      field_schema_json: '{"event":{"type":"string","amount":"number","id":"string"}}',
+    };
+  }
+  async validatePipeline(_graphJson: string): Promise<t.PipelineValidation> {
+    return {
+      refused: '',
+      refusals: [],
+      node_count: 3,
+      effect_node_count: 1,
+      plan_checksum: 'a1b2c3d4e5f6',
+      semantics_checksum: 'f6e5d4c3b2a1',
+      field_schema_json: '{}',
+    };
+  }
+  async savePipeline(_graphJson: string, _commandId = ''): Promise<t.PipelineSaved> {
+    return { refused: '', pipeline_id: 'ingress:acme-webhook', revision: 2, refusals: [] };
+  }
+  async transitionPipeline(
+    pipelineId: string,
+    toState: string,
+    revision = 0,
+    _reason = '',
+  ): Promise<t.PipelineTransitioned> {
+    return { refused: '', pipeline_id: pipelineId, revision: revision || 1, state: toState };
+  }
+  async dryRunPipeline(_pipelineId: string, _revision = 0, _sampleLimit = 0): Promise<t.PipelineDryRun> {
+    return {
+      refused: '',
+      run_id: 'dry-12',
+      samples: 25,
+      effects: [
+        { node: 'store', kind: 'memory_write', effect_key: 'doc-refund-90121', item_key: 'R-90121', summary: 'Would store refund R-90121 tagged finance, payments' },
+      ],
+      duplicates: [],
+      terminations: [{ node: 'filter', port: 'out', reason: 'not a refund', count: 22 }],
+      failures: [{ node: 'filter', item_key: 'R-90201', err: 'no such key: amount' }],
+      elapsed_ms: 412,
+      source: 'captured samples',
+      node_examples: [
+        { node: 'filter', item_key: 'R-90121', value_json: '{"type":"refund","amount":742.10}', result_json: 'true' },
+      ],
+    };
+  }
+
+  // ---- Memory ----
+  async listDocuments(params: t.ListDocumentsParams = {}): Promise<t.DocumentPage> {
+    let docs = this.fx.documents;
+    if (params.unlabelled_only) docs = docs.filter((d) => d.tags.length === 0);
+    if (params.id_prefix) docs = docs.filter((d) => d.id.startsWith(params.id_prefix!));
+    return { documents: docs.slice(0, params.limit || 50), next_cursor: '', total_matching: docs.length };
+  }
+  async tagMemory(doc_id: string, tag: string, add: boolean, _reason: string): Promise<boolean> {
+    this.fx.documents = this.fx.documents.map((d) =>
+      d.id !== doc_id
+        ? d
+        : { ...d, tags: add ? [...new Set([...d.tags, tag])] : d.tags.filter((x) => x !== tag) },
+    );
+    return true;
+  }
+  async listClassificationTags(): Promise<string[]> {
+    return fx.tags.map((x) => x.tag);
+  }
+  async listTags(): Promise<t.TagSpec[]> {
+    return fx.tags;
+  }
+
+  // ---- Access ----
+  async explainAccess(params: t.ExplainAccessParams): Promise<t.AccessDecision> {
+    const forbidden = (params.tags ?? []).includes('hr-confidential');
+    return {
+      allowed: !forbidden,
+      reason: forbidden ? 'forbidden_tag' : 'allowed',
+      detail: forbidden ? 'hr-confidential is forbidden for this principal' : '',
+      decided_by: forbidden ? fx.resultantPolicy.contributions.slice(1) : fx.resultantPolicy.contributions.slice(0, 1),
+      policy_version: 'v42',
+      report_only: false,
+      would_have_denied: false,
+      explain: forbidden
+        ? 'Denied: "Agents never see HR files" forbids hr-confidential.'
+        : 'Allowed: "Finance can read ledgers" grants these tags.',
+    };
+  }
+  async proposePolicy(request: string, _simulateLimit = 0): Promise<t.PolicyProposal> {
+    return {
+      rationale: `Drafted from: "${request}". Grants read on public material and nothing else.`,
+      policy: { ...fx.policies[2], id: 'draft-1', name: 'Draft policy', version: 0 },
+      links: [{ ...fx.links[2], policy_id: 'draft-1' }],
+      problems: [],
+      simulation: fx.simulation,
+      simulation_basis: 43,
+      blocking: false,
+      provenance: { required_tags: 'stated' },
+    };
+  }
+  async listGroups(): Promise<t.GroupSpec[]> {
+    return this.fx.groups;
+  }
+  async saveGroup(group: t.GroupSpec): Promise<t.SaveOutcome> {
+    this.fx.groups = [...this.fx.groups.filter((g) => g.id !== group.id), group];
+    return this.saved();
+  }
+  async deleteGroup(id: string): Promise<void> {
+    this.fx.groups = this.fx.groups.filter((g) => g.id !== id);
+  }
+  async listPolicies(): Promise<t.PolicySpec[]> {
+    return this.fx.policies;
+  }
+  async savePolicy(policy: t.PolicySpec): Promise<t.SaveOutcome> {
+    const version = (this.fx.policies.find((p) => p.id === policy.id)?.version ?? 0) + 1;
+    this.fx.policies = [
+      ...this.fx.policies.filter((p) => p.id !== policy.id),
+      { ...policy, version, updated_at_unix_ms: Date.now() },
+    ];
+    return this.saved(version);
+  }
+  async deletePolicy(id: string): Promise<void> {
+    this.fx.policies = this.fx.policies.filter((p) => p.id !== id);
+    this.fx.links = this.fx.links.filter((l) => l.policy_id !== id);
+  }
+  async listLinks(): Promise<t.LinkSpec[]> {
+    return this.fx.links;
+  }
+  async linkPolicy(link: t.LinkSpec): Promise<void> {
+    this.fx.links = [...this.fx.links, link];
+  }
+  async unlinkPolicy(params: { policy_id: string; container_kind: string; target_id: string }): Promise<void> {
+    this.fx.links = this.fx.links.filter(
+      (l) =>
+        !(l.policy_id === params.policy_id && l.container_kind === params.container_kind && l.target_id === params.target_id),
+    );
+  }
+  async resultantPolicy(_params: {
+    principal_id: string;
+    principal_kind?: string;
+    surface_kind?: string;
+    surface_id?: string;
+  }): Promise<t.ResultantPolicy> {
+    return fx.resultantPolicy;
+  }
+  async simulatePolicy(_params: {
+    draft_policies?: t.PolicySpec[];
+    draft_links?: t.LinkSpec[];
+    limit?: number;
+  }): Promise<t.SimulationResult> {
+    return fx.simulation;
+  }
+  async exportDecisions(params: { limit?: number; denials_only?: boolean }): Promise<t.DecisionRecord[]> {
+    return params.denials_only ? fx.decisions.filter((d) => !d.allowed) : fx.decisions;
+  }
+  async listPrincipals(): Promise<t.PrincipalSpec[]> {
+    return this.emptyPlanes ? [] : fx.principals;
+  }
+
+  // ---- Ingress registry and identity ----
+  async listIngresses(): Promise<t.IngressSpec[]> {
+    return this.fx.ingresses;
+  }
+  async registerIngress(ingress: t.IngressSpec): Promise<t.SaveOutcome> {
+    this.fx.ingresses = [...this.fx.ingresses.filter((i) => i.agent_id !== ingress.agent_id), ingress];
+    return this.saved();
+  }
+  async deregisterIngress(agentId: string): Promise<void> {
+    this.fx.ingresses = this.fx.ingresses.filter((i) => i.agent_id !== agentId);
+  }
+  async listIdentityBindings(surface: string): Promise<t.IdentityBinding[]> {
+    return this.fx.bindings.filter((b) => !surface || b.surface.startsWith(surface));
+  }
+  async bindIdentity(binding: t.IdentityBinding, _reason: string): Promise<t.SaveOutcome> {
+    this.fx.bindings = [
+      ...this.fx.bindings.filter((b) => !(b.surface === binding.surface && b.external_id === binding.external_id)),
+      { ...binding, bound_at_unix_ms: Date.now() },
+    ];
+    this.fx.unbound = this.fx.unbound.filter((u) => u.external_id !== binding.external_id);
+    return this.saved();
+  }
+  async unbindIdentity(surface: string, externalId: string, _reason: string): Promise<void> {
+    this.fx.bindings = this.fx.bindings.filter((b) => !(b.surface === surface && b.external_id === externalId));
+  }
+  async listUnboundSenders(surface: string): Promise<t.UnboundSender[]> {
+    return this.fx.unbound.filter((u) => !surface || u.surface.startsWith(surface));
+  }
+  async blockSender(surface: string, externalId: string, blocked: boolean, _reason: string): Promise<void> {
+    this.fx.bindings = this.fx.bindings.map((b) =>
+      b.surface === surface && b.external_id === externalId ? { ...b, blocked } : b,
+    );
+  }
+  async getStrangerPolicy(surface: string): Promise<t.StrangerPolicy> {
+    return (
+      this.fx.strangers[surface] ?? {
+        surface,
+        mode: 'guest_principal',
+        guest_principal_id: 'guest-telegram',
+        readable_documents: 1,
+      }
+    );
+  }
+  async setStrangerPolicy(policy: t.StrangerPolicy, _reason: string): Promise<t.SaveOutcome> {
+    this.fx.strangers[policy.surface] = policy;
+    return this.saved();
+  }
+  async listIngressActivity(surface: string, limit = 20): Promise<t.IngressActivityPage> {
+    return {
+      activity: fx.ingressActivity.filter((a) => !surface || a.surface.startsWith(surface)).slice(0, limit),
+      request_text_available: true,
+    };
+  }
+
+  // ---- Telegram ----
+  async telegramStatus(botId = ''): Promise<t.TelegramStatus> {
+    const bot = this.fx.bots.find((b) => b.id === botId) ?? this.fx.bots[0];
+    return {
+      enabled: bot.enabled,
+      token_configured: bot.token_configured,
+      bot_username: bot.bot_username,
+      running: bot.running,
+      surface: bot.surface,
+      namespace: ['faq', 'public'],
+      state: bot.state,
+      bot_id: bot.id,
+      label: bot.label,
+      agent_id: bot.agent_id,
+      surface_registered: bot.surface_registered,
+      detail: bot.detail,
+      privacy_mode: true,
+    };
+  }
+  private updateBot(botId: string, patch: Partial<t.TelegramBot>) {
+    const id = botId || this.fx.bots[0].id;
+    this.fx.bots = this.fx.bots.map((b) => (b.id === id ? { ...b, ...patch } : b));
+  }
+  async telegramSetToken(_token: string, botId = ''): Promise<t.TelegramAck> {
+    this.updateBot(botId, { token_configured: true, state: 'stopped', detail: 'Token saved. Turn the bot on to start.' });
+    return this.okAck();
+  }
+  async telegramClearToken(_reason: string, botId = ''): Promise<t.TelegramAck> {
+    this.updateBot(botId, { token_configured: false, enabled: false, running: false, state: 'needs_token' });
+    return this.okAck();
+  }
+  async telegramSetEnabled(enabled: boolean, botId = ''): Promise<t.TelegramAck> {
+    this.updateBot(botId, { enabled, running: enabled, state: enabled ? 'running' : 'stopped' });
+    return this.okAck();
+  }
+  async telegramListBots(): Promise<t.TelegramBot[]> {
+    return this.fx.bots;
+  }
+  async telegramAddBot(id: string, label: string, token = ''): Promise<t.TelegramAck> {
+    this.fx.bots = [
+      ...this.fx.bots,
+      {
+        id,
+        label,
+        surface: `telegram:${id}`,
+        agent_id: '',
+        token_configured: !!token,
+        enabled: false,
+        running: false,
+        bot_username: '',
+        state: token ? 'stopped' : 'needs_token',
+        detail: '',
+        surface_registered: false,
+      },
+    ];
+    return this.okAck();
+  }
+  async telegramRemoveBot(id: string, _reason: string): Promise<t.TelegramAck> {
+    this.fx.bots = this.fx.bots.filter((b) => b.id !== id);
+    return this.okAck();
+  }
+
+  // ---- Ingress Studio ----
+  async studioCreateIngress(ingressId: string, displayName: string): Promise<t.StudioAck> {
+    this.fx.studio = [
+      ...this.fx.studio,
+      { ingress_id: ingressId, display_name: displayName, state: 'draft', health: 'unknown', pinned_release: '' },
+    ];
+    return this.okAck();
+  }
+  async studioListIngresses(): Promise<t.StudioIngress[]> {
+    return this.fx.studio;
+  }
+  async studioGetIngress(ingressId: string): Promise<t.StudioStatus> {
+    const summary = this.fx.studio.find((s) => s.ingress_id === ingressId) ?? this.fx.studio[0];
+    const armed = summary.state === 'armed';
+    return {
+      summary,
+      latest_transport_revision: armed ? 2 : 1,
+      latest_mapping_revision: armed ? 3 : 1,
+      release_id: summary.pinned_release,
+      armed_transport_revision: armed ? 2 : 0,
+      armed_mapping_revision: armed ? 3 : 0,
+      capture_samples: armed ? 25 : 0,
+      failure_count: armed ? fx.studioFailures.length : 0,
+      credentials: [{ name: 'api_token', configured: armed, last_four: armed ? '9b2d' : '' }],
+      egress_policy_json: '{"allow":["api.acme.example"]}',
+    };
+  }
+  async studioLifecycle(_verb: string, _ingressId: string, _reason = ''): Promise<t.StudioAck> {
+    return this.okAck();
+  }
+  async studioArm(_ingressId: string, _t: number, _m: number, _reason: string): Promise<t.StudioAck> {
+    return this.okAck('Armed. New deliveries use these revisions.');
+  }
+  async studioRollback(_ingressId: string, _releaseId: string, _reason: string, _resume: boolean): Promise<t.StudioAck> {
+    return this.okAck();
+  }
+  async studioSaveSpec(_kind: string, _ingressId: string, _specJson: string): Promise<t.StudioSaveResult> {
+    return { ok: true, error: '', revision: 4 };
+  }
+  async studioGetRevision(kind: string, _ingressId: string, revision: number): Promise<t.StudioSpec> {
+    const spec =
+      kind === 'transport'
+        ? { protocol: 'https', method: 'POST', path: '/hooks/acme' }
+        : { fields: { amount: '$.amount', refund_id: '$.id', type: '$.type' } };
+    return { ok: true, error: '', revision, spec_json: JSON.stringify(spec, null, 2) };
+  }
+  async studioDiffMapping(_ingressId: string, _from: number, _to: number): Promise<t.StudioDiff> {
+    return {
+      ok: true,
+      error: '',
+      added: [{ target: 'currency', from: '', to: '$.currency' }],
+      removed: [],
+      changed: [{ target: 'amount', from: '$.total', to: '$.amount' }],
+    };
+  }
+  async studioDraftMapping(_ingressId: string, _guidance: string, _base = ''): Promise<t.StudioDraft> {
+    return {
+      ok: true,
+      error: '',
+      spec_json: JSON.stringify({ fields: { amount: '$.amount', refund_id: '$.id', currency: '$.currency' } }, null, 2),
+      abstained: '',
+      corrections: 0,
+      first_draft_accepted: true,
+      coverage_json: '{"covered":3,"total":4}',
+      field_abstentions: [{ path: 'customer_id', reason: 'Two candidate fields', options: ['$.customer', '$.account.id'] }],
+    };
+  }
+  async studioCaptureStatus(_ingressId: string): Promise<t.StudioCaptureStatus> {
+    return { samples: 25, profile_json: '{"fields":{"type":25,"amount":24,"id":25}}' };
+  }
+  async studioCaptureSamples(_ingressId: string, limit = 10): Promise<t.StudioCaptureSamples> {
+    const bodies = fx.nodeItems.map((n) => n.input_json);
+    return { bodies_json: bodies.slice(0, limit), total: 25 };
+  }
+  async studioStartDiscovery(_ingressId: string, _intent: string, _endpoint: string): Promise<t.DiscoverySession> {
+    return { ...fx.discovery, running: true };
+  }
+  async studioGetDiscovery(_ingressId: string, _sessionId: string): Promise<t.DiscoverySession> {
+    return fx.discovery;
+  }
+  async studioAnswerDiscovery(
+    _ingressId: string,
+    _sessionId: string,
+    _questionId: string,
+    _answer: string,
+    _expectedVersion: number,
+    _proposalRevision: number,
+    _idempotencyKey: string,
+  ): Promise<t.StudioAck> {
+    return this.okAck();
+  }
+  async studioApproveOrigin(_i: string, _s: string, _scheme: string, _host: string, _port: string): Promise<t.StudioAck> {
+    return this.okAck();
+  }
+  async studioAcceptDiscovery(_ingressId: string, _sessionId: string): Promise<t.StudioSaveResult> {
+    return { ok: true, error: '', revision: 1 };
+  }
+  async studioCommentDiscovery(_ingressId: string, _sessionId: string, _comment: string): Promise<t.StudioAck> {
+    return this.okAck();
+  }
+  async studioPreview(_ingressId: string): Promise<t.StudioPreviewEntry[]> {
+    return [
+      {
+        delivery_ref: 'dlv-5520',
+        received_at: ago(42 * 60_000),
+        outcome: 'ok',
+        detail: '',
+        envelopes_json: '[{"type":"refund","refund_id":"R-90188","amount":1210}]',
+      },
+      ...fx.studioFailures.map((f) => ({
+        delivery_ref: f.delivery_ref,
+        received_at: f.finished_at,
+        outcome: f.outcome,
+        detail: f.detail,
+        envelopes_json: '[]',
+      })),
+    ];
+  }
+  async studioShadowReprocess(_ingressId: string, _mappingRevision: number, _limit = 0): Promise<string> {
+    return 'Reprocessed 25 captured deliveries: 25 mapped, 0 failed.';
+  }
+  async studioPromoteRepair(_i: string, _m: number, _reason: string, _limit = 0): Promise<t.StudioAck> {
+    return this.okAck();
+  }
+  async studioSetCredential(_ingressId: string, _name: string, _value: string): Promise<t.StudioAck> {
+    return this.okAck();
+  }
+  async studioClearCredential(_ingressId: string, _name: string, _reason: string): Promise<t.StudioAck> {
+    return this.okAck();
+  }
+  async studioSetEgressPolicy(_ingressId: string, _policyJson: string): Promise<t.StudioAck> {
+    return this.okAck();
+  }
+  async studioDeliveryFailures(_ingressId: string): Promise<t.StudioFailure[]> {
+    return this.emptyPlanes ? [] : fx.studioFailures;
+  }
+
+  // ---- Record lane ----
+  async listAlerts(): Promise<t.Alert[]> {
+    return this.emptyPlanes ? [] : fx.alerts;
+  }
+  async getDriftStats(): Promise<t.DriftStats> {
+    return fx.driftStats;
+  }
+  async listRefusals(): Promise<t.Refusal[]> {
+    return this.emptyPlanes ? [] : fx.refusals;
+  }
+  async listRetentionRuns(): Promise<t.RetentionRunEvent[]> {
+    return this.emptyPlanes ? [] : fx.retentionRuns;
+  }
+  async getCoverage(): Promise<t.SourceCoverage[]> {
+    return this.emptyPlanes ? [] : fx.coverage;
+  }
+  async getPushStatus(): Promise<t.KindPushStatus[]> {
+    return this.emptyPlanes ? [] : fx.pushStatus;
+  }
+
+  // ---- Models, MCP servers, telemetry ----
+  async listGenerators(): Promise<t.GeneratorSpec[]> {
+    return this.fx.generators;
+  }
+  async saveGenerator(generator: t.GeneratorSpec, _reason: string): Promise<t.ConfigWriteResult> {
+    this.fx.generators = [...this.fx.generators.filter((g) => g.id !== generator.id), generator];
+    return this.configWrite(`generators.${generator.id}`);
+  }
+  async removeGenerator(id: string, _reason: string): Promise<t.ConfigWriteResult> {
+    this.fx.generators = this.fx.generators.filter((g) => g.id !== id);
+    return this.configWrite(`generators.${id}`);
+  }
+  async testGenerator(id: string): Promise<t.GeneratorTestResult> {
+    const g = this.fx.generators.find((x) => x.id === id);
+    return {
+      reachable: true,
+      round_trip_ms: g?.p50_latency_ms ?? 900,
+      authenticated: true,
+      model_served: g?.model ?? '',
+      model_requested: g?.model ?? '',
+      model_matches: true,
+      native_tools_checked: !!g?.native_tools,
+      native_tools_ok: !!g?.native_tools,
+      tokens_in: 18,
+      tokens_out: 4,
+      tokens_cached: 0,
+      error: '',
+    };
+  }
+  async setGeneratorKey(id: string, key: string): Promise<t.ConfigWriteResult> {
+    this.fx.generators = this.fx.generators.map((g) =>
+      g.id === id ? { ...g, key_configured: true, key_last_four: key.slice(-4), key_source: 'keychain' } : g,
+    );
+    return this.configWrite(`generators.${id}.key`);
+  }
+  async clearGeneratorKey(id: string, _reason: string): Promise<t.ConfigWriteResult> {
+    this.fx.generators = this.fx.generators.map((g) =>
+      g.id === id ? { ...g, key_configured: false, key_last_four: '', key_source: '' } : g,
+    );
+    return this.configWrite(`generators.${id}.key`);
+  }
+  async listRoleAssignments(): Promise<t.RoleAssignment[]> {
+    return this.fx.roles;
+  }
+  async setRoleAssignment(role: t.GeneratorRole, generatorId: string, _reason: string): Promise<t.ConfigWriteResult> {
+    this.fx.roles = this.fx.roles.map((r) => (r.role === role ? { role, generator_id: generatorId } : r));
+    return this.configWrite(`roles.${role}`);
+  }
+  async listMCPServerConfigs(): Promise<t.MCPServerConfig[]> {
+    return this.fx.mcp;
+  }
+  async saveMCPServer(server: t.MCPServerConfig, _reason: string): Promise<t.ConfigWriteResult> {
+    this.fx.mcp = [...this.fx.mcp.filter((s) => s.id !== server.id), server];
+    return this.configWrite(`mcp.${server.id}`);
+  }
+  async removeMCPServer(id: string, _reason: string): Promise<t.ConfigWriteResult> {
+    this.fx.mcp = this.fx.mcp.filter((s) => s.id !== id);
+    return this.configWrite(`mcp.${id}`);
+  }
+  async setMCPServerToken(id: string, _token: string): Promise<t.ConfigWriteResult> {
+    this.fx.mcp = this.fx.mcp.map((s) => (s.id === id ? { ...s, token_configured: true, token_source: 'keychain' } : s));
+    return this.configWrite(`mcp.${id}.token`);
+  }
+  async clearMCPServerToken(id: string, _reason: string): Promise<t.ConfigWriteResult> {
+    this.fx.mcp = this.fx.mcp.map((s) => (s.id === id ? { ...s, token_configured: false, token_source: '' } : s));
+    return this.configWrite(`mcp.${id}.token`);
+  }
+  async testMCPServer(server: t.MCPServerConfig): Promise<t.MCPServerTestResult> {
+    return server.last_error
+      ? { ok: false, latency_ms: 0, tool_names: [], error: server.last_error }
+      : { ok: true, latency_ms: 38, tool_names: ['read_file', 'list_dir', 'search'], error: '' };
+  }
+  async getTelemetryConfig(): Promise<t.TelemetryConfig> {
+    return this.fx.telemetry;
+  }
+  async setTelemetryConfig(config: t.TelemetryConfig, _reason: string): Promise<t.CommandAck> {
+    this.fx.telemetry = config;
+    return this.ack();
+  }
+  async setTelemetrySecretKey(_key: string): Promise<t.SaveOutcome> {
+    this.fx.telemetry = { ...this.fx.telemetry, secret_key_configured: true };
+    return this.saved();
+  }
+  async sendTestTrace(): Promise<t.TestTraceResult> {
+    return { ok: true, round_trip_ms: 212, error: '' };
+  }
+
+  // ---- Chat routing and the plan builder ----
+  async classifyInput(text: string): Promise<t.ClassifiedInput> {
+    const lower = text.toLowerCase();
+    if (/every|whenever|when .* (arrives|comes in)/.test(lower)) {
+      return { classification: 'watch', why: 'Describes something to do each time an event happens.', confidence: 0.82 };
+    }
+    if (/^(remember|save|store)\b/.test(lower)) {
+      return { classification: 'ingest', why: 'Asks to keep information for later.', confidence: 0.88 };
+    }
+    if (/\b(review|prepare|reconcile|draft|find|analy[sz]e)\b/.test(lower)) {
+      return { classification: 'plan', why: 'A multi-step job for agents.', confidence: 0.76 };
+    }
+    return { classification: 'chat', why: 'A question to answer directly.', confidence: 0.9 };
+  }
+  async proposePlan(goal: string, answers: string[] = []): Promise<t.PlanProposalResponse> {
+    if (answers.length === 0) {
+      return {
+        questions: [
+          {
+            question: 'Which period should this cover?',
+            kind: 'scope',
+            options: [
+              { label: 'Last 30 days', detail: 'Faster; recent refunds only' },
+              { label: 'This quarter', detail: 'Complete, about 3× the work' },
+            ],
+            why_it_changes_the_answer: 'The period decides how much of the ledger the agents read.',
+          },
+        ],
+        proposal: null,
+        access_consequence: '',
+      };
+    }
+    const step = (query: string, caps: string[], deps: number[]): t.AuthoredStep => ({
+      query,
+      required_capabilities: caps,
+      depends_on: deps,
+      max_energy: 0.5,
+      recommended_model: '',
+      checkpoint_after: false,
+      checkpoint_query: '',
+      preferred_agent: '',
+      agent_pin: '',
+      is_thought: false,
+      fan_out_over: 0,
+      fan_out_var: '',
+    });
+    return {
+      questions: [],
+      proposal: {
+        steps: [
+          step(`Read the records needed for: ${goal}`, ['read:ledger'], []),
+          step('Find the items that need attention', ['query:ledger'], [0]),
+          step('Write up findings with citations', ['write:report'], [1]),
+        ],
+        estimated_tokens: 48_000,
+        estimated_wall_ms: 240_000,
+        max_parallel: 1,
+        access_note: 'Reads documents tagged finance and payments.',
+      },
+      access_consequence: 'The plan can read finance and payments documents. It cannot read hr-confidential.',
+    };
+  }
+  async submitPlan(steps: t.AuthoredStep[], _reason: string, dryRun = false): Promise<t.SubmitPlanResult> {
+    return {
+      command_id: `mock-${Date.now()}`,
+      deduped: false,
+      accepted: true,
+      session_id: dryRun ? '' : 'session-1',
+      plan_id: dryRun ? '' : 'plan-1',
+      issues: [],
+      execution_order: steps.map((_, i) => i),
+    };
+  }
+
+  // ---- Logs ----
+  private logTail: ReturnType<typeof setInterval> | null = null;
+  async queryLogs(filter: t.LogFilter = {}, _afterSeq = 0, limit = 0): Promise<t.LogPage> {
+    const order: t.LogLevel[] = ['debug', 'info', 'warn', 'error'];
+    const min = order.indexOf(filter.level_at_least ?? 'debug');
+    let records = fx.logRecords(80).filter((r) => order.indexOf(r.level) >= min);
+    if (filter.components?.length) records = records.filter((r) => filter.components!.includes(r.component));
+    if (filter.contains) records = records.filter((r) => r.message.includes(filter.contains!));
+    if (limit) records = records.slice(-limit);
+    return {
+      records,
+      window: {
+        boot_id: 'boot-7f3a',
+        capacity: 10_000,
+        count: 80,
+        dropped: 0,
+        oldest_unix_ms: records[0]?.at_unix_ms ?? Date.now(),
+        newest_unix_ms: records[records.length - 1]?.at_unix_ms ?? Date.now(),
+        last_seq: records[records.length - 1]?.seq ?? 0,
+      },
+    };
+  }
+  async startLogTail(_filter: t.LogFilter = {}, _afterSeq = 0): Promise<void> {
+    // The real tail streams kernel://log events; the mock UI only needs the
+    // call to succeed. History comes from queryLogs.
+  }
+  async stopLogTail(): Promise<void> {
+    if (this.logTail) clearInterval(this.logTail);
+    this.logTail = null;
+  }
+
+  // ---- Identity plane links ----
+  async listLinkCandidates(_namespaceId?: string, _limit?: number): Promise<t.Link[]> {
+    return this.fx.linkCandidates;
+  }
+  async confirmLink(linkId: string, _reason: string, _namespaceId?: string): Promise<t.LinkConfirmation> {
+    const link = this.fx.linkCandidates.find((l) => l.id === linkId) ?? null;
+    this.fx.linkCandidates = this.fx.linkCandidates.filter((l) => l.id !== linkId);
+    return { command_id: `mock-${Date.now()}`, deduped: false, link: link && { ...link, state: 'confirmed' } };
+  }
+  async retractLink(linkId: string, _reason: string, _namespaceId?: string): Promise<t.CommandAck> {
+    this.fx.linkCandidates = this.fx.linkCandidates.filter((l) => l.id !== linkId);
+    return this.ack();
+  }
+
+  // --------------------------------------------------------------------------
+
+  __applyScenario(scenario: fx.MockScenario) {
+    if (scenario === 'empty') {
+      // A fresh kernel: nothing configured, nothing stored, nothing waiting.
+      for (const key of Object.keys(this.fx) as (keyof typeof this.fx)[]) {
+        if (Array.isArray(this.fx[key])) (this.fx[key] as unknown[]) = [];
+      }
+      this.emptyPlanes = true;
+    }
+    this.__seed(fx.scenarioState(this.initialState(), scenario));
+  }
 
   __seed(state: t.StateOfRecord) {
     this.state = state;
@@ -688,6 +1436,18 @@ class MockIPC {
 }
 
 export const ipc = new MockIPC();
+
+// Development (not unit tests): start from the populated sample workspace, or
+// the edge-state scenario chosen in localStorage / ?scenario= (mock-fixtures).
+if (import.meta.env.MODE !== 'test') {
+  ipc.__applyScenario(fx.readScenario());
+}
+
+// The mock must implement every call the real client makes; a screen that
+// calls a missing method crashes in the browser preview. This line fails to
+// type-check when the two drift.
+const _complete: RealIPC = ipc;
+void _complete;
 
 export const onKernelState = (fn: (state: t.StateOfRecord) => void): Promise<() => void> =>
   Promise.resolve(ipc.onState(fn));

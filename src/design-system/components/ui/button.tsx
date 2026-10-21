@@ -9,7 +9,7 @@ const buttonVariants = cva(
     variants: {
       variant: {
         default:
-          "bg-[var(--button-primary-bg)] text-[var(--button-primary-fg)] hover:bg-[var(--button-primary-bg-hover)]",
+          "border border-[var(--button-primary-border)] bg-[var(--button-primary-bg)] text-[var(--button-primary-fg)] hover:bg-[var(--button-primary-bg-hover)]",
         secondary:
           "text-[var(--button-secondary-fg)] border border-[var(--button-secondary-border)] bg-[var(--bg-surface)] hover:bg-[var(--list-row-bg-hover)]",
         danger:

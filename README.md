@@ -44,6 +44,17 @@ Open `http://localhost:1420`. This mode uses simulated IPC responses; it is for
 developing and reviewing the interface, and does not execute tasks on Core.
 In PowerShell, set `$env:VITE_USE_MOCK_IPC = "1"` before `bun run dev`.
 
+The mock serves a sample workspace that fills every screen. To review edge
+states, add `?scenario=` to the URL (it is remembered until changed):
+
+| Scenario | Shows |
+| --- | --- |
+| `populated` (default) | sessions, plans, approvals, agents, pipelines, access and ingress data |
+| `empty` | a fresh workspace with nothing in it yet |
+| `degraded` | contract skew and an open model circuit breaker |
+| `viewer` | a read-only operator; mutating controls are disabled |
+| `disconnected` | the kernel connection reconnecting |
+
 ## Run the desktop app
 
 In addition to Bun, install Rust/Cargo and the

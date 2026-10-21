@@ -23,7 +23,7 @@ cargo check                  # Rust core type-check
 cargo tauri dev              # full Tauri dev (Rust + webview)
 bun run studio               # local kernel + Tauri dev + dev bridge: the live
                              # session is also at http://localhost:1420 in a browser
-VITE_USE_MOCK_IPC=1 bun run dev   # webview on simulated IPC (partial coverage)
+VITE_USE_MOCK_IPC=1 bun run dev   # webview on simulated IPC; ?scenario=populated|empty|degraded|viewer|disconnected
 ```
 
 ---

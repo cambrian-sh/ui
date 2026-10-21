@@ -18,10 +18,16 @@ const aliases = [
   { find: "@", replacement: path.resolve(__dirname, "./src") },
 ];
 if (useMock) {
-  aliases.unshift({
-    find: /^@\/ipc$/,
-    replacement: path.resolve(__dirname, "./src/ipc/mock.ts"),
-  });
+  aliases.unshift(
+    {
+      find: /^@\/ipc$/,
+      replacement: path.resolve(__dirname, "./src/ipc/mock.ts"),
+    },
+    {
+      find: /^@\/ipc\/events$/,
+      replacement: path.resolve(__dirname, "./src/ipc/mock-events.ts"),
+    },
+  );
 }
 
 /* === Dev bridge (dev server only) ===
