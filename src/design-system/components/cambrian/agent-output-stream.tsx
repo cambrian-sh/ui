@@ -83,7 +83,7 @@ export function AgentOutputStream({
           <li key={line.line_id} className="flex items-start gap-2">
             <span
               className={cn(
-                "rounded-sm px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide shrink-0",
+                "type-label rounded-sm px-1.5 py-0.5 font-medium shrink-0",
                 TYPE_PILL[line.type],
               )}
               aria-label={`line type ${line.type}`}

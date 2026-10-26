@@ -271,7 +271,7 @@ function ProposalReview({
                       : 'text-xs text-[var(--color-status-warn)]'
                   }
                 >
-                  <span className="uppercase tracking-wide">{p.severity}</span> &middot;{' '}
+                  <span className="type-label">{p.severity}</span> &middot;{' '}
                   {p.message}
                 </p>
               ))}
@@ -324,7 +324,7 @@ function ProposalReview({
                   : 'text-[var(--color-status-warn)]'
               }
             >
-              <span className="uppercase tracking-wide">{p.severity}</span> &middot; {p.message}
+              <span className="type-label">{p.severity}</span> &middot; {p.message}
             </li>
           ))}
         </ul>
@@ -540,8 +540,8 @@ function Consequence({
         className="flex flex-col gap-1 rounded-md p-2.5 tint-wash tint-ring"
         style={{ '--tint': 'var(--status-err)' } as React.CSSProperties}
       >
-        <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-[var(--status-err)]">
-          NO RADIUS TO MEASURE
+        <span className="type-status text-[var(--status-err)]">
+          No radius to measure
         </span>
         <p className="text-[12px] leading-[1.55] text-[var(--fg-primary)]">
           {contradiction.length > 0 ? (

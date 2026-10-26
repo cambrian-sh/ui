@@ -148,7 +148,7 @@ export function SettingsPage() {
 function Planned({ label }: { label: string }) {
   return (
     <div className="rounded-[var(--radius-lg)] bg-[var(--bg-surface)] p-3.5 shadow-[var(--elevation-1)]">
-      <h2 className="text-[15px] font-medium">{label}</h2>
+      <h2 className="type-section-title">{label}</h2>
       <p className="mt-1.5 text-[12.5px] leading-[1.55] text-[var(--fg-muted)]">
         Designed, not built yet. It follows the pattern the Telegram panel already sets:
         intent and reality kept apart, write-only credentials, capability-gated presence.
@@ -160,7 +160,7 @@ function Planned({ label }: { label: string }) {
 function Group({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="mb-4">
-      <div className="px-2.5 pb-[7px] font-mono text-[9.5px] uppercase tracking-[0.14em] text-[color-mix(in_srgb,var(--fg-muted)_35%,transparent)]">
+      <div className="type-label px-2.5 pb-[7px] text-[color-mix(in_srgb,var(--fg-muted)_35%,transparent)]">
         {label}
       </div>
       <ul className="flex flex-col gap-0.5">{children}</ul>

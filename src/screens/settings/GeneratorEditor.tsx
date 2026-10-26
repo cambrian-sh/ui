@@ -107,7 +107,7 @@ export function GeneratorEditor({ generator, canMutate, onClose }: GeneratorEdit
   return (
     <div className="flex flex-col gap-5">
       <div className="flex items-baseline gap-3">
-        <h2 className="text-[17px] font-medium tracking-[-0.01em]">
+        <h2 className="type-page-title">
           {isNew ? 'New generator' : draft.id}
         </h2>
         <button
@@ -211,7 +211,7 @@ export function GeneratorEditor({ generator, canMutate, onClose }: GeneratorEdit
 
       {keyLocked ? (
         <section className="flex flex-col gap-1.5 rounded-[var(--radius-lg)] bg-[var(--bg-surface)] p-3.5 shadow-[var(--elevation-1)]">
-          <h3 className="font-mono text-[9.5px] uppercase tracking-[0.14em] text-[var(--fg-muted)]">
+          <h3 className="type-label text-[var(--fg-muted)]">
             Credential
           </h3>
           <p className="text-[12px] leading-[1.55] text-[var(--fg-muted)]">
@@ -233,7 +233,7 @@ export function GeneratorEditor({ generator, canMutate, onClose }: GeneratorEdit
       )}
 
       <section className="flex flex-col gap-2 rounded-[var(--radius-lg)] bg-[var(--bg-surface)] p-3.5 shadow-[var(--elevation-1)]">
-        <h3 className="font-mono text-[9.5px] uppercase tracking-[0.14em] text-[var(--fg-muted)]">
+        <h3 className="type-label text-[var(--fg-muted)]">
           If you save this
         </h3>
         <ul className="flex flex-col gap-1 text-[12px] leading-[1.5] text-[var(--fg-secondary)]">
@@ -395,7 +395,7 @@ function CredentialPanel({
 }) {
   return (
     <section className="flex flex-col gap-2.5 rounded-[var(--radius-lg)] bg-[var(--bg-surface)] p-3.5 shadow-[var(--elevation-1)]">
-      <h3 className="font-mono text-[9.5px] uppercase tracking-[0.14em] text-[var(--fg-muted)]">
+      <h3 className="type-label text-[var(--fg-muted)]">
         Credential
       </h3>
 

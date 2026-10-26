@@ -25,9 +25,9 @@ const TONE: Record<PluginCardState, string | undefined> = {
 const LABEL: Record<PluginCardState, string> = {
   active: 'ACTIVE',
   off: 'LICENSED, SWITCHED OFF',
-  not_entitled: 'NOT IN YOUR PLAN',
-  expired: 'LICENCE EXPIRED',
-  unverifiable: 'LICENCE UNVERIFIABLE',
+  not_entitled: 'Not in your plan',
+  expired: 'Licence expired',
+  unverifiable: 'Licence unverifiable',
 };
 
 /**
@@ -57,8 +57,8 @@ export function PluginsConsole() {
     <ScrollArea className="h-full">
       <div className="flex flex-col gap-5 p-4 pb-10">
         <div>
-          <h1 className="text-[19px] font-medium leading-[1.25] tracking-[-0.01em]">Plugins</h1>
-          <p className="mt-1 max-w-[660px] text-[12.5px] leading-[1.6] text-[var(--fg-muted)]">
+          <h1 className="type-page-title">Plugins</h1>
+          <p className="type-page-description mt-1 max-w-[660px]">
             What this kernel is running, and what each one adds to this console. A surface that
             is missing from the navigation is missing because a plugin here is not active —
             this is where that is stated rather than left to be guessed at.
@@ -86,7 +86,7 @@ export function PluginsConsole() {
         {/* The capability list is the other half of the same question, and the
             two are read together often enough to belong on one page. */}
         <section className="flex flex-col gap-2 rounded-[var(--radius-lg)] bg-[var(--bg-surface)] p-3.5 shadow-[var(--elevation-1)]">
-          <h2 className="font-mono text-[9.5px] uppercase tracking-[0.14em] text-[var(--fg-muted)]">
+          <h2 className="type-label text-[var(--fg-muted)]">
             Capabilities advertised — {capabilities.length}
           </h2>
           {capabilities.length === 0 ? (
@@ -141,7 +141,7 @@ function PluginCardView({ card }: { card: PluginCard }) {
         <span className="text-[13.5px] font-medium">{plugin.display_name || plugin.id}</span>
         <span className="font-mono text-[10.5px] text-[var(--fg-muted)]">{plugin.version}</span>
         <span
-          className="ml-auto font-mono text-[9.5px] uppercase tracking-[0.1em]"
+          className="type-label ml-auto"
           style={{ color: tone ?? 'var(--status-live)' }}
         >
           {LABEL[card.card]}
@@ -228,7 +228,7 @@ function SurfaceList({
 
   return (
     <div>
-      <div className="font-mono text-[9.5px] uppercase tracking-[0.14em] text-[var(--fg-muted)]">
+      <div className="type-label text-[var(--fg-muted)]">
         {phrasing}
       </div>
       <ul className="mt-1 flex flex-wrap gap-x-3 gap-y-1">

@@ -62,8 +62,8 @@ export function TelemetrySettings({ canMutate }: { canMutate: boolean }) {
   return (
     <div className="flex flex-col gap-5">
       <div>
-        <h2 className="text-[17px] font-medium leading-[1.25] tracking-[-0.01em]">Telemetry</h2>
-        <p className="mt-1 max-w-[660px] text-[12.5px] leading-[1.6] text-[var(--fg-muted)]">
+        <h2 className="type-page-title">Telemetry</h2>
+        <p className="type-page-description mt-1 max-w-[660px]">
           Traces go to Langfuse. The question this screen answers before the credentials is{' '}
           <strong>what leaves the box</strong>.
         </p>
@@ -86,7 +86,7 @@ export function TelemetrySettings({ canMutate }: { canMutate: boolean }) {
 
       {/* What leaves the box. */}
       <section className="flex flex-col gap-3 rounded-[var(--radius-lg)] bg-[var(--bg-surface)] p-3.5 shadow-[var(--elevation-1)]">
-        <h3 className="font-mono text-[9.5px] uppercase tracking-[0.14em] text-[var(--fg-muted)]">
+        <h3 className="type-label text-[var(--fg-muted)]">
           What leaves the box
         </h3>
 
@@ -127,7 +127,7 @@ export function TelemetrySettings({ canMutate }: { canMutate: boolean }) {
 
       {/* Credentials. */}
       <section className="flex flex-col gap-3 rounded-[var(--radius-lg)] bg-[var(--bg-surface)] p-3.5 shadow-[var(--elevation-1)]">
-        <h3 className="font-mono text-[9.5px] uppercase tracking-[0.14em] text-[var(--fg-muted)]">
+        <h3 className="type-label text-[var(--fg-muted)]">
           Credentials
         </h3>
 

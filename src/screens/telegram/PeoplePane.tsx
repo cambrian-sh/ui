@@ -395,7 +395,7 @@ function BindingTable({
         <div className="overflow-x-auto">
           <table className="w-full min-w-[560px] border-collapse text-[12px]">
             <thead>
-              <tr className="text-left font-mono text-[9.5px] uppercase tracking-[0.14em] text-[var(--fg-muted)]">
+              <tr className="type-label text-left text-[var(--fg-muted)]">
                 <th className="pb-1.5 pr-3 font-normal">Person</th>
                 <th className="pb-1.5 pr-3 font-normal">Id</th>
                 <th className="pb-1.5 pr-3 font-normal">Reaches as</th>

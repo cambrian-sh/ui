@@ -98,7 +98,7 @@ export function ReachabilityPane({ vocabulary }: ReachabilityPaneProps) {
   return (
     <div className="flex h-full min-h-0 flex-col gap-4 p-4">
       <div>
-        <h2 className="text-[17px] font-medium leading-[1.25] tracking-[-0.01em]">
+        <h2 className="type-page-title">
           Reachability
         </h2>
         {/* Never buried. A cell here is a prediction, not a decision. */}
@@ -132,7 +132,7 @@ export function ReachabilityPane({ vocabulary }: ReachabilityPaneProps) {
           <table className="border-separate border-spacing-0 text-[11.5px]">
             <thead>
               <tr>
-                <th className="sticky left-0 z-10 bg-[var(--bg-canvas)] p-2 text-left font-mono text-[9.5px] uppercase tracking-[0.14em] text-[var(--fg-muted)]">
+                <th className="type-label sticky left-0 z-10 bg-[var(--bg-canvas)] p-2 text-left text-[var(--fg-muted)]">
                   Reaches →
                 </th>
                 {labels.map((tag) => (

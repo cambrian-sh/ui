@@ -42,7 +42,7 @@ export function AskPane({ disabled, disabledReason, canAnswer }: AskPaneProps) {
           />
         ) : (
           <div className="flex flex-col gap-3">
-            <h2 className="text-[11px] font-medium uppercase tracking-wide text-[var(--fg-muted)]">
+            <h2 className="type-label font-medium text-[var(--fg-muted)]">
               Answer
             </h2>
             {isAnswering ? (

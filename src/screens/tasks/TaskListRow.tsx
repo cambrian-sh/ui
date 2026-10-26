@@ -86,7 +86,7 @@ export function TaskListRow({ ranked, selected, onClick, compact }: TaskListRowP
             bare dot: a colour alone asks the operator to remember a legend. */}
         <div className="mb-[5px] flex items-center gap-[9px]">
           <span
-            className="inline-flex flex-none items-center gap-1.5 font-mono text-[9.5px] uppercase leading-none tracking-[0.1em]"
+            className="type-label inline-flex flex-none items-center gap-1.5 leading-none"
             style={{ color: kicker.tone }}
           >
             {attention === 'running' && (

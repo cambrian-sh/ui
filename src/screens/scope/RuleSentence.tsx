@@ -218,7 +218,7 @@ function Blank({
           attached to the thing that was guessed. */}
       {provenance === 'inferred' && (
         <span
-          className="rounded-sm px-1 font-mono text-[9.5px] uppercase tracking-[0.1em] text-[var(--status-warn)]"
+          className="type-status rounded-sm px-1 text-[var(--status-warn)]"
           title="Inferred by the assistant — you did not say this"
         >
           inferred
@@ -226,7 +226,7 @@ function Blank({
       )}
       {provenance === 'stated' && (
         <span
-          className="rounded-sm px-1 font-mono text-[9.5px] uppercase tracking-[0.1em] text-[var(--fg-muted)]"
+          className="type-label rounded-sm px-1 text-[var(--fg-muted)]"
           title="You said this"
         >
           you said

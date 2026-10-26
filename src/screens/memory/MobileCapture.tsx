@@ -67,8 +67,8 @@ export function MobileCapture({
   return (
     <div className="flex flex-col gap-4 p-4">
       <div>
-        <h2 className="text-[19px] font-medium leading-[1.25] tracking-[-0.01em]">Capture</h2>
-        <p className="mt-1 text-[12.5px] text-[var(--fg-muted)]">
+        <h2 className="type-page-title">Capture</h2>
+        <p className="type-page-description mt-1">
           Get it into memory now. Curate it later, from a desktop.
         </p>
       </div>
@@ -175,7 +175,7 @@ export function MobileCapture({
 
           {/* The two decisions this surface makes for you, said out loud. */}
           <div className="rounded-md bg-[var(--bg-surface)] p-2.5">
-            <div className="font-mono text-[9.5px] uppercase tracking-[0.14em] text-[var(--fg-muted)]">
+            <div className="type-label text-[var(--fg-muted)]">
               Before you save
             </div>
             <p className="mt-1 text-[11.5px] leading-[1.55] text-[var(--fg-secondary)]">

@@ -93,7 +93,7 @@ describe('MemoryDetail', () => {
 
     expect(screen.getByText('mem-123')).toBeInTheDocument();
     expect(screen.getByText(/no scope/i)).toBeInTheDocument();
-    expect(screen.getByText('FACT')).toBeInTheDocument();
+    expect(screen.getByText('Fact')).toBeInTheDocument();
   });
 
   it('calls setToolGrant with tag mutation when confirming tag via dialog', async () => {

@@ -60,7 +60,7 @@ export function ContradictionsPane({ kinds }: { kinds: KnowledgeKindCount[] }) {
     <div className="flex flex-col gap-5 p-5">
       {query.data.map(({ kind, rows }) => (
         <section key={kind} aria-label={`Contradictions in ${kind}`} className="flex flex-col gap-2">
-          <h3 className="text-[12px] uppercase tracking-wide text-[var(--fg-muted)]">{kind}</h3>
+          <h3 className="type-label text-[var(--fg-muted)]">{kind}</h3>
           {rows.map((row, i) => (
             <ContradictionCard key={i} row={row} />
           ))}

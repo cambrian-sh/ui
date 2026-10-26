@@ -88,10 +88,10 @@ export function CostConsole() {
   return (
     <div className="flex h-full flex-col gap-6 overflow-y-auto p-6">
       <header className="flex shrink-0 flex-col gap-1">
-        <h1 className="text-[19px] font-medium leading-[1.25] tracking-[-0.01em]">
+        <h1 className="type-page-title">
           Cost &amp; Energy
         </h1>
-        <p className="text-[12.5px] text-[var(--fg-muted)]">
+        <p className="type-page-description">
           The spend ledger, the per-Step MaxEnergy cap, and the LLMProvider health feed.
         </p>
       </header>

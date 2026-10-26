@@ -109,8 +109,8 @@ function TreeRow({
             aria-hidden="true"
           >
             <span className="h-px flex-1 border-t border-dashed border-[var(--status-warn)]" />
-            <span className="font-mono text-[9.5px] uppercase tracking-[0.1em] text-[var(--status-warn)]">
-              inheritance stops here
+            <span className="type-status text-[var(--status-warn)]">
+              Inheritance stops here
             </span>
           </div>
         )}
@@ -218,7 +218,7 @@ function Fault({
       style={{ '--tint': tone } as React.CSSProperties}
     >
       <span
-        className="font-mono text-[10px] uppercase tracking-[0.1em]"
+        className="type-label"
         style={{ color: tone }}
       >
         {kicker}

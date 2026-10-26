@@ -130,8 +130,8 @@ export function ConversationRail({
           list rather than inside a conversation, because it is the same for all
           of them and an operator asks it once. */}
       <div className="flex-none px-3 py-2.5 shadow-[inset_0_1px_0_var(--border-subtle)]">
-        <div className="font-mono text-[9.5px] uppercase tracking-[0.14em] text-[var(--fg-muted)]">
-          scope
+        <div className="type-label text-[var(--fg-muted)]">
+          Scope
         </div>
         <div className="mt-0.5 text-[11.5px] text-[var(--fg-secondary)]">
           {role ?? 'not connected'} · {scopeLabel}
@@ -159,7 +159,7 @@ function RailGroup({
   if (items.length === 0) return null;
   return (
     <section className="mb-1">
-      <div className="px-2 pb-1 pt-2.5 font-mono text-[9.5px] uppercase tracking-[0.14em] text-[var(--fg-muted)]">
+      <div className="type-label px-2 pb-1 pt-2.5 text-[var(--fg-muted)]">
         {label}
       </div>
       <ul className="flex flex-col">

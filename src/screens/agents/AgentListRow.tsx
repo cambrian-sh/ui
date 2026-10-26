@@ -51,12 +51,12 @@ export function AgentListRow({
     >
       <div className="min-w-0 flex-1">
         {surveillance && (
-          <div className="mb-1 font-mono text-[10px] uppercase tracking-[0.1em] text-[var(--status-warn)]">
-            UNDER SURVEILLANCE — {surveillance.reason || 'recent outcomes fell below threshold'}
+          <div className="type-status mb-1 text-[var(--status-warn)]">
+            Under surveillance — {surveillance.reason || 'recent outcomes fell below threshold'}
           </div>
         )}
         {!surveillance && wantsGrant && (
-          <div className="mb-1 font-mono text-[10px] uppercase tracking-[0.1em] text-[var(--status-warn)]">
+          <div className="type-status mb-1 text-[var(--status-warn)]">
             WANTS A GRANT — blocked on {wantsGrant}
           </div>
         )}

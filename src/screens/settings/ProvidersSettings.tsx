@@ -130,10 +130,10 @@ export function ProvidersSettings({ canMutate }: { canMutate: boolean }) {
     <div className="flex flex-col gap-5">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h2 className="text-[17px] font-medium leading-[1.25] tracking-[-0.01em]">
+          <h2 className="type-page-title">
             Models &amp; providers
           </h2>
-          <p className="mt-1 text-[12.5px] text-[var(--fg-muted)]">
+          <p className="type-page-description mt-1">
             {list.length} generator{list.length === 1 ? '' : 's'}. Every figure here is a token
             count — a completion response never carries a price.
           </p>
@@ -304,7 +304,7 @@ function RoleMap({
         <table className="w-full border-separate border-spacing-0 text-[12px]">
           <thead>
             <tr>
-              <th className="p-2 text-left font-mono text-[9.5px] uppercase tracking-[0.14em] text-[var(--fg-muted)]">
+              <th className="type-label p-2 text-left text-[var(--fg-muted)]">
                 Role
               </th>
               {generators.map((g) => (
@@ -391,7 +391,7 @@ function Metric({
 }) {
   return (
     <div>
-      <div className="font-mono text-[9.5px] uppercase tracking-[0.14em] text-[var(--fg-muted)]">
+      <div className="type-label text-[var(--fg-muted)]">
         {label}
       </div>
       <div className="truncate font-mono text-[11.5px]" style={tone ? { color: tone } : undefined}>

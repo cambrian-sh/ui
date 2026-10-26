@@ -119,8 +119,8 @@ export function FlowRail({
   return (
     <Shell>
       <div className="flex items-center gap-2 px-3 pt-1.5">
-        <span className="font-mono text-[9.5px] uppercase tracking-[0.1em] text-[var(--fg-muted)]">
-          flow · last 60s
+        <span className="type-label text-[var(--fg-muted)]">
+          Flow · last 60s
         </span>
         <LiveDot paused={paused} moving={visible.length > 0} />
         <span className="font-mono text-[10px] text-[var(--fg-secondary)]">

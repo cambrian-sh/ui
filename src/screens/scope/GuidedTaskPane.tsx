@@ -55,10 +55,10 @@ export function GuidedTaskPane({ vocabulary, canMutate }: GuidedTaskPaneProps) {
   return (
     <div className="flex flex-col gap-5 p-4">
       <div>
-        <h2 className="text-[17px] font-medium leading-[1.25] tracking-[-0.01em]">
+        <h2 className="type-page-title">
           Restrict a document on a surface
         </h2>
-        <p className="mt-1 max-w-[640px] text-[12.5px] leading-[1.6] text-[var(--fg-muted)]">
+        <p className="type-page-description mt-1 max-w-[640px]">
           Five steps that depend on each other, in one place. It finishes with the kernel&rsquo;s
           own answer, not with a save confirmation.
         </p>
@@ -135,7 +135,7 @@ export function GuidedTaskPane({ vocabulary, canMutate }: GuidedTaskPaneProps) {
         }
       >
         <div
-          className="font-mono text-[10px] uppercase tracking-[0.1em]"
+          className="type-label"
           style={{
             color:
               outcome.state === 'holds'
@@ -146,9 +146,9 @@ export function GuidedTaskPane({ vocabulary, canMutate }: GuidedTaskPaneProps) {
           }}
         >
           {outcome.state === 'holds'
-            ? 'THE BOUNDARY HOLDS'
+            ? 'The boundary holds'
             : outcome.state === 'does-not-hold'
-              ? 'THE BOUNDARY DOES NOT HOLD'
+              ? 'The boundary does not hold'
               : 'IN PROGRESS'}
         </div>
         <p className="mt-1 text-[12.5px] leading-[1.55] text-[var(--fg-primary)]">
@@ -246,8 +246,8 @@ function Step({
           <span className="mr-2 font-mono text-[11px] text-[var(--fg-muted)]">{n}</span>
           {title}
           {status === 'done' && (
-            <span className="ml-2 font-mono text-[10px] uppercase tracking-[0.1em] text-[var(--status-live)]">
-              done
+            <span className="type-status ml-2 text-[var(--status-live)]">
+              Done
             </span>
           )}
         </h3>

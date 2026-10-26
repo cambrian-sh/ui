@@ -123,7 +123,7 @@ export function StrangerPolicyPane({
       {/* THE ANSWER TO "which one is on", before any of the controls. */}
       <div className="flex flex-col gap-1 rounded-md bg-[var(--bg-canvas)] p-2.5">
         <div className="flex flex-wrap items-baseline gap-2">
-          <span className="font-mono text-[9.5px] uppercase tracking-[0.14em] text-[var(--status-live)]">
+          <span className="type-status text-[var(--status-live)]">
             In effect now
           </span>
           <span className="text-[12.5px] font-medium">{liveSpec.label}</span>
@@ -175,8 +175,8 @@ export function StrangerPolicyPane({
                   {/* Repeated per row so the current state is legible from the
                       control itself, not only from the summary above. */}
                   {isLive && (
-                    <span className="font-mono text-[9.5px] uppercase tracking-[0.12em] text-[var(--status-live)]">
-                      current
+                    <span className="type-status text-[var(--status-live)]">
+                      Current
                     </span>
                   )}
                 </span>

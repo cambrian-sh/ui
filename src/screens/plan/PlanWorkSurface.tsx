@@ -64,7 +64,7 @@ export function PlanWorkSurface() {
           </div>
         </div>
         <span
-          className="rounded-sm bg-[var(--status-pulse)] text-[var(--fg-on-accent)] px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide"
+          className="type-label rounded-sm bg-[var(--status-pulse)] text-[var(--fg-on-accent)] px-2 py-0.5 font-medium"
           aria-label={`plan status ${plan.status}`}
         >
           {STATUS_LABEL[plan.status]}

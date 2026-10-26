@@ -290,6 +290,7 @@
    * The shell's fixed panels. The status strip is gone: connection and seq live
    * in the header pill, plan count on the rail, spend in the header. */
   --header-h: 48px;
+  --page-gutter: 1.5rem; /* left/right padding of a screen's content */
   --nav-rail-w: 240px;
   --nav-rail-collapsed-w: 56px;
   --inspector-w: 332px;

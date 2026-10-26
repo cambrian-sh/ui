@@ -183,7 +183,7 @@ function EntityCard({
       <h2 className="font-mono text-[14px] font-medium text-[var(--fg-primary)]">{entityId}</h2>
 
       <section aria-label="Latest values" className="flex flex-col gap-2">
-        <h3 className="text-[12px] uppercase tracking-wide text-[var(--fg-muted)]">
+        <h3 className="type-label text-[var(--fg-muted)]">
           Latest values
         </h3>
         {predicates.length === 0 && entityQuery.isSuccess ? (
@@ -209,7 +209,7 @@ function EntityCard({
       </section>
 
       <section aria-label="Events" className="flex flex-col gap-2">
-        <h3 className="text-[12px] uppercase tracking-wide text-[var(--fg-muted)]">
+        <h3 className="type-label text-[var(--fg-muted)]">
           Events (last 90 days)
         </h3>
         {eventsQuery.data ? (
@@ -226,7 +226,7 @@ function EntityCard({
       </section>
 
       <section aria-label="Neighborhood" className="flex flex-col gap-2">
-        <h3 className="text-[12px] uppercase tracking-wide text-[var(--fg-muted)]">
+        <h3 className="type-label text-[var(--fg-muted)]">
           Neighborhood (co-participation, 2 hops)
         </h3>
         {traverseQuery.data ? (

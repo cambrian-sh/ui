@@ -987,8 +987,8 @@ function Admission({ doc }: { doc: GraphDocument }) {
   return (
     <div className="w-[250px] rounded-[var(--radius-lg)] border border-dashed border-[var(--border-subtle)] bg-[var(--bg-surface)]/60 px-3 py-2">
       <div className="flex items-center justify-between gap-2">
-        <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-[var(--fg-muted)]">
-          admission
+        <span className="type-label text-[var(--fg-muted)]">
+          Admission
         </span>
         <span className="font-mono text-[10px] text-[var(--fg-muted)]">
           sealed

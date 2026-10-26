@@ -89,7 +89,7 @@ export function FullScreenApproval({
       }}
     >
       <div className="flex items-center justify-between gap-2 px-4 py-3">
-        <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-[var(--status-err)]">
+        <span className="type-status text-[var(--status-err)]">
           IRREVERSIBLE · {formatIdle(idleSeconds(intervention))} waiting
         </span>
         <button

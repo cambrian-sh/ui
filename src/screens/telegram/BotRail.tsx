@@ -49,7 +49,7 @@ export function BotRail({
 
   return (
     <aside className="flex w-[228px] flex-none flex-col gap-2">
-      <div className="font-mono text-[9.5px] uppercase tracking-[0.14em] text-[var(--fg-muted)]">
+      <div className="type-label text-[var(--fg-muted)]">
         Bots — {bots.length}
       </div>
 

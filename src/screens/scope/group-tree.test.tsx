@@ -57,12 +57,12 @@ describe('GroupTree', () => {
     render(<GroupTree groups={blocked} selectedId={null} onSelect={() => {}} />);
 
     // The severance is the policy consequence, so it is stated where it happens.
-    expect(screen.getByText('inheritance stops here')).toBeInTheDocument();
+    expect(screen.getByText('Inheritance stops here')).toBeInTheDocument();
   });
 
   it('says nothing about inheritance when nothing blocks it', () => {
     render(<GroupTree groups={ORG} selectedId={null} onSelect={() => {}} />);
-    expect(screen.queryByText('inheritance stops here')).not.toBeInTheDocument();
+    expect(screen.queryByText('Inheritance stops here')).not.toBeInTheDocument();
   });
 
   it('marks a group nested under two parents as the same group, not a copy', () => {

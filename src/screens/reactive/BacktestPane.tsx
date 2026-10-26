@@ -102,7 +102,7 @@ export function BacktestPane({
           {/* Errors grouped by shape, not listed. */}
           {summary.errorGroups.length > 0 && (
             <div className="flex flex-col gap-1.5">
-              <div className="font-mono text-[9.5px] uppercase tracking-[0.14em] text-[var(--fg-muted)]">
+              <div className="type-label text-[var(--fg-muted)]">
                 Errors, grouped
               </div>
               {summary.errorGroups.map((g) => (
@@ -132,7 +132,7 @@ export function BacktestPane({
 function Total({ label, value, tone }: { label: string; value: number; tone?: string }) {
   return (
     <div className="rounded-md bg-[var(--bg-canvas)] p-2.5">
-      <div className="font-mono text-[9.5px] uppercase tracking-[0.14em] text-[var(--fg-muted)]">
+      <div className="type-label text-[var(--fg-muted)]">
         {label}
       </div>
       <div

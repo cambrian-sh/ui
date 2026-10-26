@@ -157,11 +157,11 @@ export function TelegramConsole() {
         <header className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <div className="flex flex-wrap items-baseline gap-2.5">
-              <h1 className="text-[19px] font-medium leading-[1.25] tracking-[-0.01em]">
+              <h1 className="type-page-title">
                 Telegram
               </h1>
               <span
-                className="flex items-center gap-1.5 font-mono text-[10.5px] uppercase tracking-[0.1em]"
+                className="type-label flex items-center gap-1.5"
                 style={{ color: tone.tone }}
               >
                 <span

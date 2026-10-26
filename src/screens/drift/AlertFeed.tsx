@@ -71,7 +71,7 @@ export function AlertFeed({
     <div className="flex h-full min-w-0 flex-1 flex-col">
       <header className="flex flex-none flex-wrap items-center gap-3 px-5 py-3.5 shadow-[inset_0_-1px_0_var(--border-subtle)]">
         <div className="flex items-baseline gap-2.5">
-          <h1 className="text-lg tracking-[-0.01em]">Drift</h1>
+          <h1 className="type-page-title">Drift</h1>
           <span className="font-mono text-[11px] text-[var(--fg-muted)]">record lane</span>
         </div>
 
@@ -322,7 +322,7 @@ function Stat({
 }) {
   return (
     <div className="min-w-0">
-      <div className="mb-1.5 font-mono text-[9.5px] uppercase leading-none tracking-[0.1em] text-[var(--fg-muted)]">
+      <div className="type-label mb-1.5 leading-none text-[var(--fg-muted)]">
         {label}
       </div>
       <div className="flex items-baseline gap-2">

@@ -80,8 +80,8 @@ export function NodeEditor({
   return (
     <section className="flex flex-col gap-3">
       <div className="flex flex-col gap-1">
-        <label className="font-mono text-[9.5px] uppercase tracking-[0.08em] text-[var(--fg-muted)]">
-          name
+        <label className="type-label text-[var(--fg-muted)]">
+          Name
         </label>
         <Input
           value={node.name ?? ""}
@@ -155,7 +155,7 @@ function EditorRow({
 
   return (
     <div className="flex flex-col gap-1">
-      <label className="font-mono text-[9.5px] uppercase tracking-[0.08em] text-[var(--fg-muted)]">
+      <label className="type-label text-[var(--fg-muted)]">
         {field.label}
       </label>
 
@@ -588,7 +588,7 @@ export function FieldPicker({
                   >
                     {f.path}
                     {f.types && f.types.length > 0 && (
-                      <span className="text-[9px] uppercase tracking-[0.06em] text-[var(--fg-muted)]">
+                      <span className="type-label text-[var(--fg-muted)]">
                         {f.types.join("|")}
                       </span>
                     )}

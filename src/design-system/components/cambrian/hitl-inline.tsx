@@ -66,10 +66,10 @@ export function HITLInline({
     >
       <div className="flex items-center justify-between gap-2 px-3.5 py-2.5">
         <span
-          className="font-mono text-[10px] uppercase tracking-[0.1em]"
+          className="type-label"
           style={{ color: toneVar }}
         >
-          WAITING ON YOU · {NATURE_LABEL[intervention.nature]}
+          Waiting on you · {NATURE_LABEL[intervention.nature]}
         </span>
         <span className="font-mono text-[10px] text-[var(--fg-muted)]">
           {intervention.intervention_id.slice(0, 8)} · {formatIdle(idle)}
@@ -89,16 +89,16 @@ export function HITLInline({
           </summary>
           <div className="mt-2 grid gap-2 sm:grid-cols-2">
             <div>
-              <div className="mb-1 font-mono text-[10px] uppercase tracking-[0.1em]">
-                proposed
+              <div className="type-label mb-1">
+                Proposed
               </div>
               <pre className="overflow-x-auto rounded-md bg-[var(--bg-canvas)] p-2 font-mono text-[10.5px] leading-[1.5] whitespace-pre-wrap break-all text-[var(--fg-secondary)]">
                 {JSON.stringify(intervention.proposed_action, null, 2)}
               </pre>
             </div>
             <div>
-              <div className="mb-1 font-mono text-[10px] uppercase tracking-[0.1em]">
-                intended
+              <div className="type-label mb-1">
+                Intended
               </div>
               <pre className="overflow-x-auto rounded-md bg-[var(--bg-canvas)] p-2 font-mono text-[10.5px] leading-[1.5] whitespace-pre-wrap break-all text-[var(--fg-secondary)]">
                 {intervention.intended_action

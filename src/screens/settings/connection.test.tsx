@@ -191,7 +191,7 @@ describe('ConnectionSettings', () => {
     render(<ConnectionSettings />);
 
     const alert = screen.getByRole('alert');
-    expect(alert).toHaveTextContent('CONTRACT SKEW');
+    expect(alert).toHaveTextContent('Contract skew');
     // The copy has to separate what still works from what does not: a skew
     // leaves reads fine, so nothing looks broken until a command is rejected.
     expect(alert).toHaveTextContent('Reads are fine');

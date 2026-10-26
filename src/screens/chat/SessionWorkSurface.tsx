@@ -317,7 +317,7 @@ function SessionHeader({
           style={{ background: tone }}
         />
         <span
-          className="font-mono text-[10.5px] uppercase tracking-[0.08em]"
+          className="type-label"
           style={{ color: tone }}
         >
           {state ?? 'unknown'}
@@ -335,7 +335,7 @@ function SessionHeader({
           {/* The heading is a derived subject; the goal is always shown verbatim
               beneath it. A 200-character instruction is not a title, but the
               operator still has to be able to read exactly what they asked for. */}
-          <h1 className="max-w-[760px] text-[19px] font-medium leading-[1.25] tracking-[-0.01em] text-pretty">
+          <h1 className="type-page-title max-w-[760px] text-pretty">
             {sessionSubject(goal)}
           </h1>
           {goal && (

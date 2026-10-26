@@ -75,7 +75,7 @@ function Header({
     <div className="flex items-start justify-between gap-4">
       <div>
         <div className="flex flex-wrap items-center gap-2">
-          <h1 className="text-[19px] font-medium leading-[1.25] tracking-[-0.01em]">
+          <h1 className="type-page-title">
             Dry run
           </h1>
           <span

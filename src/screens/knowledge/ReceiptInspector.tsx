@@ -51,7 +51,7 @@ export function ReceiptInspector({ evidenceId }: { evidenceId: string }) {
       <dl className="flex flex-col gap-1.5">
         {fields.map(([label, value]) => (
           <div key={label} className="flex flex-col">
-            <dt className="text-[11px] uppercase tracking-wide text-[var(--fg-muted)]">{label}</dt>
+            <dt className="type-label text-[var(--fg-muted)]">{label}</dt>
             <dd className="break-all font-mono text-[12px] text-[var(--fg-primary)]">
               {formatCell(value)}
             </dd>
@@ -60,7 +60,7 @@ export function ReceiptInspector({ evidenceId }: { evidenceId: string }) {
       </dl>
       {Array.isArray(row.classification) && (
         <div>
-          <p className="text-[11px] uppercase tracking-wide text-[var(--fg-muted)]">
+          <p className="type-label text-[var(--fg-muted)]">
             Classification (the scopes that gate this material)
           </p>
           <div className="mt-1 flex flex-wrap gap-1">

@@ -52,13 +52,13 @@ describe('VerifierPoolConsole', () => {
     expect(screen.getByText('No agents in pool')).toBeInTheDocument();
     expect(screen.getByText('No recent rounds')).toBeInTheDocument();
     expect(screen.getByText('No surveillance triggers')).toBeInTheDocument();
-    const poolSizeCard = screen.getAllByText('Pool Size')[0].closest('.rounded-md');
+    const poolSizeCard = screen.getAllByText('Pool Size')[0].closest('[data-slot="card"]');
     expect(within(poolSizeCard as HTMLElement).getByText('0')).toBeInTheDocument();
     
-    const recentRoundsCard = screen.getAllByText('Recent Rounds')[0].closest('.rounded-md');
+    const recentRoundsCard = screen.getAllByText('Recent Rounds')[0].closest('[data-slot="card"]');
     expect(within(recentRoundsCard as HTMLElement).getByText('0')).toBeInTheDocument();
     
-    const triggersCard = screen.getAllByText('Surveillance Triggers')[0].closest('.rounded-md');
+    const triggersCard = screen.getAllByText('Surveillance Triggers')[0].closest('[data-slot="card"]');
     expect(within(triggersCard as HTMLElement).getByText('0')).toBeInTheDocument();
   });
 
@@ -77,7 +77,7 @@ describe('VerifierPoolConsole', () => {
     
     expect(screen.getByText('agent-beta')).toBeInTheDocument();
     expect(screen.getByText('82.0%')).toBeInTheDocument();
-    const poolSizeCard = screen.getAllByText('Pool Size')[0].closest('.rounded-md');
+    const poolSizeCard = screen.getAllByText('Pool Size')[0].closest('[data-slot="card"]');
     expect(within(poolSizeCard as HTMLElement).getByText('2')).toBeInTheDocument();
   });
 
@@ -114,7 +114,7 @@ describe('VerifierPoolConsole', () => {
     expect(screen.getByText('agent-delta')).toBeInTheDocument();
     expect(screen.getByText('45.0%')).toBeInTheDocument();
     expect(screen.getByText('failed')).toBeInTheDocument();
-    const recentRoundsCard = screen.getAllByText('Recent Rounds')[0].closest('.rounded-md');
+    const recentRoundsCard = screen.getAllByText('Recent Rounds')[0].closest('[data-slot="card"]');
     expect(within(recentRoundsCard as HTMLElement).getByText('2')).toBeInTheDocument();
   });
 
@@ -140,13 +140,13 @@ describe('VerifierPoolConsole', () => {
 
     // The callout states the exit condition — a surveillance state with no way
     // out reads as a punishment rather than a policy.
-    expect(screen.getByText('UNDER SURVEILLANCE')).toBeInTheDocument();
+    expect(screen.getByText('Under surveillance')).toBeInTheDocument();
     expect(screen.getByText(/not on a timer/)).toBeInTheDocument();
 
     expect(screen.getByText('agent-zeta')).toBeInTheDocument();
     expect(screen.getByText('Failed cross-verification')).toBeInTheDocument();
     expect(screen.getByText('2d ago')).toBeInTheDocument();
-    const triggersCard = screen.getAllByText('Surveillance Triggers')[0].closest('.rounded-md');
+    const triggersCard = screen.getAllByText('Surveillance Triggers')[0].closest('[data-slot="card"]');
     expect(within(triggersCard as HTMLElement).getByText('2')).toBeInTheDocument();
   });
 

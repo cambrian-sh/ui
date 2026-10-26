@@ -256,7 +256,7 @@ describe("15a — the canvas", () => {
 
   it("draws admission as sealed and not reorderable", async () => {
     mount();
-    await waitFor(() => expect(screen.getByText("admission")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("Admission")).toBeInTheDocument());
     expect(screen.getByText(/Not nodes, and not reorderable/)).toBeInTheDocument();
     expect(
       screen.getByText(/namespace · identity binding · blocked senders · stranger policy/),
@@ -428,7 +428,7 @@ describe("15a — the canvas", () => {
     await waitFor(() =>
       expect(screen.getAllByText("item.properties.mag").length).toBeGreaterThan(0),
     );
-    expect(screen.getAllByText("reads").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Reads").length).toBeGreaterThan(0);
   });
 
   it("puts the delivery guarantee and a description on the node card", async () => {

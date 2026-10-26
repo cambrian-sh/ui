@@ -46,7 +46,7 @@ export function EvidencePane({
           size={12}
           className="flex-none text-[var(--fg-muted)]"
         />
-        <span className="font-mono text-[9.5px] uppercase tracking-[0.12em] text-[var(--fg-muted)]">
+        <span className="type-label text-[var(--fg-muted)]">
           The evidence
         </span>
         <span className="ml-auto text-[11px] text-[var(--fg-muted)]">

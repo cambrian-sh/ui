@@ -43,7 +43,7 @@ export function CoveragePane({
     <div className="flex flex-col">
       <header className="flex-none px-6 py-4 shadow-[inset_0_-1px_0_var(--border-subtle)]">
         <div className="mb-1 flex items-baseline gap-2.5">
-          <h1 className="text-lg tracking-[-0.01em]">What the lane can see</h1>
+          <h1 className="type-page-title">What the lane can see</h1>
           <button
             type="button"
             onClick={() => copyCoverage(sources ?? [], pushes ?? [])}
@@ -78,7 +78,7 @@ export function CoveragePane({
               {sources!.map((c) => (
                 <div key={c.source}>
                   {sources!.length > 1 && (
-                    <div className="mb-1.5 font-mono text-[10.5px] uppercase tracking-[0.1em] text-[var(--fg-muted)]">
+                    <div className="type-label mb-1.5 text-[var(--fg-muted)]">
                       {c.source}
                     </div>
                   )}
@@ -124,7 +124,7 @@ export function CoveragePane({
         {/* Connected sources. */}
         <section>
           <div className="mb-2.5 flex items-baseline gap-2.5">
-            <span className="font-mono text-[9.5px] uppercase leading-none tracking-[0.12em] text-[var(--fg-muted)]">
+            <span className="type-label leading-none text-[var(--fg-muted)]">
               Connected
             </span>
             {hasSources && (
@@ -148,7 +148,7 @@ export function CoveragePane({
         {/* Last successful push per record kind. */}
         <section>
           <div className="mb-2.5 flex items-baseline gap-2.5">
-            <span className="font-mono text-[9.5px] uppercase leading-none tracking-[0.12em] text-[var(--fg-muted)]">
+            <span className="type-label leading-none text-[var(--fg-muted)]">
               Last successful push, per record kind
             </span>
             <span className="ml-auto text-[11.5px] text-[var(--fg-muted)]">
@@ -392,7 +392,7 @@ function Stat({
 }) {
   return (
     <div className="rounded-[10px] bg-[var(--bg-canvas)] px-3.5 py-3">
-      <div className="mb-1.5 font-mono text-[9.5px] uppercase leading-none tracking-[0.1em] text-[var(--fg-muted)]">
+      <div className="type-label mb-1.5 leading-none text-[var(--fg-muted)]">
         {label}
       </div>
       <div className="mb-1 text-[22px] font-medium tracking-[-0.02em]" style={tone ? { color: tone } : undefined}>

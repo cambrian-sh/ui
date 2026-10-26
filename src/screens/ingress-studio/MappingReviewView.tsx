@@ -21,7 +21,7 @@ export function SectionLabel({
 }) {
   return (
     <div className="flex items-baseline gap-2.5">
-      <span className="font-mono text-[9.5px] uppercase tracking-[0.12em] text-[var(--fg-muted)]">
+      <span className="type-label text-[var(--fg-muted)]">
         {children}
       </span>
       {note !== undefined && (

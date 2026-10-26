@@ -115,7 +115,7 @@ export function PlansInFlight() {
       {/* Title and totals share a baseline (`2b`): the counts are a qualifier on
           the heading, and stacking them made the screen read as two headings. */}
       <div className="flex flex-none flex-wrap items-baseline gap-2.5 px-[22px] pb-[13px] pt-4 shadow-[inset_0_-1px_0_color-mix(in_srgb,var(--fg-primary)_8%,transparent)]">
-        <h1 className="text-[19px] font-medium leading-[1.25] tracking-[-0.01em]">
+        <h1 className="type-page-title">
           Plans in flight
         </h1>
         <span className="font-mono text-[11px] leading-none text-[var(--fg-muted)]">

@@ -336,7 +336,7 @@ export function LogsConsole() {
 
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="flex flex-none flex-wrap items-center gap-3 px-4 py-3 shadow-[inset_0_-1px_0_var(--border-subtle)]">
-          <h1 className="text-[19px] font-medium leading-[1.25] tracking-[-0.01em]">Logs</h1>
+          <h1 className="type-page-title">Logs</h1>
 
           <FollowPill
             following={following}
@@ -585,7 +585,7 @@ function GroupedStream({
 
 function RailHeading({ children }: { children: React.ReactNode }) {
   return (
-    <div className="font-mono text-[9.5px] uppercase tracking-[0.14em] text-[var(--fg-muted)]">
+    <div className="type-label text-[var(--fg-muted)]">
       {children}
     </div>
   );
@@ -608,7 +608,7 @@ function FollowPill({
 }) {
   if (following) {
     return (
-      <span className="flex items-center gap-1.5 font-mono text-[10.5px] uppercase tracking-[0.1em] text-[var(--status-live)]">
+      <span className="type-status flex items-center gap-1.5 text-[var(--status-live)]">
         <span aria-hidden className="cambrian-live-pulse size-1.5 rounded-full bg-[var(--status-live)]" />
         following
       </span>
@@ -616,8 +616,8 @@ function FollowPill({
   }
   return (
     <span className="flex flex-wrap items-center gap-2 text-[11.5px]">
-      <span className="font-mono text-[10.5px] uppercase tracking-[0.1em] text-[var(--status-warn)]">
-        paused — you scrolled up
+      <span className="type-status text-[var(--status-warn)]">
+        Paused — you scrolled up
       </span>
       <span className="text-[var(--fg-muted)]">
         {heldCount} new {heldCount === 1 ? 'line' : 'lines'} held, not dropped

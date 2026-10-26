@@ -117,7 +117,7 @@ export function LinkReviewConsole() {
     return (
       <div className="p-4">
         <div className="rounded-[var(--radius-lg)] bg-[var(--bg-surface)] p-3.5 shadow-[var(--elevation-1)]">
-          <h2 className="text-[15px] font-medium">Link review</h2>
+          <h2 className="type-section-title">Link review</h2>
           <p role="alert" className="mt-1.5 text-[12.5px] leading-[1.55] text-[var(--status-err)]">
             {errorMessage(candidates.error)}
           </p>
@@ -134,10 +134,10 @@ export function LinkReviewConsole() {
     <ScrollArea className="h-full">
       <div className="mx-auto flex w-full max-w-[900px] flex-col gap-4 p-4 pb-10">
         <header>
-          <h2 className="text-[17px] font-medium leading-[1.25] tracking-[-0.01em]">
+          <h2 className="type-page-title">
             Link review
           </h2>
-          <p className="mt-1 text-[12.5px] leading-[1.55] text-[var(--fg-muted)]">
+          <p className="type-page-description mt-1">
             {rows.length === 0
               ? 'Proposals a machine could not confirm on its own arrive here.'
               : `${rows.length} proposal${rows.length === 1 ? '' : 's'} waiting, strongest first. Confirming appends a human assertion; rejecting stamps the proposal retracted and never deletes it.`}

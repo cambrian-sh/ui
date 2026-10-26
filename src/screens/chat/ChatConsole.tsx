@@ -387,7 +387,7 @@ export function ChatConsole() {
 
       <div className="flex min-h-0 flex-1 flex-col">
         <header className="flex-none px-[26px] pb-3 pt-4 shadow-[inset_0_-1px_0_var(--border-subtle)]">
-          <h1 className="text-[19px] font-medium leading-[1.25] tracking-[-0.01em]">
+          <h1 className="type-page-title">
             {activeTitle}
           </h1>
           {/* The promise the screen makes, stated where it is made. */}

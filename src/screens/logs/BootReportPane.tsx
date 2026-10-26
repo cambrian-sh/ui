@@ -29,7 +29,7 @@ export function BootReportPane({
     <div className="flex flex-col gap-4 p-4">
       <div className="flex items-baseline justify-between gap-2">
         <div>
-          <h2 className="text-[15px] font-medium">Boot report</h2>
+          <h2 className="type-section-title">Boot report</h2>
           <p className="mt-0.5 font-mono text-[11px] text-[var(--fg-muted)]">
             {new Date(report.startedAt).toLocaleTimeString()} · {report.lineCount} lines ·{' '}
             {report.settings.length} settings declared
@@ -54,7 +54,7 @@ export function BootReportPane({
           className="flex flex-col gap-1.5 rounded-md p-2.5 tint-wash tint-ring"
           style={{ '--tint': 'var(--status-err)' } as React.CSSProperties}
         >
-          <div className="font-mono text-[9.5px] uppercase tracking-[0.14em] text-[var(--status-err)]">
+          <div className="type-status text-[var(--status-err)]">
             Safety rails that are down
           </div>
           {rails.map((r) => (
@@ -67,7 +67,7 @@ export function BootReportPane({
       )}
 
       <section className="flex flex-col gap-1.5">
-        <div className="font-mono text-[9.5px] uppercase tracking-[0.14em] text-[var(--fg-muted)]">
+        <div className="type-label text-[var(--fg-muted)]">
           {previous
             ? `${diffs.length} ${diffs.length === 1 ? 'thing differs' : 'things differ'} from the last boot`
             : 'No previous boot recorded'}
@@ -111,7 +111,7 @@ export function BootReportPane({
 
       {report.warnings.length > 0 && (
         <section className="flex flex-col gap-1.5">
-          <div className="font-mono text-[9.5px] uppercase tracking-[0.14em] text-[var(--fg-muted)]">
+          <div className="type-label text-[var(--fg-muted)]">
             Degraded at boot — {report.warnings.length}
           </div>
           {/* The highest-consequence lines in the sequence, each of which was a
@@ -128,7 +128,7 @@ export function BootReportPane({
       )}
 
       <section className="flex flex-col gap-1">
-        <div className="font-mono text-[9.5px] uppercase tracking-[0.14em] text-[var(--fg-muted)]">
+        <div className="type-label text-[var(--fg-muted)]">
           Declared settings — {report.settings.length}
         </div>
         {report.settings.map((s) => (

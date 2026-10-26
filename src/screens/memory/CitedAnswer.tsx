@@ -144,7 +144,7 @@ export function CitedAnswer({ answer }: { answer: AnswerMemory }) {
       {active !== null && activeCitations.length > 0 && (
         <div className="flex flex-col gap-2 rounded-sm border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-2">
           <div className="flex items-center justify-between">
-            <span className="text-[10px] font-medium uppercase tracking-wide text-[var(--fg-muted)]">
+            <span className="type-label font-medium text-[var(--fg-muted)]">
               Source{activeCitations.length === 1 ? '' : 's'} for this passage
             </span>
             <button

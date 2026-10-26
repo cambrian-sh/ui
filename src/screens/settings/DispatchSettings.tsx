@@ -92,10 +92,10 @@ export function DispatchSettings({ canMutate }: DispatchSettingsProps) {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h2 className="text-[17px] font-medium leading-[1.25] tracking-[-0.01em]">
+        <h2 className="type-page-title">
           Dispatch &amp; retrieval
         </h2>
-        <p className="mt-1 max-w-[680px] text-[12.5px] leading-[1.6] text-[var(--fg-muted)]">
+        <p className="type-page-description mt-1 max-w-[680px]">
           Nothing here errors when it is wrong — it degrades quality quietly. Each field says
           what it costs.
         </p>
@@ -265,7 +265,7 @@ function SourceNote({ schemaMissing }: { schemaMissing: boolean }) {
 function ResolutionLadder() {
   return (
     <div className="flex flex-col gap-2 rounded-md bg-[var(--bg-canvas)] p-3">
-      <div className="font-mono text-[9.5px] uppercase tracking-[0.14em] text-[var(--fg-muted)]">
+      <div className="type-label text-[var(--fg-muted)]">
         Capability resolution
       </div>
       <div className="flex flex-wrap items-center gap-1.5">
@@ -320,7 +320,7 @@ function MeritWeights({
   return (
     <div className="flex flex-col gap-2.5 rounded-md bg-[var(--bg-canvas)] p-3">
       <div className="flex items-baseline justify-between gap-2">
-        <div className="font-mono text-[9.5px] uppercase tracking-[0.14em] text-[var(--fg-muted)]">
+        <div className="type-label text-[var(--fg-muted)]">
           Merit weights
         </div>
         <span
@@ -440,13 +440,13 @@ function Field({
         <label className="flex-1 text-[13px] font-medium" htmlFor={field.key}>
           {field.label}
           {field.mechanism && (
-            <span className="ml-2 font-mono text-[9.5px] uppercase tracking-[0.1em] text-[var(--color-accent-400)]">
-              mechanism
+            <span className="type-label ml-2 text-[var(--color-accent-400)]">
+              Mechanism
             </span>
           )}
           {dirty && (
-            <span className="ml-2 font-mono text-[9.5px] uppercase tracking-[0.1em] text-[var(--status-warn)]">
-              changed
+            <span className="type-status ml-2 text-[var(--status-warn)]">
+              Changed
             </span>
           )}
         </label>
@@ -575,7 +575,7 @@ function Callout({
       style={{ '--tint': tone } as React.CSSProperties}
     >
       <span
-        className="font-mono text-[10px] uppercase tracking-[0.1em]"
+        className="type-label"
         style={{ color: tone }}
       >
         {kicker}

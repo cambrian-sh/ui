@@ -13,6 +13,7 @@
 @import "@fontsource-variable/geist-mono";
 @import "./design-system/styles/tokens.css";
 @import "./design-system/styles/globals.css";
+@import "./design-system/styles/type.css";
 @import "./design-system/styles/motion.css";
 @import "./design-system/styles/a11y.css";
 

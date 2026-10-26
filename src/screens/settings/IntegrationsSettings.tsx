@@ -26,10 +26,10 @@ export function IntegrationsSettings({ capabilities }: { capabilities: string[] 
   return (
     <div className="flex flex-col gap-5">
       <div>
-        <h2 className="text-[17px] font-medium leading-[1.25] tracking-[-0.01em]">
+        <h2 className="type-page-title">
           Integrations
         </h2>
-        <p className="mt-1 max-w-[660px] text-[12.5px] leading-[1.6] text-[var(--fg-muted)]">
+        <p className="type-page-description mt-1 max-w-[660px]">
           External processes this deployment depends on. For each one, what you asked for and
           what is actually happening are shown as separate facts.
         </p>

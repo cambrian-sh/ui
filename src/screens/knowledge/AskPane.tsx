@@ -120,7 +120,7 @@ function CompiledChip({ compiled }: { compiled: CompiledQuery }) {
       className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-[8px] border border-[var(--border-default)] bg-[var(--bg-inset)] px-3 py-2"
       aria-label="Compiled query"
     >
-      <span className="text-[11.5px] uppercase tracking-wide text-[var(--fg-muted)]">
+      <span className="type-label text-[var(--fg-muted)]">
         Compiled query
       </span>
       <span className="rounded-[5px] bg-[color-mix(in_srgb,var(--accent-bg)_13%,transparent)] px-2 py-0.5 font-mono text-[12px] font-medium text-[var(--fg-primary)]">

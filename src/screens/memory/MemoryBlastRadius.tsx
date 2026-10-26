@@ -47,7 +47,7 @@ export function MemoryBlastRadius({ mutation }: { mutation: BlastRadiusMutation 
       aria-live="polite"
       className="flex flex-col gap-1.5 rounded-sm border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-2 py-1.5 text-[11px]"
     >
-      <div className="text-[10px] uppercase tracking-wide text-[var(--fg-muted)]">Blast radius</div>
+      <div className="type-label text-[var(--fg-muted)]">Blast radius</div>
       <div className="font-mono text-[10px] text-[var(--fg-secondary)]">
         {preview.affected_agents.length} agent{preview.affected_agents.length === 1 ? '' : 's'} affected
         ({widened} widened, {narrowed} narrowed); {reEval} plan{reEval === 1 ? '' : 's'} to re-evaluate.

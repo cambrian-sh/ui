@@ -118,7 +118,7 @@ export function MCPServerEditor({
   return (
     <div className="flex flex-col gap-5">
       <div className="flex items-baseline gap-3">
-        <h2 className="text-[17px] font-medium tracking-[-0.01em]">
+        <h2 className="type-page-title">
           {isNew ? 'New MCP server' : draft.id}
         </h2>
         <button
@@ -214,7 +214,7 @@ export function MCPServerEditor({
       </section>
 
       <section className="flex flex-col gap-2.5 rounded-[var(--radius-lg)] bg-[var(--bg-surface)] p-3.5 shadow-[var(--elevation-1)]">
-        <h3 className="font-mono text-[9.5px] uppercase tracking-[0.14em] text-[var(--fg-muted)]">
+        <h3 className="type-label text-[var(--fg-muted)]">
           Authentication
         </h3>
         <div className="flex flex-wrap gap-4">

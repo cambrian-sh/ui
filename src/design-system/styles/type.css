@@ -1,0 +1,65 @@
+/* Type styles — the named text roles every screen draws from.
+ *
+ * Screens used to spell each role out by hand (`font-mono text-[9.5px]
+ * uppercase tracking-[0.14em] …` appeared ~100 times in a dozen variants). Use
+ * these instead, and add colour with a separate `text-[var(--…)]` class.
+ *
+ * Labels are sentence case, sans and readable: tiny tracked capitals are a
+ * console mannerism that costs legibility and reads as shouting. Mono is for
+ * machine values (ids, counts, timestamps), never for words.
+ *
+ * Named `type-*`, not `text-*`, so tailwind-merge never mistakes one for a
+ * colour or size class and drops it.
+ */
+
+/* Screen title: one per screen. */
+@utility type-page-title {
+  font-size: 1.25rem;
+  line-height: 1.3;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+}
+
+/* What the screen is for, under the title. */
+@utility type-page-description {
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  color: var(--fg-secondary);
+}
+
+/* A titled block inside a screen. */
+@utility type-section-title {
+  font-size: var(--text-md);
+  line-height: 1.35;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+}
+
+/* Names a field, a group or a figure. Inherits colour. */
+@utility type-label {
+  font-family: var(--font-sans);
+  font-size: var(--text-xs);
+  line-height: 1.35;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+/* A state word next to its thing ("Running", "Waiting on you"). Inherits colour. */
+@utility type-status {
+  font-family: var(--font-sans);
+  font-size: var(--text-xs);
+  line-height: 1.2;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+/* A headline figure in a stat. */
+@utility type-figure {
+  font-size: 1.5rem;
+  line-height: 1.15;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}

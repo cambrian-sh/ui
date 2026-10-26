@@ -33,8 +33,8 @@ export function RuntimeTabs() {
 
   return (
     <div className="flex-none px-[22px] pt-4">
-      <h1 className="text-[19px] font-medium leading-[1.25] tracking-[-0.01em]">Runtime</h1>
-      <p className="mt-1 text-[12.5px] text-[var(--fg-muted)]">
+      <h1 className="type-page-title">Runtime</h1>
+      <p className="type-page-description mt-1">
         What can act in this deployment, and what it is allowed to do.
       </p>
 

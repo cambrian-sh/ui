@@ -35,7 +35,7 @@ function CapabilityMap({ capabilities }: { capabilities: string[] }) {
 
   return (
     <div className="flex flex-col gap-2">
-      <div className="font-mono text-[9.5px] uppercase tracking-[0.14em] text-[var(--fg-muted)]">
+      <div className="type-label text-[var(--fg-muted)]">
         Capabilities — {capabilities.length} advertised
       </div>
 
@@ -204,8 +204,8 @@ export function ConnectionSettings() {
   return (
     <div className="flex h-full flex-col gap-4 overflow-y-auto p-6">
       <header className="flex flex-col gap-1">
-        <h1 className="text-xl font-semibold tracking-tight">Settings · Connection</h1>
-        <p className="text-sm text-[var(--fg-muted)]">
+        <h1 className="type-page-title">Settings · Connection</h1>
+        <p className="type-page-description">
           The Cambrian instance this console operates. One instance at a time.
         </p>
       </header>
@@ -260,8 +260,8 @@ export function ConnectionSettings() {
               className="flex flex-col gap-1 rounded-md p-2.5 tint-wash tint-ring"
               style={{ '--tint': 'var(--status-warn)' } as React.CSSProperties}
             >
-              <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-[var(--status-warn)]">
-                CONTRACT SKEW
+              <span className="type-status text-[var(--status-warn)]">
+                Contract skew
               </span>
               <span className="text-[12px] leading-[1.55] text-[var(--fg-primary)]">
                 This kernel speaks contract {state?.contract_version || 'unknown'}; this build was

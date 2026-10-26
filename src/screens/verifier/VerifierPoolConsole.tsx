@@ -90,8 +90,8 @@ function SurveillanceCallout({ triggers }: { triggers: SurveillanceTrigger[] }) 
       className="flex flex-col gap-1 rounded-[var(--radius-lg)] p-3 tint-wash tint-ring"
       style={{ '--tint': 'var(--status-warn)' } as React.CSSProperties}
     >
-      <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-[var(--status-warn)]">
-        UNDER SURVEILLANCE
+      <span className="type-status text-[var(--status-warn)]">
+        Under surveillance
       </span>
       <p className="text-[13px] leading-[1.55] text-[var(--fg-primary)]">
         <span className="font-mono">{t.agent_id}</span> is being verified on every task
@@ -123,8 +123,8 @@ export function VerifierPoolConsole() {
   return (
     <div className="flex h-full flex-col gap-6 p-6 overflow-y-auto bg-[var(--bg-surface)]">
       <header className="flex flex-col gap-1 shrink-0">
-        <h1 className="text-[19px] font-medium leading-[1.25] tracking-[-0.01em] text-[var(--fg-primary)]">Verifier Pool</h1>
-        <p className="text-[12.5px] text-[var(--fg-muted)]">
+        <h1 className="type-page-title text-[var(--fg-primary)]">Verifier Pool</h1>
+        <p className="type-page-description">
           High-Merit agents who independently score task completions. Sampling is FNV-1a hashed
           (~10% baseline), plus 100% for any agent under surveillance.
         </p>

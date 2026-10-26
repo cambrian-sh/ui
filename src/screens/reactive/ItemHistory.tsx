@@ -54,7 +54,7 @@ export function ItemHistory({
     <div className="flex flex-col gap-3">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <h2 className="text-[15px] font-medium">This item</h2>
+          <h2 className="type-section-title">This item</h2>
           <span className="block truncate font-mono text-[11px] text-[var(--fg-secondary)]">
             {itemKey}
           </span>

@@ -45,7 +45,7 @@ export function KeyboardSettings() {
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div>
-      <div className="mb-1.5 font-mono text-[9.5px] uppercase tracking-[0.14em] text-[var(--fg-muted)]">
+      <div className="type-label mb-1.5 text-[var(--fg-muted)]">
         {title}
       </div>
       <ul className="flex flex-col gap-1">{children}</ul>

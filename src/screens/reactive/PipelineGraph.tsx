@@ -374,7 +374,7 @@ function StepNode({ data }: NodeProps) {
       {/* How this node touches the followed field, in one word, where the
           operator is already looking. */}
       {d.following && d.lineage != null && (
-        <span className="absolute -top-2 left-2 rounded-[3px] bg-[var(--color-accent-400)] px-1.5 py-px font-mono text-[9px] uppercase tracking-[0.08em] text-[var(--bg-base)]">
+        <span className="type-label absolute -top-2 left-2 rounded-[3px] bg-[var(--color-accent-400)] px-1.5 py-px text-[var(--bg-base)]">
           {d.lineage}
         </span>
       )}
@@ -385,7 +385,7 @@ function StepNode({ data }: NodeProps) {
             {d.node.name || d.node.id}
           </span>
           <span
-            className="shrink-0 font-mono text-[9.5px] uppercase tracking-[0.1em]"
+            className="type-label shrink-0"
             style={{ color: FAMILY_TONE[family] }}
           >
             {family}
@@ -406,7 +406,7 @@ function StepNode({ data }: NodeProps) {
             it says a choice is here, not what it tests. */}
         {line ? (
           <p className="mt-1.5 flex flex-wrap items-baseline gap-1.5">
-            <span className="font-mono text-[9.5px] uppercase tracking-[0.08em] text-[var(--fg-muted)]">
+            <span className="type-label text-[var(--fg-muted)]">
               {line.label}
             </span>
             <span
@@ -428,8 +428,8 @@ function StepNode({ data }: NodeProps) {
 
         {d.reads.length > 0 && (
           <div className="mt-1.5 flex flex-wrap items-baseline gap-1">
-            <span className="font-mono text-[9.5px] uppercase tracking-[0.08em] text-[var(--fg-muted)]">
-              reads
+            <span className="type-label text-[var(--fg-muted)]">
+              Reads
             </span>
             {d.reads.map((p) => (
               <span
@@ -636,7 +636,7 @@ function GroupNode({ data }: NodeProps) {
   const d = data as unknown as { label: string };
   return (
     <div className="h-full w-full rounded-[var(--radius-lg)] border border-dashed border-[var(--border-subtle)] bg-[var(--bg-base)]/40">
-      <span className="absolute -top-4 left-1 font-mono text-[9.5px] uppercase tracking-[0.1em] text-[var(--fg-muted)]">
+      <span className="type-label absolute -top-4 left-1 text-[var(--fg-muted)]">
         {d.label}
       </span>
     </div>
@@ -673,8 +673,8 @@ export function LiveReading({
       {/* PUNCTUATED. "now idle 2 seen ~4172 ms" was four facts run together as
           one unreadable string; separators are what make it four facts. */}
       <div className="flex flex-wrap items-baseline gap-x-1.5 font-mono text-[10.5px]">
-        <span className="text-[9.5px] uppercase tracking-[0.08em] text-[var(--fg-muted)]">
-          now
+        <span className="type-label text-[var(--fg-muted)]">
+          Now
         </span>
         {meter.in_flight > 0 ? (
           <span

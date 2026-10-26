@@ -51,7 +51,7 @@ export function RetentionPane({
     <div className="flex flex-col">
       <header className="flex-none px-6 py-4 shadow-[inset_0_-1px_0_var(--border-subtle)]">
         <div className="mb-1 flex items-baseline gap-2.5">
-          <h1 className="text-lg tracking-[-0.01em]">Retention</h1>
+          <h1 className="type-page-title">Retention</h1>
           <span className="font-mono text-[11px] text-[var(--fg-muted)]">
             {sourceLine(runs)}
           </span>
@@ -137,7 +137,7 @@ export function RetentionPane({
         {/* Recent passes. */}
         <section>
           <div className="mb-2.5 flex items-baseline gap-2.5">
-            <span className="font-mono text-[9.5px] uppercase leading-none tracking-[0.12em] text-[var(--fg-muted)]">
+            <span className="type-label leading-none text-[var(--fg-muted)]">
               Recent passes
             </span>
             <span className="ml-auto text-[11.5px] text-[var(--fg-muted)]">

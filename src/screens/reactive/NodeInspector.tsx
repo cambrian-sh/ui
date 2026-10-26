@@ -204,9 +204,9 @@ function Detail({
     <div className="flex flex-col gap-4">
       <div>
         <div className="flex flex-wrap items-baseline gap-2">
-          <h2 className="text-[15px] font-medium">{node.name || node.id}</h2>
+          <h2 className="type-section-title">{node.name || node.id}</h2>
           <span
-            className="font-mono text-[9.5px] uppercase tracking-[0.1em]"
+            className="type-label"
             style={{ color: FAMILY_TONE[family] }}
           >
             {FAMILY_LABEL[family]}
@@ -595,7 +595,7 @@ function ConfiguredAs({ node }: { node: GraphNode }) {
       <dl className="flex flex-col divide-y divide-[var(--border-subtle)] overflow-hidden rounded-[var(--radius-md)] bg-[var(--bg-base)]">
         {lines.map((l, i) => (
           <div key={`${l.label}-${i}`} className="flex flex-col gap-0.5 px-2.5 py-1.5">
-            <dt className="font-mono text-[9.5px] uppercase tracking-[0.08em] text-[var(--fg-muted)]">
+            <dt className="type-label text-[var(--fg-muted)]">
               {l.label}
             </dt>
             <dd

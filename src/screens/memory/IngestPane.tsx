@@ -340,7 +340,7 @@ export function IngestPane({
                 className="flex flex-col gap-1 rounded-md p-2.5 tint-wash tint-ring"
                 style={{ '--tint': 'var(--status-warn)' } as React.CSSProperties}
               >
-                <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-[var(--status-warn)]">
+                <span className="type-status text-[var(--status-warn)]">
                   {closedSelected.join(', ')} {closedSelected.length === 1 ? 'is a closed label' : 'are closed labels'}
                 </span>
                 <span className="text-[12px] leading-[1.5] text-[var(--fg-primary)]">

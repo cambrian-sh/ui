@@ -173,8 +173,8 @@ export function InboxConsole() {
 function InboxHeader({ count }: { count: number }) {
   return (
     <div className="flex-none px-[26px] pb-3.5 pt-4 shadow-[inset_0_-1px_0_var(--border-subtle)]">
-      <h1 className="text-[19px] font-medium leading-[1.25] tracking-[-0.01em]">Inbox</h1>
-      <p className="mt-1 text-[12.5px] text-[var(--fg-muted)]">
+      <h1 className="type-page-title">Inbox</h1>
+      <p className="type-page-description mt-1">
         {count === 0
           ? 'Nothing is blocked on a decision.'
           : `${count} decision${count === 1 ? '' : 's'} blocking a plan · longest waiting first`}
@@ -234,7 +234,7 @@ function ApprovalCard({
     >
       <div className="flex items-center justify-between gap-2">
         <span
-          className="font-mono text-[10px] uppercase tracking-[0.1em]"
+          className="type-label inline-block first-letter:uppercase"
           style={{ color: toneVar }}
         >
           {NATURE_LABEL[intervention.nature]}

@@ -50,7 +50,7 @@ export function AlertEvidence({ alert }: { alert: Alert }) {
   return (
     <div className="flex flex-col gap-4 px-5 py-4">
       <header className="flex items-center gap-2">
-        <span className="font-mono text-[9.5px] uppercase tracking-[0.12em] text-[var(--fg-muted)]">
+        <span className="type-label text-[var(--fg-muted)]">
           Drift
         </span>
         <span className="font-mono text-[11px] text-[var(--fg-muted)]">

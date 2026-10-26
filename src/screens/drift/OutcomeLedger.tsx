@@ -51,7 +51,7 @@ export function OutcomeLedger({
     <div className="flex flex-col">
       <header className="flex-none px-6 py-4 shadow-[inset_0_-1px_0_var(--border-subtle)]">
         <div className="mb-1 flex items-baseline gap-2.5">
-          <h1 className="text-lg tracking-[-0.01em]">
+          <h1 className="type-page-title">
             What the lane did with {formatCount(stats.total)} commitment{stats.total === 1 ? '' : 's'}
           </h1>
           <span className="ml-auto font-mono text-[11px] text-[var(--fg-muted)]">since this kernel started</span>
@@ -115,7 +115,7 @@ export function OutcomeLedger({
         {/* The unresolved reasons, separated and owner-labelled. */}
         <section className="flex-none">
           <div className="mb-2.5 flex items-baseline gap-2.5">
-            <span className="font-mono text-[9.5px] uppercase leading-none tracking-[0.12em] text-[var(--fg-muted)]">
+            <span className="type-label leading-none text-[var(--fg-muted)]">
               The {formatCount(unresolvedTotal)} unresolved, by reason
             </span>
             <span className="ml-auto text-[11.5px] text-[var(--fg-muted)]">
@@ -205,7 +205,7 @@ export function OutcomeLedger({
         {/* Refusals, in the same frame — not a debug panel. */}
         <section className="flex-none">
           <div className="mb-2.5 flex items-baseline gap-2.5">
-            <span className="font-mono text-[9.5px] uppercase leading-none tracking-[0.12em] text-[var(--fg-muted)]">
+            <span className="type-label leading-none text-[var(--fg-muted)]">
               The {formatCount(stats.refused)} refusal{stats.refused === 1 ? '' : 's'}
             </span>
             <span className="ml-auto text-[11.5px] text-[var(--color-accent-400)]">this is the product working</span>
@@ -330,8 +330,8 @@ export function NotConfigured() {
   return (
     <div className="flex flex-col gap-4 px-6 py-5">
       <header>
-        <h1 className="mb-1 text-lg tracking-[-0.01em]">Drift</h1>
-        <p className="text-[12.5px] leading-[1.55] text-[var(--fg-muted)]">
+        <h1 className="type-page-title mb-1">Drift</h1>
+        <p className="type-page-description">
           The state this page must never render as zeros.
         </p>
       </header>
@@ -423,7 +423,7 @@ function OutcomeCard({
       <div className="mb-2 flex items-center gap-1.5">
         <span className="h-1.5 w-1.5 rounded-full" style={{ background: v }} />
         <span
-          className="font-mono text-[9.5px] uppercase leading-none tracking-[0.1em]"
+          className="type-label leading-none"
           style={{ color: labelColour }}
         >
           {label}

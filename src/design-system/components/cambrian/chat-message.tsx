@@ -37,7 +37,7 @@ export function ChatMessage({
         className,
       )}
     >
-      <div className="flex items-center gap-2 text-[10px] uppercase tracking-wide text-[var(--fg-muted)]">
+      <div className="type-label flex items-center gap-2 text-[var(--fg-muted)]">
         <span>{isOperator ? "operator" : "runtime"}</span>
         <span aria-hidden="true">·</span>
         <span className="font-mono normal-case">{formatTime(timestamp)}</span>

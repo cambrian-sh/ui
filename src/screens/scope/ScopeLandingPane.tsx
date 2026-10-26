@@ -40,10 +40,10 @@ export function ScopeLandingPane({ onGo }: ScopeLandingPaneProps) {
   return (
     <div className="flex flex-col gap-5 p-4">
       <div>
-        <h2 className="text-[19px] font-medium leading-[1.25] tracking-[-0.01em]">
+        <h2 className="type-page-title">
           Scope &amp; Access
         </h2>
-        <p className="mt-1 max-w-[640px] text-[12.5px] leading-[1.6] text-[var(--fg-muted)]">
+        <p className="type-page-description mt-1 max-w-[640px]">
           Whether a boundary exists is a different question from whether it covers anything.
           These three answer the second one.
         </p>
@@ -275,7 +275,7 @@ function Card({
       )}
       style={tone ? ({ '--tint': tone } as React.CSSProperties) : undefined}
     >
-      <div className="font-mono text-[9.5px] uppercase tracking-[0.14em] text-[var(--fg-muted)]">
+      <div className="type-label text-[var(--fg-muted)]">
         {title}
       </div>
       {children}

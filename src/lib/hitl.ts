@@ -2,9 +2,9 @@ import type { HITLIntervention, HITLNature } from '@/ipc/types';
 
 /** The kicker above a HITL card. Uppercase, spelled out — never colour alone. */
 export const NATURE_LABEL: Record<HITLNature, string> = {
-  destructive_command: 'DESTRUCTIVE COMMAND',
-  approval_request: 'APPROVAL REQUEST',
-  dangerous_tool: 'DANGEROUS TOOL',
+  destructive_command: 'destructive command',
+  approval_request: 'approval request',
+  dangerous_tool: 'dangerous tool',
 };
 
 /**

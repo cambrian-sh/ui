@@ -51,7 +51,7 @@ export function IngressActivity({ surface }: { surface: string }) {
 
   return (
     <section className="flex flex-col gap-2 border-t border-[var(--border-subtle)] pt-3">
-      <div className="font-mono text-[9.5px] uppercase tracking-[0.14em] text-[var(--fg-muted)]">
+      <div className="type-label text-[var(--fg-muted)]">
         Recent inbound
       </div>
 

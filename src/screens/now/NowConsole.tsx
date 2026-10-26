@@ -245,7 +245,7 @@ function SectionTitle({
 function Tile({ label, value, hint }: { label: string; value: string; hint: string }) {
   return (
     <div className="rounded-[var(--radius-lg)] bg-[var(--bg-surface)] p-3 shadow-[var(--elevation-1)]">
-      <div className="font-mono text-[9.5px] uppercase tracking-[0.14em] text-[var(--fg-muted)]">
+      <div className="type-label text-[var(--fg-muted)]">
         {label}
       </div>
       <div className="mt-1 font-mono text-[18px] leading-[1.2] text-[var(--fg-primary)]">

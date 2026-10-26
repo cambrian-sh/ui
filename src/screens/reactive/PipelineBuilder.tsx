@@ -73,11 +73,11 @@ export function PipelineBuilder({
   return (
     <div className="flex h-full min-h-0 flex-col overflow-y-auto">
       <div className="flex items-center gap-3 px-4 pb-3 pt-4">
-        <h1 className="text-[17px] font-medium tracking-[-0.01em]">
+        <h1 className="type-page-title">
           {initial.id ? config.name || config.id : 'New pipeline'}
         </h1>
         <span
-          className="font-mono text-[10px] uppercase tracking-[0.1em]"
+          className="type-label"
           style={{ color: MODE_COPY[mode].tone }}
         >
           {MODE_COPY[mode].label}
@@ -297,8 +297,8 @@ function GateInspector({
       style={{ '--tint': 'var(--status-err)' } as React.CSSProperties}
     >
       <div>
-        <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-[var(--status-err)]">
-          THIS GATE READS UNTRUSTED INPUT
+        <span className="type-status text-[var(--status-err)]">
+          This gate reads untrusted input
         </span>
         <p className="mt-1 text-[12.5px] leading-[1.55] text-[var(--fg-primary)]">
           A signal payload can carry instructions written by whoever produced it, and this
@@ -324,7 +324,7 @@ function GateInspector({
       )}
 
       <div>
-        <div className="mb-1.5 font-mono text-[9.5px] uppercase tracking-[0.14em] text-[var(--fg-muted)]">
+        <div className="type-label mb-1.5 text-[var(--fg-muted)]">
           Fields the gate may see ({config.condition_payload_keys.length})
         </div>
         <div className="flex flex-wrap gap-1.5">
@@ -390,7 +390,7 @@ function GateInspector({
       </div>
 
       <div>
-        <div className="mb-1.5 font-mono text-[9.5px] uppercase tracking-[0.14em] text-[var(--fg-muted)]">
+        <div className="type-label mb-1.5 text-[var(--fg-muted)]">
           Prompt
         </div>
         <textarea
@@ -482,8 +482,8 @@ function Arms({
           className="flex items-center gap-2 rounded-md p-2.5 tint-wash"
           style={{ '--tint': 'var(--status-warn)' } as React.CSSProperties}
         >
-          <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-[var(--status-warn)]">
-            needs fan-out
+          <span className="type-status text-[var(--status-warn)]">
+            Needs fan-out
           </span>
           <span className="text-[11.5px] leading-[1.5] text-[var(--fg-secondary)]">
             A second arm cannot be stored: the kernel holds one action per watch. Adding one
@@ -527,7 +527,7 @@ function Connector() {
 function Panel({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section className="flex flex-col gap-2.5 rounded-[var(--radius-lg)] bg-[var(--bg-surface)] p-3.5 shadow-[var(--elevation-1)]">
-      <h3 className="font-mono text-[9.5px] uppercase tracking-[0.14em] text-[var(--fg-muted)]">
+      <h3 className="type-label text-[var(--fg-muted)]">
         {title}
       </h3>
       {children}
