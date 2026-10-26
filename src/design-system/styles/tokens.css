@@ -50,6 +50,7 @@
   --bg-canvas: #ffffff;
   --bg-surface: #ffffff;
   --bg-elevated: #f4f4f5;
+  --bg-overlay: #ffffff; /* menus, popovers, dialogs */
   --bg-sidebar: #fafafa;
   --nav-item-hover: #f0f0f1;
   --nav-item-active: #ebebed;
@@ -116,6 +117,7 @@
   --bg-canvas: #111111;
   --bg-surface: #171717;
   --bg-elevated: #222222;
+  --bg-overlay: #1c1c1c;
   --bg-sidebar: #161616;
   --nav-item-hover: #1f1f1f;
   --nav-item-active: #262626;
@@ -181,6 +183,7 @@
   --bg-canvas: #161826;
   --bg-surface: #1b1d2c;
   --bg-elevated: #232532;
+  --bg-overlay: #232532;
   --bg-sidebar: #1b1d2c;
   --nav-item-hover: color-mix(in srgb, #e9e9ed 5%, transparent);
   --nav-item-active: color-mix(in srgb, #9184d9 13%, transparent);
@@ -256,7 +259,7 @@
   --button-danger-fg: var(--fg-on-accent);
 
   /* === Component: Input === */
-  --input-border: var(--border-subtle);
+  --input-border: var(--border-strong);
   --input-fg: var(--fg-primary);
   --input-placeholder: var(--fg-muted);
   --input-border-focus: var(--accent-bg);

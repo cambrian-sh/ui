@@ -17,7 +17,7 @@ const ToggleGroup = React.forwardRef<
   <ToggleGroupPrimitive.Root
     ref={ref}
     className={cn(
-      "inline-flex items-center gap-0.5 rounded-md bg-[var(--bg-canvas)] p-0.5 shadow-[inset_0_0_0_1px_var(--border-subtle)]",
+      "inline-flex items-center gap-0.5 rounded-[var(--radius-md)] bg-[var(--bg-elevated)] p-0.5",
       className,
     )}
     {...props}
@@ -32,13 +32,13 @@ const ToggleGroupItem = React.forwardRef<
   <ToggleGroupPrimitive.Item
     ref={ref}
     className={cn(
-      "inline-flex items-center gap-1.5 whitespace-nowrap rounded-[6px] px-2.5 py-1 text-xs transition-colors",
+      "inline-flex h-7 items-center gap-1.5 whitespace-nowrap rounded-[calc(var(--radius-md)-2px)] px-2.5 text-[12.5px] font-medium transition-colors",
       "text-[var(--fg-secondary)] hover:text-[var(--fg-primary)]",
       "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)]",
       "disabled:pointer-events-none disabled:opacity-50",
-      "data-[state=on]:bg-[color-mix(in_srgb,var(--accent-bg)_10%,transparent)]",
+      "data-[state=on]:bg-[var(--bg-overlay)]",
       "data-[state=on]:text-[var(--fg-primary)]",
-      "data-[state=on]:shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--accent-bg)_34%,transparent)]",
+      "data-[state=on]:shadow-[0_0_0_1px_var(--border-subtle),0_1px_2px_rgb(0_0_0/0.08)]",
       className,
     )}
     {...props}

@@ -23,7 +23,7 @@ Vite, React 19, Bun, Tailwind CSS, Radix UI primitives. 830+ vitest tests;
 | `ipc/` | Tauri client: `invoke(...)` intents and `listen(...)` projection events. The ONLY way the webview reaches the runtime. |
 | `store/` | Zustand projection store hydrated from `kernel://state`. A cache, not the state of record. Re-hydrates via `op_get_state` on mount/reload. |
 | `screens/` | One screen per PRD surface. The plan view is the centre of gravity when a plan runs. |
-| `design-system/` | Tokens, components, utilities. Dark-mode-first, dense, keyboard-friendly, accessible. |
+| `design-system/` | Tokens, components, utilities. Light, dark (default follows the OS) and Nocturne themes; dense, keyboard-friendly, accessible. Text roles are `type-*` utilities in `styles/type.css` (page title, description, section title, label, status, figure) — use them instead of hand-sized text, and keep labels sentence case. Screen building blocks: `PageHeader`, `SectionHeader`, `Stat`, `Callout`, `KeyValue`, `EmptyState`, `Card` (`tone`, `interactive`), `Badge` (`dot`). |
 | `lib/queryClient.ts` | TanStack Query — imperative edges only (mutations + request/response reads not on the feed). Every automatic refetch disabled. Nothing on `kernel://state` may be cached here. |
 
 ---
