@@ -5,8 +5,12 @@
  * --accent-*, --status-*). A theme is a value swap of those, nothing more.
  *
  * Themes (data-theme on <html>, resolved by public/theme-boot.js + shellStore):
- *   light     default when the OS is light. Neutral, paper-white, Vercel/Notion-like.
+ *   light     default when the OS is light. Neutral paper-white ground.
  *   dark      default when the OS is dark. Neutral charcoal, no tint.
+ *
+ * Light and dark take their colour from the mark: emerald green carries action
+ * (primary buttons) and "live"; sky blue carries links, focus and selection.
+ * Flat colours only — no gradients.
  *   nocturne  the original lavender mission-control palette, kept as an option.
  *
  * Status colour never stands alone: every state also carries a word and a shape.
@@ -16,18 +20,18 @@
 [data-theme="light"] {
   color-scheme: light;
 
-  /* === Primitives: Accent ramp (blue) ===
+  /* === Primitives: Accent ramp (sky blue) ===
    * --color-accent-400 is "accent text on this theme's ground"; many call sites
    * use it directly, so each theme redefines the ramp rather than the callers. */
-  --color-accent-100: #eff6ff;
-  --color-accent-200: #dbeafe;
-  --color-accent-300: #bfdbfe;
-  --color-accent-400: #1d4ed8;
-  --color-accent-500: #2563eb;
-  --color-accent-600: #2563eb;
-  --color-accent-700: #dbeafe;
-  --color-accent-800: #dbeafe;
-  --color-accent-900: #eff6ff;
+  --color-accent-100: #eef6fc;
+  --color-accent-200: #d5eaf8;
+  --color-accent-300: #a9d4f2;
+  --color-accent-400: #0b6fae;
+  --color-accent-500: #0a84cc;
+  --color-accent-600: #0a84cc;
+  --color-accent-700: #d5eaf8;
+  --color-accent-800: #d5eaf8;
+  --color-accent-900: #eef6fc;
 
   /* === Primitives: Neutral ramp (zinc) === */
   --color-neutral-100: #f4f4f5;
@@ -49,34 +53,35 @@
   --bg-sidebar: #fafafa;
   --nav-item-hover: #f0f0f1;
   --nav-item-active: #ebebed;
-  --bg-pulse: #dbeafe;
+  --bg-pulse: #d5eaf8;
 
   --fg-primary: #18181b;
   --fg-secondary: #52525b;
   --fg-muted: #71717a;
   --fg-on-accent: #ffffff;
 
-  --accent-bg: #2563eb;
+  --accent-bg: #0a84cc;
   --accent-fg: #ffffff;
 
   --border-subtle: #e4e4e7;
   --border-strong: #d4d4d8;
 
-  --status-live: #2563eb; /* running · live · connected   */
+  --status-live: #0d8449; /* running · live · connected   */
   --status-warn: #b45309; /* waiting on you · degraded    */
   --status-err: #dc2626;  /* failed · down · denied       */
   --status-done: #71717a; /* completed                    */
   --status-idle: #a1a1aa; /* pending · dormant            */
 
-  /* Primary actions are ink, not accent — the accent is reserved for focus,
-   * links, selection and "live". */
-  --button-primary-bg: #18181b;
-  --button-primary-bg-hover: #3f3f46;
+  /* Primary actions are emerald; blue stays reserved for focus, links and
+   * selection, so the two never compete on one control. */
+  --button-primary-bg: #0f8550;
+  --button-primary-bg-hover: #0b6f43;
+  --button-primary-border: #0b6f43;
   --button-primary-fg: #ffffff;
 
   --input-bg: #ffffff;
   --list-row-bg-hover: #f4f4f5;
-  --list-row-bg-selected: #eff6ff;
+  --list-row-bg-selected: #eef6fc;
 
   --dialog-overlay-bg: rgb(0 0 0 / 0.32);
   --elevation-1: 0 0 0 1px var(--border-subtle);
@@ -88,15 +93,15 @@
 [data-theme="dark"] {
   color-scheme: dark;
 
-  --color-accent-100: #eff6ff;
-  --color-accent-200: #dbeafe;
-  --color-accent-300: #bfdbfe;
-  --color-accent-400: #60a5fa;
-  --color-accent-500: #3b82f6;
-  --color-accent-600: #3b82f6;
-  --color-accent-700: #1e3a5f;
-  --color-accent-800: #1e3050;
-  --color-accent-900: #172033;
+  --color-accent-100: #eef6fc;
+  --color-accent-200: #d5eaf8;
+  --color-accent-300: #a9d4f2;
+  --color-accent-400: #5cb8f0;
+  --color-accent-500: #1f9ee6;
+  --color-accent-600: #1f9ee6;
+  --color-accent-700: #12324a;
+  --color-accent-800: #102a3e;
+  --color-accent-900: #0e1f2d;
 
   --color-neutral-100: #ededed;
   --color-neutral-200: #d4d4d4;
@@ -114,32 +119,33 @@
   --bg-sidebar: #161616;
   --nav-item-hover: #1f1f1f;
   --nav-item-active: #262626;
-  --bg-pulse: #1e3050;
+  --bg-pulse: #102a3e;
 
   --fg-primary: #ededed;
   --fg-secondary: #a1a1a1;
   --fg-muted: #8f8f8f;
   --fg-on-accent: #ffffff;
 
-  --accent-bg: #3b82f6;
+  --accent-bg: #1f9ee6;
   --accent-fg: #ffffff;
 
   --border-subtle: #262626;
   --border-strong: #363636;
 
-  --status-live: #60a5fa;
+  --status-live: #3ddc84;
   --status-warn: #f5a524;
   --status-err: #f87171;
   --status-done: #8f8f8f;
   --status-idle: #6f6f6f;
 
-  --button-primary-bg: #ededed;
-  --button-primary-bg-hover: #ffffff;
-  --button-primary-fg: #111111;
+  --button-primary-bg: #0e6b40;
+  --button-primary-bg-hover: #12804d;
+  --button-primary-border: #2fbf71;
+  --button-primary-fg: #ffffff;
 
   --input-bg: #111111;
   --list-row-bg-hover: #1f1f1f;
-  --list-row-bg-selected: #172033;
+  --list-row-bg-selected: #0f2233;
 
   --dialog-overlay-bg: rgb(0 0 0 / 0.6);
   --elevation-1: 0 0 0 1px var(--border-subtle);
@@ -199,6 +205,7 @@
 
   --button-primary-bg: #9184d9;
   --button-primary-bg-hover: #b5abfc;
+  --button-primary-border: transparent;
   --button-primary-fg: #161826;
 
   --input-bg: #161826;
@@ -239,7 +246,6 @@
   --state-completed: var(--status-done);
 
   /* === Component: Button === */
-  --button-primary-border: transparent;
 
   --button-secondary-bg: transparent;
   --button-secondary-bg-hover: var(--bg-elevated);
