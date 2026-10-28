@@ -32,14 +32,14 @@ export interface MemoryListRowProps {
 }
 
 const DOC_TYPE_LABEL: Record<MemoryDocType, string> = {
-  mnemonic_fact: "FACT",
-  mnemonic_scene: "SCENE",
-  episodic_memory: "EPISODIC",
-  procedural_template: "TEMPLATE",
-  agent_profile: "AGENT",
-  negative_edge: "NEG-EDGE",
-  tool: "TOOL",
-  skill: "SKILL",
+  mnemonic_fact: "Fact",
+  mnemonic_scene: "Scene",
+  episodic_memory: "Episodic",
+  procedural_template: "Template",
+  agent_profile: "Agent",
+  negative_edge: "Negative edge",
+  tool: "Tool",
+  skill: "Skill",
 };
 
 function formatAge(iso: string): string {
@@ -75,9 +75,9 @@ export function MemoryListRow({
         }
       }}
       className={cn(
-        "flex items-center gap-2 border-b border-[var(--list-row-border)] px-2 py-1.5 text-xs",
-        "hover:bg-[var(--list-row-bg-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)]",
-        selected && "bg-[var(--bg-elevated)]",
+        "flex cursor-pointer items-center gap-2.5 border-b border-[var(--list-row-border)] px-3 py-2 text-[12.5px] last:border-b-0",
+        "hover:bg-[var(--list-row-bg-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--focus-ring)]",
+        selected && "bg-[var(--list-row-bg-selected)]",
         className,
       )}
     >
@@ -94,12 +94,12 @@ export function MemoryListRow({
         />
       )}
       <span
-        className="rounded-sm border border-[var(--border-subtle)] px-1.5 py-0.5 font-mono text-[10px] text-[var(--fg-secondary)]"
+        className="shrink-0 rounded-full border border-[var(--border-subtle)] px-2 py-0.5 text-[11px] font-medium text-[var(--fg-secondary)]"
         aria-label={`DocType ${DOC_TYPE_LABEL[doc.doc_type]}`}
       >
         {DOC_TYPE_LABEL[doc.doc_type]}
       </span>
-      <span className="font-mono text-[var(--fg-muted)] max-w-[6rem] truncate">
+      <span className="max-w-[6rem] truncate font-mono text-[11px] text-[var(--fg-muted)]">
         {doc.scope_tags[0] ?? "—"}
       </span>
       <div
@@ -111,17 +111,17 @@ export function MemoryListRow({
         aria-valuemax={100}
       >
         <div
-          className="h-full bg-[var(--accent-bg)]"
+          className="h-full bg-[var(--fg-muted)]"
           style={{ width: `${doc.activation_strength * 100}%` }}
         />
       </div>
-      <span className="font-mono text-[10px] text-[var(--fg-muted)] max-w-[5rem] truncate">
+      <span className="max-w-[5rem] truncate font-mono text-[11px] text-[var(--fg-muted)]">
         {doc.session_id ?? "—"}
       </span>
-      <span className="text-[10px] text-[var(--fg-muted)] shrink-0">
+      <span className="shrink-0 text-[11.5px] text-[var(--fg-muted)]">
         {formatAge(doc.created_at)}
       </span>
-      <span className="font-mono text-[11px] text-[var(--fg-primary)] flex-1 truncate">
+      <span className="flex-1 truncate text-[13px] text-[var(--fg-primary)]">
         {doc.content_preview}
       </span>
     </div>

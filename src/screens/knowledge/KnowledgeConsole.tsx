@@ -21,7 +21,7 @@ import { useCallback } from 'react';
 import { useNavigate, useSearch } from '@tanstack/react-router';
 import { PluginSurface } from '@/components/PluginSurface';
 import { Inspector } from '@/components/InspectorSlot';
-import { ErrorState } from '@/design-system/components';
+import { ErrorState, PageHeader } from '@/design-system/components';
 import { useKernelQuery } from '@/lib/useKernelQuery';
 import { ipc } from '@/ipc';
 import { cn } from '@/design-system/lib/utils';
@@ -85,25 +85,29 @@ function KnowledgeSurfaces() {
   // The holdings header is the page's status line. One read on navigation —
   // nothing substrate-shaped is on the operator feed, and this page does not
   // poll: holdings change on ingest cadence, not on a 15s clock.
-  const overviewQuery = useKernelQuery(['knowledge', 'overview'], ipc.knowledgeOverview, {
+  const overviewQuery = useKernelQuery(['knowledge', 'overview'], () => ipc.knowledgeOverview(), {
     staleTime: 60_000,
   });
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      {overviewQuery.data ? (
-        <OverviewStrip overview={overviewQuery.data} />
-      ) : overviewQuery.isError ? (
-        <div className="border-b border-[var(--border-default)] px-5 py-3">
+      <PageHeader
+        title="Knowledge"
+        description="Typed facts drawn from your connected sources. Questions are answered exactly from them, or refused; disagreements between sources are shown, never resolved away."
+        className="pb-3"
+      >
+        {overviewQuery.data ? (
+          <OverviewStrip overview={overviewQuery.data} />
+        ) : overviewQuery.isError ? (
           <ErrorState
             reason={`Holdings could not be read: ${overviewQuery.error?.message ?? 'the substrate lane did not answer'}.`}
             whatToDo="A read failure, not an empty store. Ask and Explore may still answer."
           />
-        </div>
-      ) : null}
+        ) : null}
+      </PageHeader>
 
       <nav
-        className="flex flex-none items-center gap-1 px-5 pt-3"
+        className="flex flex-none items-center gap-5 border-b border-[var(--border-subtle)] px-[var(--page-gutter)]"
         aria-label="Knowledge surfaces"
       >
         {TABS.map((t) => (
@@ -113,11 +117,11 @@ function KnowledgeSurfaces() {
             onClick={() => setSearchParams({ tab: t.id, entity: null, receipt: null })}
             aria-current={tab === t.id ? 'page' : undefined}
             className={cn(
-              'rounded-[7px] px-3 py-1.5 text-[13px] transition-colors',
+              '-mb-px border-b-2 py-2.5 text-[13px] font-medium transition-colors',
               'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)]',
               tab === t.id
-                ? 'bg-[color-mix(in_srgb,var(--accent-bg)_13%,transparent)] font-medium text-[var(--fg-primary)]'
-                : 'text-[var(--fg-secondary)] hover:bg-[var(--list-row-bg-hover)] hover:text-[var(--fg-primary)]',
+                ? 'border-[var(--button-primary-bg)] text-[var(--fg-primary)]'
+                : 'border-transparent text-[var(--fg-muted)] hover:text-[var(--fg-primary)]',
             )}
           >
             {t.label}

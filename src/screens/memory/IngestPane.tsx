@@ -133,18 +133,18 @@ export function IngestPane({
   };
 
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-4">
       {canUploadFiles && (
-        <div className="flex items-center gap-2">
+        <div className="flex w-fit items-center gap-0.5 rounded-[var(--radius-md)] bg-[var(--bg-elevated)] p-0.5">
           <button
             type="button"
             onClick={() => setPasteMode(false)}
             aria-pressed={!pasteMode}
             className={cn(
-              'rounded-sm border px-2 py-0.5 text-[11px]',
+              'h-7 rounded-[var(--radius-sm)] px-3 text-[12.5px] transition-colors',
               !pasteMode
-                ? 'border-[var(--accent-bg)] bg-[var(--accent-bg)] text-[var(--fg-on-accent)]'
-                : 'border-[var(--border-subtle)] bg-[var(--bg-elevated)] text-[var(--fg-secondary)]',
+                ? 'bg-[var(--bg-overlay)] font-medium text-[var(--fg-primary)] shadow-[0_0_0_1px_var(--border-subtle),0_1px_2px_rgb(0_0_0/0.06)]'
+                : 'text-[var(--fg-muted)] hover:text-[var(--fg-primary)]',
             )}
           >
             Files
@@ -154,10 +154,10 @@ export function IngestPane({
             onClick={() => setPasteMode(true)}
             aria-pressed={pasteMode}
             className={cn(
-              'rounded-sm border px-2 py-0.5 text-[11px]',
+              'h-7 rounded-[var(--radius-sm)] px-3 text-[12.5px] transition-colors',
               pasteMode
-                ? 'border-[var(--accent-bg)] bg-[var(--accent-bg)] text-[var(--fg-on-accent)]'
-                : 'border-[var(--border-subtle)] bg-[var(--bg-elevated)] text-[var(--fg-secondary)]',
+                ? 'bg-[var(--bg-overlay)] font-medium text-[var(--fg-primary)] shadow-[0_0_0_1px_var(--border-subtle),0_1px_2px_rgb(0_0_0/0.06)]'
+                : 'text-[var(--fg-muted)] hover:text-[var(--fg-primary)]',
             )}
           >
             Paste text
@@ -166,7 +166,7 @@ export function IngestPane({
       )}
 
       {!canUploadFiles && (
-        <p className="rounded-sm border border-[var(--border-subtle)] bg-[var(--bg-elevated)] p-2 text-[10px] text-[var(--fg-muted)]">
+        <p className="rounded-sm border border-[var(--border-subtle)] bg-[var(--bg-elevated)] p-2 text-[12px] leading-[1.45] text-[var(--fg-muted)]">
           This kernel does not advertise <code className="font-mono">memory-ingest-binary</code>.
           File upload is hidden; paste text instead.
         </p>
@@ -174,7 +174,7 @@ export function IngestPane({
 
       {pasteMode || !canUploadFiles ? (
         <div className="flex flex-col gap-1">
-          <label htmlFor="paste-text" className="text-[11px] font-medium text-[var(--fg-secondary)]">
+          <label htmlFor="paste-text" className="text-[12.5px] font-medium text-[var(--fg-primary)]">
             Text
           </label>
           <textarea
@@ -185,14 +185,14 @@ export function IngestPane({
             title={disabled ? disabledReason : undefined}
             rows={5}
             placeholder="Paste a document…"
-            className="resize-y rounded-sm border border-[var(--input-border)] bg-[var(--input-bg)] px-2 py-1.5 text-[11px] text-[var(--input-fg)] placeholder:text-[var(--input-placeholder)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)] disabled:cursor-not-allowed disabled:opacity-50"
+            className="resize-y rounded-[var(--radius-md)] border border-[var(--input-border)] bg-[var(--input-bg)] px-2.5 py-2 text-[13px] text-[var(--input-fg)] placeholder:text-[var(--input-placeholder)] focus-visible:outline-none focus-visible:border-[var(--input-border-focus)] focus-visible:ring-[3px] focus-visible:ring-[color-mix(in_srgb,var(--input-border-focus)_22%,transparent)] disabled:cursor-not-allowed disabled:opacity-50"
           />
           <button
             type="button"
             onClick={submitText}
             disabled={disabled || !pasteText.trim()}
             title={disabled ? disabledReason : undefined}
-            className="self-end rounded-sm bg-[var(--button-primary-bg)] px-3 py-1 text-[11px] font-medium text-[var(--button-primary-fg)] hover:bg-[var(--button-primary-bg-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)] disabled:cursor-not-allowed disabled:opacity-50"
+            className="self-end h-8 rounded-[var(--radius-md)] bg-[var(--button-primary-bg)] px-3 text-[13px] font-medium text-[var(--button-primary-fg)] hover:bg-[var(--button-primary-bg-hover)] focus-visible:outline-none focus-visible:border-[var(--input-border-focus)] focus-visible:ring-[3px] focus-visible:ring-[color-mix(in_srgb,var(--input-border-focus)_22%,transparent)] disabled:cursor-not-allowed disabled:opacity-50"
           >
             Ingest text
           </button>
@@ -202,19 +202,17 @@ export function IngestPane({
         // exists, and it used to sit at the same weight as the reason field.
         <div
           className={cn(
-            'flex flex-col items-center justify-center gap-2 rounded-[var(--radius-lg)] p-[22px_16px] text-center',
-            'tint-wash tint-ring',
+            'flex flex-col items-center justify-center gap-2 rounded-[var(--radius-lg)] border border-dashed border-[var(--border-strong)] bg-[var(--bg-canvas)] p-[24px_16px] text-center',
             disabled && 'opacity-50',
           )}
-          style={{ '--tint': 'var(--accent-bg)' } as React.CSSProperties}
         >
           <Upload
             aria-hidden="true"
             size={24}
             strokeWidth={1.75}
-            className="text-[var(--color-accent-400)]"
+            className="text-[var(--fg-muted)]"
           />
-          <p className="text-[12.5px] text-[var(--fg-secondary)]">
+          <p className="text-[13px] font-medium text-[var(--fg-primary)]">
             Drop documents here, or
           </p>
           <button
@@ -223,17 +221,17 @@ export function IngestPane({
             disabled={disabled}
             title={disabled ? disabledReason : undefined}
             aria-label="Choose files to ingest"
-            className="rounded-md border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-3 py-1.5 text-[12px] text-[var(--fg-primary)] hover:bg-[var(--bg-surface)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)] disabled:cursor-not-allowed"
+            className="h-8 rounded-[var(--radius-md)] border border-[var(--button-secondary-border)] bg-[var(--bg-surface)] px-3 text-[13px] font-medium text-[var(--fg-primary)] hover:bg-[var(--list-row-bg-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)] disabled:cursor-not-allowed"
           >
             Choose files…
           </button>
           {/* The picker hands the core a path and the core reads the bytes —
               the webview never holds them, so document size is not a limit. */}
-          <p className="text-[11px] text-[var(--fg-muted)]">
+          <p className="text-[12px] text-[var(--fg-muted)]">
             or paste text instead. The app reads files natively, so large documents are fine.
           </p>
           {pickError && (
-            <p role="alert" className="text-[11px] text-[var(--status-err)]">
+            <p role="alert" className="text-[12px] text-[var(--status-err)]">
               {pickError}
             </p>
           )}
@@ -242,20 +240,20 @@ export function IngestPane({
 
       {!pasteMode && canUploadFiles && staged.length > 0 && (
         <div className="flex flex-col gap-1">
-          <h2 className="text-[11px] font-medium text-[var(--fg-secondary)]">
+          <h2 className="text-[12.5px] font-medium text-[var(--fg-primary)]">
             Ready to ingest ({staged.length})
           </h2>
           <ul aria-label="Staged files" className="flex flex-col gap-1">
             {staged.map((file, i) => (
               <li
                 key={`${file.name}-${i}`}
-                className="flex items-center justify-between gap-2 rounded-sm border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-2 py-1 text-[11px]"
+                className="flex items-center justify-between gap-2 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--bg-canvas)] px-2.5 py-1.5 text-[12.5px]"
               >
                 <span className="truncate text-[var(--fg-primary)]" title={file.name}>
                   {file.name}
                 </span>
                 <span className="flex shrink-0 items-center gap-2">
-                  <span className="font-mono text-[10px] text-[var(--fg-muted)]">
+                  <span className="font-mono text-[12px] leading-[1.45] text-[var(--fg-muted)]">
                     {humanSize(file.size)}
                   </span>
                   <button
@@ -270,14 +268,14 @@ export function IngestPane({
               </li>
             ))}
           </ul>
-          <p className="text-[10px] text-[var(--fg-muted)]">
+          <p className="text-[12px] leading-[1.45] text-[var(--fg-muted)]">
             Nothing has been sent yet. Set the context, scope and importance below, then ingest.
           </p>
         </div>
       )}
 
       <div className="flex flex-col gap-1">
-        <label htmlFor="ingest-context" className="text-[11px] font-medium text-[var(--fg-secondary)]">
+        <label htmlFor="ingest-context" className="text-[12.5px] font-medium text-[var(--fg-primary)]">
           Context
         </label>
         <textarea
@@ -287,16 +285,16 @@ export function IngestPane({
           disabled={disabled}
           rows={2}
           placeholder="Q3 board pack; figures provisional"
-          className="resize-y rounded-sm border border-[var(--input-border)] bg-[var(--input-bg)] px-2 py-1.5 text-[11px] text-[var(--input-fg)] placeholder:text-[var(--input-placeholder)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)] disabled:cursor-not-allowed disabled:opacity-50"
+          className="resize-y rounded-[var(--radius-md)] border border-[var(--input-border)] bg-[var(--input-bg)] px-2.5 py-2 text-[13px] text-[var(--input-fg)] placeholder:text-[var(--input-placeholder)] focus-visible:outline-none focus-visible:border-[var(--input-border-focus)] focus-visible:ring-[3px] focus-visible:ring-[color-mix(in_srgb,var(--input-border-focus)_22%,transparent)] disabled:cursor-not-allowed disabled:opacity-50"
         />
-        <p className="text-[10px] text-[var(--fg-muted)]">
+        <p className="text-[12px] leading-[1.45] text-[var(--fg-muted)]">
           Folded into the document body by the kernel, so it is chunked and embedded with it.
         </p>
       </div>
 
       <fieldset className="flex flex-col gap-1">
-        <legend className="text-[11px] font-medium text-[var(--fg-secondary)]">Scope</legend>
-        <label className="flex items-center gap-2 text-[11px] text-[var(--fg-primary)]">
+        <legend className="text-[12.5px] font-medium text-[var(--fg-primary)]">Scope</legend>
+        <label className="flex items-center gap-2 text-[13px] text-[var(--fg-primary)]">
           <input
             type="radio"
             name="scope"
@@ -306,7 +304,7 @@ export function IngestPane({
           />
           Anyone, anywhere
         </label>
-        <label className="flex items-center gap-2 text-[11px] text-[var(--fg-primary)]">
+        <label className="flex items-center gap-2 text-[13px] text-[var(--fg-primary)]">
           <input
             type="radio"
             name="scope"
@@ -316,7 +314,7 @@ export function IngestPane({
           />
           Restrict…
         </label>
-        <p className="text-[10px] text-[var(--fg-muted)]">
+        <p className="text-[12px] leading-[1.45] text-[var(--fg-muted)]">
           {restricted
             ? 'Only principals whose scope matches these labels can retrieve it.'
             : 'Readable by any agent or principal on this kernel.'}
@@ -354,8 +352,8 @@ export function IngestPane({
       </fieldset>
 
       <div className="flex flex-col gap-1">
-        <label htmlFor="importance" className="text-[11px] font-medium text-[var(--fg-secondary)]">
-          Importance <span className="font-mono text-[10px] text-[var(--fg-muted)]">{importance.toFixed(1)}</span>
+        <label htmlFor="importance" className="text-[12.5px] font-medium text-[var(--fg-primary)]">
+          Importance <span className="ml-1 font-normal tabular-nums text-[var(--fg-muted)]">{importance.toFixed(1)}</span>
         </label>
         <input
           id="importance"
@@ -366,14 +364,14 @@ export function IngestPane({
           value={importance}
           onChange={(e) => setImportance(Number(e.target.value))}
           disabled={disabled}
-          className="accent-[var(--accent-bg)]"
+          className="accent-[var(--button-primary-bg)]"
         />
       </div>
 
-      <details className="rounded-sm border border-[var(--border-subtle)] p-2">
-        <summary className="cursor-pointer text-[11px] text-[var(--fg-secondary)]">Advanced</summary>
+      <details className="rounded-[var(--radius-md)] border border-[var(--border-subtle)] px-3 py-2">
+        <summary className="cursor-pointer text-[12.5px] text-[var(--fg-secondary)]">Advanced</summary>
         <div className="mt-2 flex flex-col gap-1">
-          <label htmlFor="ingest-reason" className="text-[11px] font-medium text-[var(--fg-secondary)]">
+          <label htmlFor="ingest-reason" className="text-[12.5px] font-medium text-[var(--fg-primary)]">
             Reason
           </label>
           <input
@@ -382,9 +380,9 @@ export function IngestPane({
             value={reason}
             onChange={(e) => setReason(e.target.value)}
             disabled={disabled}
-            className="rounded-sm border border-[var(--input-border)] bg-[var(--input-bg)] px-2 py-1 text-[11px] text-[var(--input-fg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)] disabled:cursor-not-allowed disabled:opacity-50"
+            className="h-8 rounded-[var(--radius-md)] border border-[var(--input-border)] bg-[var(--input-bg)] px-2.5 text-[13px] text-[var(--input-fg)] focus-visible:outline-none focus-visible:border-[var(--input-border-focus)] focus-visible:ring-[3px] focus-visible:ring-[color-mix(in_srgb,var(--input-border-focus)_22%,transparent)] disabled:cursor-not-allowed disabled:opacity-50"
           />
-          <p className="text-[10px] text-[var(--fg-muted)]">
+          <p className="text-[12px] leading-[1.45] text-[var(--fg-muted)]">
             Mandatory kernel-side; written to the durable audit log.
           </p>
         </div>
@@ -397,11 +395,11 @@ export function IngestPane({
             onClick={ingestStaged}
             disabled={disabled}
             title={disabled ? disabledReason : undefined}
-            className="rounded-sm bg-[var(--button-primary-bg)] px-3 py-1.5 text-[11px] font-medium text-[var(--button-primary-fg)] hover:bg-[var(--button-primary-bg-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)] disabled:cursor-not-allowed disabled:opacity-50"
+            className="h-9 rounded-[var(--radius-md)] bg-[var(--button-primary-bg)] px-3 text-[13px] font-medium text-[var(--button-primary-fg)] hover:bg-[var(--button-primary-bg-hover)] focus-visible:outline-none focus-visible:border-[var(--input-border-focus)] focus-visible:ring-[3px] focus-visible:ring-[color-mix(in_srgb,var(--input-border-focus)_22%,transparent)] disabled:cursor-not-allowed disabled:opacity-50"
           >
             Ingest {staged.length} file{staged.length === 1 ? '' : 's'} with this context
           </button>
-          <p className="text-[10px] text-[var(--fg-muted)]">
+          <p className="text-[12px] leading-[1.45] text-[var(--fg-muted)]">
             Structure-aware parsing of a large PDF can take a minute or more; the row stays
             in <span className="font-mono">parsing…</span> until the first chunk lands.
           </p>
@@ -409,7 +407,7 @@ export function IngestPane({
       )}
 
       <div className="flex flex-col gap-1 border-t border-[var(--border-subtle)] pt-2">
-        <h2 className="text-[11px] font-medium text-[var(--fg-secondary)]">Queue</h2>
+        <h2 className="text-[12.5px] font-medium text-[var(--fg-primary)]">Queue</h2>
         <IngestQueue rows={rows} />
       </div>
     </div>

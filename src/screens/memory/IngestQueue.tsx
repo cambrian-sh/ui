@@ -10,7 +10,7 @@ const STATUS_MARK: Record<IngestStatus, string> = {
 
 const STATUS_CLASS: Record<IngestStatus, string> = {
   queued: 'text-[var(--fg-muted)]',
-  parsing: 'text-[var(--status-pulse)]',
+  parsing: 'text-[var(--status-live)]',
   indexed: 'text-[var(--status-ok)]',
   failed: 'text-[var(--status-err)]',
 };
@@ -33,7 +33,7 @@ function detail(row: IngestRow): string {
 export function IngestQueue({ rows }: { rows: IngestRow[] }) {
   if (rows.length === 0) {
     return (
-      <p className="px-1 py-2 text-[11px] text-[var(--fg-muted)]">
+      <p className="py-1 text-[12.5px] text-[var(--fg-muted)]">
         Nothing ingested yet this session.
       </p>
     );
@@ -42,7 +42,7 @@ export function IngestQueue({ rows }: { rows: IngestRow[] }) {
   return (
     <ul aria-label="Ingest queue" className="flex flex-col gap-1">
       {rows.map((row) => (
-        <li key={row.local_id} className="flex items-start gap-2 text-[11px]">
+        <li key={row.local_id} className="flex items-start gap-2 text-[13px]">
           <span
             aria-hidden="true"
             className={cn('shrink-0 font-mono', STATUS_CLASS[row.status])}
@@ -53,7 +53,7 @@ export function IngestQueue({ rows }: { rows: IngestRow[] }) {
             <span className="truncate text-[var(--fg-primary)]" title={row.label}>
               {row.label}
             </span>
-            <span className={cn('font-mono text-[10px]', STATUS_CLASS[row.status])}>
+            <span className={cn('text-[12px]', STATUS_CLASS[row.status])}>
               {detail(row)}
               {row.deduped && (
                 <span

@@ -29,25 +29,30 @@ export function AskPane({ disabled, disabledReason, canAnswer }: AskPaneProps) {
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="flex-1 min-h-0 overflow-y-auto p-3">
+      <div className="flex-1 min-h-0 overflow-y-auto">
+        <div className="mx-auto flex min-h-full w-full max-w-[760px] flex-col px-[var(--page-gutter)] py-6">
         {!canAnswer ? (
           <EmptyState
+            className="my-auto"
             title="Answering not available"
             body="This kernel does not advertise the memory-answer capability (ADR-0081). Enable agentic retrieval on the kernel to get grounded, cited answers. Ingest and retrieval still work."
           />
         ) : !asked ? (
           <EmptyState
-            title="Ask the corpus"
-            body="Ingest documents on the left, then ask a question. The answer is grounded in your documents, with each claim linked to the exact passage it came from — click a highlighted passage to see its source."
+            className="my-auto"
+            title="Ask your documents"
+            body="Add documents on the left, then ask a question. The answer is grounded in your documents, with each claim linked to the exact passage it came from — click a highlighted passage to see its source."
           />
         ) : (
           <div className="flex flex-col gap-3">
-            <h2 className="type-label font-medium text-[var(--fg-muted)]">
-              Answer
-            </h2>
+            <p className="self-end rounded-[var(--radius-xl)] rounded-tr-[var(--radius-sm)] bg-[var(--list-row-bg-selected)] px-3.5 py-2 text-[14px] leading-[1.55] text-[var(--fg-primary)]">
+              {question}
+            </p>
+            <h2 className="type-label mt-2 text-[var(--fg-muted)]">Answer</h2>
             {isAnswering ? (
-              <p className="text-sm text-[var(--fg-muted)]">
-                ▏retrieving and grounding an answer…
+              <p className="flex items-center gap-2 text-[13.5px] text-[var(--fg-muted)]">
+                <span aria-hidden="true" className="size-1.5 animate-pulse rounded-full bg-[var(--status-live)]" />
+                Finding the answer in your documents…
               </p>
             ) : error ? (
               <ErrorState
@@ -59,15 +64,17 @@ export function AskPane({ disabled, disabledReason, canAnswer }: AskPaneProps) {
             ) : null}
           </div>
         )}
+        </div>
       </div>
 
       <ChatInput
+        className="mx-auto w-full max-w-[760px] px-[var(--page-gutter)] pb-4 pt-2"
         value={draft}
         onChange={setDraft}
         onSubmit={submit}
         disabled={inputDisabled}
         disabledReason={inputReason}
-        placeholder="Ask a question about the corpus…"
+        placeholder="Ask a question about your documents…"
       />
     </div>
   );

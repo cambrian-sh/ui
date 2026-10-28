@@ -45,7 +45,7 @@ export function ExplorePane({
 
   return (
     <div className="flex h-full min-h-0">
-      <div className="flex w-[320px] flex-none flex-col gap-2 border-r border-[var(--border-default)] p-4">
+      <div className="flex w-[320px] flex-none flex-col gap-2 border-r border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4">
         <Input
           type="search"
           value={search}
@@ -78,7 +78,7 @@ export function ExplorePane({
         )}
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto p-4">
+      <div className="min-h-0 flex-1 overflow-y-auto px-[var(--page-gutter)] py-5">
         {selectedEntity ? (
           <EntityCard
             entityId={selectedEntity}
@@ -111,10 +111,10 @@ function EntityRow({
         onClick={onSelect}
         aria-current={selected ? 'true' : undefined}
         className={cn(
-          'w-full rounded-[7px] px-2.5 py-1.5 text-left transition-colors',
+          'w-full rounded-[var(--radius-md)] px-2.5 py-1.5 text-left transition-colors',
           'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)]',
           selected
-            ? 'bg-[color-mix(in_srgb,var(--accent-bg)_13%,transparent)]'
+            ? 'bg-[var(--list-row-bg-selected)]'
             : 'hover:bg-[var(--list-row-bg-hover)]',
         )}
       >
@@ -180,10 +180,10 @@ function EntityCard({
 
   return (
     <div className="flex flex-col gap-5">
-      <h2 className="font-mono text-[14px] font-medium text-[var(--fg-primary)]">{entityId}</h2>
+      <h2 className="font-mono text-[15px] font-semibold text-[var(--fg-primary)]">{entityId}</h2>
 
       <section aria-label="Latest values" className="flex flex-col gap-2">
-        <h3 className="type-label text-[var(--fg-muted)]">
+        <h3 className="type-section-title text-[var(--fg-primary)]">
           Latest values
         </h3>
         {predicates.length === 0 && entityQuery.isSuccess ? (
@@ -209,7 +209,7 @@ function EntityCard({
       </section>
 
       <section aria-label="Events" className="flex flex-col gap-2">
-        <h3 className="type-label text-[var(--fg-muted)]">
+        <h3 className="type-section-title text-[var(--fg-primary)]">
           Events (last 90 days)
         </h3>
         {eventsQuery.data ? (
@@ -226,7 +226,7 @@ function EntityCard({
       </section>
 
       <section aria-label="Neighborhood" className="flex flex-col gap-2">
-        <h3 className="type-label text-[var(--fg-muted)]">
+        <h3 className="type-section-title text-[var(--fg-primary)]">
           Neighborhood (co-participation, 2 hops)
         </h3>
         {traverseQuery.data ? (

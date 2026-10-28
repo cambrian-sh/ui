@@ -419,7 +419,7 @@ describe('MemoryPage — ask (ADR-0081 grounded answer)', () => {
     projectionStore.getState().hydrate(makeState());
     render(<MemoryPage />);
 
-    const input = screen.getByPlaceholderText('Ask a question about the corpus…');
+    const input = screen.getByPlaceholderText('Ask a question about your documents…');
     fireEvent.change(input, { target: { value: 'who is the little prince?' } });
     fireEvent.keyDown(input, { key: 'Enter' });
 
@@ -447,7 +447,7 @@ describe('MemoryPage — ask (ADR-0081 grounded answer)', () => {
     projectionStore.getState().hydrate(makeState());
     render(<MemoryPage />);
 
-    const input = screen.getByPlaceholderText('Ask a question about the corpus…');
+    const input = screen.getByPlaceholderText('Ask a question about your documents…');
     fireEvent.change(input, { target: { value: 'unknown thing' } });
     fireEvent.keyDown(input, { key: 'Enter' });
 
@@ -461,7 +461,7 @@ describe('MemoryPage — ask (ADR-0081 grounded answer)', () => {
     render(<MemoryPage />);
 
     expect(screen.getByText('Answering not available')).toBeInTheDocument();
-    expect(screen.getByPlaceholderText('Ask a question about the corpus…')).toBeDisabled();
+    expect(screen.getByPlaceholderText('Ask a question about your documents…')).toBeDisabled();
   });
 });
 

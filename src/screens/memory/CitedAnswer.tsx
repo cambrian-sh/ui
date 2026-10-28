@@ -12,17 +12,12 @@ import { cn } from '@/design-system/lib/utils';
  * connective text (neutral) — so an ungrounded sentence is visually obvious.
  */
 
-// Stable, theme-aware citation accent classes (cycled by citation index).
-const CITE_COLORS = [
-  'var(--status-info)',
-  'var(--status-ok)',
-  'var(--status-warn)',
-  'var(--accent-bg)',
-  'var(--status-pulse)',
-];
+// One highlight for every citation: the marker number tells sources apart, and
+// a different colour per source turned a paragraph into a rainbow.
+const CITE_COLOR = 'var(--color-accent-500)';
 
-function colorFor(marker: number): string {
-  return CITE_COLORS[(marker - 1) % CITE_COLORS.length];
+function colorFor(_marker: number): string {
+  return CITE_COLOR;
 }
 
 interface Segment {
@@ -74,18 +69,18 @@ export function CitedAnswer({ answer }: { answer: AnswerMemory }) {
     if (answer.policy_note) {
       return (
         <div className="flex flex-col gap-1.5">
-          <p className="text-sm text-[var(--status-warn)]">
+          <p className="text-[14px] text-[var(--status-warn)]">
             Access policy withheld this, so the corpus was not the limit here.
           </p>
-          <p className="text-xs text-[var(--fg-secondary)]">{answer.policy_note}</p>
-          <p className="text-xs text-[var(--fg-muted)]">
+          <p className="text-[13px] text-[var(--fg-secondary)]">{answer.policy_note}</p>
+          <p className="text-[12.5px] text-[var(--fg-muted)]">
             Use Access Policy → Explain to see which policy decides it.
           </p>
         </div>
       );
     }
     return (
-      <p className="text-sm text-[var(--fg-muted)]">
+      <p className="text-[14px] text-[var(--fg-muted)]">
         The corpus does not answer this question.{' '}
         <span className="text-[var(--fg-secondary)]">{answer.answer}</span>
       </p>
@@ -93,7 +88,7 @@ export function CitedAnswer({ answer }: { answer: AnswerMemory }) {
   }
   if (answer.status === 'clarification') {
     return (
-      <p className="text-sm text-[var(--fg-primary)]">
+      <p className="text-[14px] text-[var(--fg-primary)]">
         <span className="text-[var(--status-warn)]">Needs clarification: </span>
         {answer.answer}
       </p>
@@ -106,7 +101,7 @@ export function CitedAnswer({ answer }: { answer: AnswerMemory }) {
 
   return (
     <div className="flex flex-col gap-3">
-      <p className="text-sm leading-relaxed text-[var(--fg-primary)]">
+      <p className="text-[14.5px] leading-[1.75] text-[var(--fg-primary)]">
         {segments.map((seg, i) => {
           if (seg.markers.length === 0) {
             return (
@@ -125,24 +120,24 @@ export function CitedAnswer({ answer }: { answer: AnswerMemory }) {
               aria-expanded={isActive}
               aria-label={`Cited passage; sources ${seg.markers.join(', ')}`}
               className={cn(
-                'mr-1 rounded-sm px-0.5 text-left transition-colors',
+                'mr-1 rounded-[3px] px-0.5 text-left transition-colors',
                 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)]',
               )}
               style={{
-                backgroundColor: isActive ? color : `color-mix(in srgb, ${color} 18%, transparent)`,
-                color: isActive ? 'var(--fg-on-accent)' : 'var(--fg-primary)',
-                boxShadow: `inset 0 -2px 0 ${color}`,
+                backgroundColor: `color-mix(in srgb, ${color} ${isActive ? 26 : 10}%, transparent)`,
+                color: 'var(--fg-primary)',
+                boxShadow: `inset 0 -1.5px 0 color-mix(in srgb, ${color} ${isActive ? 100 : 55}%, transparent)`,
               }}
             >
               {seg.text}
-              <sup className="ml-0.5 font-mono text-[9px]">{seg.markers.join(',')}</sup>
+              <sup className="ml-0.5 text-[10px] font-medium" style={{ color }}>{seg.markers.join(',')}</sup>
             </button>
           );
         })}
       </p>
 
       {active !== null && activeCitations.length > 0 && (
-        <div className="flex flex-col gap-2 rounded-sm border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-2">
+        <div className="flex flex-col gap-2 rounded-[var(--radius-lg)] border border-[var(--card-border)] bg-[var(--bg-surface)] p-3">
           <div className="flex items-center justify-between">
             <span className="type-label font-medium text-[var(--fg-muted)]">
               Source{activeCitations.length === 1 ? '' : 's'} for this passage
@@ -160,7 +155,7 @@ export function CitedAnswer({ answer }: { answer: AnswerMemory }) {
         </div>
       )}
 
-      <p className="text-[10px] text-[var(--fg-muted)]">
+      <p className="text-[12px] text-[var(--fg-muted)]">
         Click a highlighted passage to see the exact source it came from. Uncited text is neutral.
       </p>
     </div>
@@ -171,24 +166,26 @@ function CitationCard({ cite }: { cite: Citation }) {
   const crumbs = cite.section_path.split('>').map((s) => s.trim()).filter(Boolean);
   const color = colorFor(cite.marker);
   return (
-    <div className="flex flex-col gap-1 rounded-sm border-l-2 bg-[var(--bg-elevated)] p-2" style={{ borderColor: color }}>
+    <div className="flex flex-col gap-1.5 rounded-[var(--radius-md)] border-l-2 bg-[var(--bg-canvas)] px-3 py-2.5" style={{ borderColor: color }}>
       <div className="flex items-baseline justify-between gap-2">
         <span className="flex items-baseline gap-1.5 min-w-0">
-          <span className="font-mono text-[10px]" style={{ color }}>
+          <span className="text-[12px] font-medium" style={{ color }}>
             [{cite.marker}]
           </span>
-          <span className="truncate text-xs font-medium text-[var(--fg-primary)]" title={cite.source}>
+          <span className="truncate text-[13px] font-medium text-[var(--fg-primary)]" title={cite.source}>
             {cite.source || 'untitled'}
           </span>
         </span>
-        <span className="shrink-0 font-mono text-[10px] text-[var(--fg-muted)]">{cite.score.toFixed(2)}</span>
+        <span className="shrink-0 text-[11.5px] tabular-nums text-[var(--fg-muted)]" title="Retrieval score">
+          {cite.score.toFixed(2)}
+        </span>
       </div>
       {crumbs.length > 0 && (
-        <nav aria-label="Section path" className="font-mono text-[10px] text-[var(--fg-muted)]">
+        <nav aria-label="Section path" className="text-[11.5px] text-[var(--fg-muted)]">
           {crumbs.join(' › ')}
         </nav>
       )}
-      <p className="border-l border-[var(--border-strong)] pl-2 text-[11px] leading-relaxed text-[var(--fg-secondary)]">
+      <p className="text-[13px] leading-relaxed text-[var(--fg-secondary)]">
         {cite.text}
       </p>
     </div>

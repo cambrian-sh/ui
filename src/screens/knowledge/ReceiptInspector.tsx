@@ -70,7 +70,7 @@ export function ReceiptInspector({ evidenceId }: { evidenceId: string }) {
               (row.classification as unknown[]).map((tag) => (
                 <span
                   key={String(tag)}
-                  className="rounded-[4px] bg-[var(--bg-inset)] px-1.5 py-0.5 font-mono text-[11px] text-[var(--fg-secondary)]"
+                  className="rounded-full border border-[var(--border-subtle)] px-2 py-0.5 text-[11px] text-[var(--fg-secondary)]"
                 >
                   {String(tag)}
                 </span>

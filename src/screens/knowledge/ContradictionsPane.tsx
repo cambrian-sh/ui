@@ -31,14 +31,14 @@ export function ContradictionsPane({ kinds }: { kinds: KnowledgeKindCount[] }) {
 
   if (kindNames.length === 0) {
     return (
-      <p className="p-5 text-[13px] text-[var(--fg-muted)]">
+      <p className="px-[var(--page-gutter)] py-6 text-[13px] text-[var(--fg-muted)]">
         No knowledge kinds are modelled yet, so there is nothing to disagree about.
       </p>
     );
   }
   if (query.isError) {
     return (
-      <div className="p-5">
+      <div className="px-[var(--page-gutter)] py-6">
         <ErrorState
           reason={`Contradictions could not be read: ${query.error?.message ?? 'the substrate lane did not answer'}.`}
           whatToDo="Do not read this as agreement. A failed read and a store with no disagreement look identical from an empty page, and only one of them is safe to act on."
@@ -49,7 +49,7 @@ export function ContradictionsPane({ kinds }: { kinds: KnowledgeKindCount[] }) {
   if (!query.data) return null;
   if (query.data.length === 0) {
     return (
-      <p className="p-5 text-[13px] text-[var(--fg-muted)]">
+      <p className="px-[var(--page-gutter)] py-6 text-[13px] text-[var(--fg-muted)]">
         No current disagreements: every entity's actors are aligned right now. Checked across{' '}
         {kindNames.join(', ')}.
       </p>
@@ -57,10 +57,10 @@ export function ContradictionsPane({ kinds }: { kinds: KnowledgeKindCount[] }) {
   }
 
   return (
-    <div className="flex flex-col gap-5 p-5">
+    <div className="mx-auto flex w-full max-w-[880px] flex-col gap-6 px-[var(--page-gutter)] py-6">
       {query.data.map(({ kind, rows }) => (
         <section key={kind} aria-label={`Contradictions in ${kind}`} className="flex flex-col gap-2">
-          <h3 className="type-label text-[var(--fg-muted)]">{kind}</h3>
+          <h3 className="type-section-title inline-block text-[var(--fg-primary)] first-letter:uppercase">{kind}</h3>
           {rows.map((row, i) => (
             <ContradictionCard key={i} row={row} />
           ))}
@@ -76,26 +76,26 @@ function ContradictionCard({ row }: { row: KnowledgeRow }) {
       ? Object.entries(row.actors as Record<string, unknown>)
       : [];
   return (
-    <div className="rounded-[8px] border border-[var(--border-default)] bg-[var(--bg-surface)] px-4 py-3">
-      <p className="font-mono text-[12.5px] text-[var(--fg-primary)]">
+    <div className="rounded-[var(--radius-lg)] border border-[var(--card-border)] bg-[var(--bg-surface)] px-4 py-3.5">
+      <p className="font-mono text-[13px] text-[var(--fg-primary)]">
         {formatCell(row.entity_id)}
         <span className="mx-1.5 text-[var(--fg-muted)]">·</span>
         <span className="text-[var(--fg-secondary)]">{formatCell(row.predicate)}</span>
       </p>
-      <div className="mt-2 grid gap-2 sm:grid-cols-2">
+      <div className="mt-3 grid gap-2 sm:grid-cols-2">
         {actors.map(([actor, value]) => (
           <div
             key={actor}
-            className="rounded-[7px] border border-[var(--border-strong)] px-3 py-2"
+            className="rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--bg-canvas)] px-3 py-2.5"
           >
             <p className="text-[11.5px] text-[var(--fg-muted)]">{actor} currently asserts</p>
-            <p className="mt-0.5 text-[13px] font-medium text-[var(--fg-primary)]">
+            <p className="mt-0.5 text-[14px] font-medium tabular-nums text-[var(--fg-primary)]">
               {formatCell(value)}
             </p>
           </div>
         ))}
       </div>
-      <p className="mt-2 text-[11.5px] italic text-[var(--fg-muted)]">
+      <p className="mt-2.5 text-[12px] text-[var(--fg-muted)]">
         Both assertions are live. The substrate returns the disagreement; resolving it is a
         human call.
       </p>

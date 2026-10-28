@@ -56,7 +56,7 @@ export function InspectTab({ events }: { events: MemoryWrittenEvent[] }) {
 
   return (
     <div className="flex flex-col gap-2">
-      <div className="rounded-sm border border-[var(--border-subtle)] bg-[var(--bg-surface)]">
+      <div className="overflow-hidden rounded-[var(--radius-lg)] border border-[var(--card-border)] bg-[var(--bg-surface)]">
         <MemoryList
           docs={docs}
           selectedId={selectedId}

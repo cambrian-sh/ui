@@ -22,12 +22,12 @@ export function OverviewStrip({ overview }: { overview: SubstrateOverview }) {
   return (
     <section
       aria-label="Substrate holdings"
-      className="flex flex-none flex-col gap-2 border-b border-[var(--border-default)] px-5 py-3"
+      className="flex flex-none flex-col gap-2.5"
     >
-      <div className="flex flex-wrap items-baseline gap-x-5 gap-y-1">
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-1.5">
         {stats.map(([label, n]) => (
           <span key={label} className="text-[12.5px] text-[var(--fg-muted)]">
-            <span className="mr-1 font-medium tabular-nums text-[var(--fg-primary)]">
+            <span className="mr-1 text-[14px] font-semibold tabular-nums text-[var(--fg-primary)]">
               {n.toLocaleString()}
             </span>
             {label}
@@ -47,7 +47,7 @@ export function OverviewStrip({ overview }: { overview: SubstrateOverview }) {
               {s.classification.map((tag) => (
                 <span
                   key={tag}
-                  className="ml-1 rounded-[4px] bg-[var(--bg-inset)] px-1.5 py-0.5 font-mono text-[10.5px] text-[var(--fg-muted)]"
+                  className="ml-1 rounded-full border border-[var(--border-subtle)] px-2 py-0.5 text-[11px] text-[var(--fg-secondary)]"
                 >
                   {tag}
                 </span>
@@ -73,9 +73,14 @@ export function OverviewStrip({ overview }: { overview: SubstrateOverview }) {
 function ContradictionBadge({ count }: { count: number }) {
   return (
     <span
-      className="rounded-[5px] border border-[var(--border-strong)] px-1.5 py-0.5 text-[11.5px] text-[var(--fg-secondary)]"
+      className={
+        count === 0
+          ? 'rounded-full border border-[var(--border-subtle)] px-2 py-0.5 text-[11.5px] text-[var(--fg-muted)]'
+          : 'inline-flex items-center gap-1.5 rounded-full border border-[color-mix(in_srgb,var(--status-warn)_40%,transparent)] px-2 py-0.5 text-[11.5px] font-medium text-[var(--fg-primary)]'
+      }
       role="status"
     >
+      {count > 0 && <span aria-hidden="true" className="size-1.5 rounded-full bg-[var(--status-warn)]" />}
       {count === 0 ? 'no contradictions' : `${count} contradiction${count === 1 ? '' : 's'}`}
     </span>
   );
@@ -90,7 +95,7 @@ function OutboxBadge({ pending }: { pending: number }) {
   if (pending === 0) return null;
   return (
     <span
-      className="rounded-[5px] border border-[var(--border-strong)] px-1.5 py-0.5 text-[11.5px] text-[var(--fg-secondary)]"
+      className="rounded-full border border-[var(--border-subtle)] px-2 py-0.5 text-[11.5px] text-[var(--fg-secondary)]"
       role="status"
     >
       {pending.toLocaleString()} materializing
