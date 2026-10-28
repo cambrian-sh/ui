@@ -137,7 +137,7 @@ describe('TaskDetail mutation errors', () => {
     );
 
     expect(screen.getByText('Sample session')).toBeInTheDocument();
-    expect(screen.getByText('$0.00')).toBeInTheDocument();
+    expect(screen.getByText('Tokens').nextElementSibling).toHaveTextContent('0');
     expect(screen.queryByText('Agent mix')).not.toBeInTheDocument();
   });
 

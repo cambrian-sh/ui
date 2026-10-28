@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Button } from '@/design-system/components';
-import { ChatMessage } from '@/design-system/components';
+import {
+  Badge,
+  Button,
+  Callout,
+  Card,
+  ChatMessage,
+  PageHeader,
+} from '@/design-system/components';
 import { ErrorState } from '@/design-system/components/cambrian/error-state';
 import { cn } from '@/design-system/lib/utils';
 import { ipc } from '@/ipc';
@@ -92,6 +98,7 @@ export function ChatConsole() {
   // Seeded from what the screen remembers, so returning from another tab does
   // not wipe the proposal being weighed or the run just approved.
   const remembered = rememberedWork(rememberedConversation());
+  const [goal, setGoal] = useState(remembered.goal);
   const [classified, setClassified] = useState<ClassifiedInput | null>(remembered.classified);
   const [proposal, setProposal] = useState<PlanProposal | null>(remembered.proposal);
   const [questions, setQuestions] = useState<InterviewQuestion[]>(remembered.questions);
@@ -165,6 +172,7 @@ export function ChatConsole() {
     // without swapping it would leave a proposal built from one conversation's
     // sentence sitting above another's transcript, one click from approval.
     const w = rememberedWork(id);
+    setGoal(w.goal);
     setClassified(w.classified);
     setProposal(w.proposal);
     setQuestions(w.questions);
@@ -195,6 +203,7 @@ export function ChatConsole() {
       // A new conversation clears the shaping state: the classification and
       // proposal belonged to the previous sentence, and leaving them up would
       // invite approving a plan built from something else entirely.
+      setGoal('');
       setClassified(null);
       setProposal(null);
       setQuestions([]);
@@ -252,8 +261,8 @@ export function ChatConsole() {
   }, [activeId]);
 
   useEffect(() => {
-    rememberWork(activeId, { classified, proposal, questions, answers, accessNote, started });
-  }, [activeId, classified, proposal, questions, answers, accessNote, started]);
+    rememberWork(activeId, { goal, classified, proposal, questions, answers, accessNote, started });
+  }, [activeId, goal, classified, proposal, questions, answers, accessNote, started]);
 
   // Keep the newest turn in view. Guarded — jsdom does not implement scrollTo.
   useEffect(() => {
@@ -346,6 +355,7 @@ export function ChatConsole() {
       const body = text.trim();
       if (!body) return;
       setText('');
+      setGoal(body);
 
       // Always classify first: the decision is shown before anything acts on it.
       const c = await classify.mutate(body);
@@ -372,6 +382,32 @@ export function ChatConsole() {
     [state?.role],
   );
 
+  // Overruling the router acts on the sentence, not just on the label: "Just
+  // answer me" answers it and "Make it a task" plans it, so the click does what
+  // it says rather than relabelling a decision that has already been taken.
+  const overrule = () => {
+    if (!classified) return;
+    const next: InputClassification =
+      classified.classification === 'plan' ? 'chat' : 'plan';
+    setClassified({ ...classified, classification: next, why: 'You overruled the router.' });
+    setProposal(null);
+    setQuestions([]);
+    if (!goal) return;
+    if (next === 'chat') void sendTurn(goal);
+    else void propose.mutate(goal);
+  };
+
+  // The sentence that was read as work, shown as the operator's turn. A turn
+  // sent on the conversation lane is already in the transcript; a sentence that
+  // went to the planner is not, and without it the proposal answers nothing.
+  const showGoal =
+    Boolean(goal) &&
+    classified !== null &&
+    classified.classification !== 'chat' &&
+    !messages.some((m) => m.role === 'user' && m.content === goal);
+
+  const isEmpty = messages.length === 0 && !classified && !started && !progress;
+
   return (
     <div className="flex h-full min-h-0">
       <ConversationRail
@@ -386,116 +422,115 @@ export function ChatConsole() {
       />
 
       <div className="flex min-h-0 flex-1 flex-col">
-        <header className="flex-none px-[26px] pb-3 pt-4 shadow-[inset_0_-1px_0_var(--border-subtle)]">
-          <h1 className="type-page-title">
-            {activeTitle}
-          </h1>
-          {/* The promise the screen makes, stated where it is made. */}
-          <p className="mt-1 font-mono text-[11px] text-[var(--fg-muted)]">
-            {started?.accepted ? (
-              <span className="text-[var(--status-live)]">
-                running · session {started.session_id || 'started'}
-              </span>
+        {/* The promise the screen makes, stated where it is made. */}
+        <PageHeader
+          divider
+          className="pb-3 pt-4"
+          title={activeTitle}
+          meta={
+            started?.accepted ? (
+              <Badge variant="live" dot>
+                Running
+              </Badge>
             ) : (
-              'nothing committed yet · no session, no plan, no spend'
-            )}
-          </p>
-        </header>
+              <Badge>Nothing committed yet</Badge>
+            )
+          }
+          description={
+            started?.accepted ? (
+              <>
+                Approved and running as task{' '}
+                <span className="font-mono text-[12px]">{started.session_id || 'started'}</span>.
+              </>
+            ) : (
+              'No task, no plan and no spend until you approve one.'
+            )
+          }
+        />
 
         {/* The transcript column. `overflow-y: auto` is not optional — it is a
             chat log, and a column that grows the page instead of scrolling puts
             the composer below the fold exactly when a conversation gets long. */}
-        <div ref={scrollRef} className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-[26px] py-[22px]">
-          {!hasChat && (
-            <p className="text-[12.5px] leading-[1.55] text-[var(--fg-muted)]">
-              This kernel does not advertise the <code>chat</code> capability, so the
-              conversation lane is not wired. Classification and plan proposal are separate
-              and still work.
-            </p>
-          )}
+        <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto">
+          <div className={cn(CHAT_COLUMN, 'flex min-h-full flex-col gap-5 py-6')}>
+            {!hasChat && (
+              <Callout tone="warn">
+                This kernel does not advertise the <code>chat</code> capability, so the
+                conversation lane is not wired. Classification and plan proposal are separate
+                and still work.
+              </Callout>
+            )}
 
-          {messages.map((m, i) => (
-            <ChatMessage
-              key={m.id || `${m.seq}-${i}`}
-              author={m.role === 'user' ? 'operator' : 'runtime'}
-              text={m.content}
-              timestamp={m.created_at}
-            />
-          ))}
+            {isEmpty && hasChat && <ChatIntro />}
 
-          {progress && <ProgressLine progress={progress} />}
+            {messages.map((m, i) => (
+              <ChatMessage
+                key={m.id || `${m.seq}-${i}`}
+                author={m.role === 'user' ? 'operator' : 'runtime'}
+                text={m.content}
+                timestamp={m.created_at}
+              />
+            ))}
 
-          {classified && (
-            <ClassificationBanner
-              classified={classified}
-              onOverrule={() => {
-                const next: InputClassification =
-                  classified.classification === 'plan' ? 'chat' : 'plan';
-                setClassified({
-                  ...classified,
-                  classification: next,
-                  why: 'You overruled the router.',
-                });
-                setProposal(null);
-                setQuestions([]);
-              }}
-            />
-          )}
+            {showGoal && (
+              <ChatMessage author="operator" text={goal} timestamp={new Date().toISOString()} />
+            )}
 
-          {questions.length > 0 && (
-            <InterviewCard
-              questions={questions}
-              answers={answers}
-              onAnswer={(i, v) => setAnswers((a) => a.map((x, j) => (j === i ? v : x)))}
-              busy={propose.isLoading}
-              onSubmit={() => void propose.mutate(text || activeTitle, answers)}
-            />
-          )}
+            {progress && <ProgressLine progress={progress} />}
 
-          {/* Volunteered BEFORE planning, not discovered after the answer already
-              quotes a customer record. */}
-          {accessNote && (
-            <p
-              className="max-w-[720px] rounded-md p-2.5 text-[12px] leading-[1.55] tint-wash tint-ring"
-              style={{ '--tint': 'var(--status-warn)' } as React.CSSProperties}
-            >
-              <span className="text-[var(--status-warn)]">One thing you should know: </span>
-              <span className="text-[var(--fg-secondary)]">{accessNote}</span>
-            </p>
-          )}
+            {classified && <ClassificationBanner classified={classified} onOverrule={overrule} />}
 
-          {started && (
-            <SubmitOutcome
-              result={started}
-              run={runState}
-              onOpenSessions={() =>
-                void navigate({ to: '/tasks', search: { focus: undefined } })
-              }
-            />
-          )}
+            {questions.length > 0 && (
+              <InterviewCard
+                questions={questions}
+                answers={answers}
+                onAnswer={(i, v) => setAnswers((a) => a.map((x, j) => (j === i ? v : x)))}
+                busy={propose.isLoading}
+                onSubmit={() => void propose.mutate(goal || activeTitle, answers)}
+              />
+            )}
 
-          {proposal && (
-            <ProposalCard
-              proposal={proposal}
-              busy={run.isLoading}
-              onRun={() => void run.mutate(proposal.steps, 'approved from chat')}
-              onOpenBuilder={() => {
-                setPlanDraft({ title: activeTitle, steps: proposal.steps });
-                void navigate({ to: '/plan-builder' });
-              }}
-              onDiscard={() => {
-                setProposal(null);
-                setQuestions([]);
-              }}
-            />
-          )}
+            {/* Volunteered BEFORE planning, not discovered after the answer already
+                quotes a customer record. */}
+            {accessNote && (
+              <Callout tone="warn" title="One thing you should know:">
+                <span className="text-[var(--fg-secondary)]">{accessNote}</span>
+              </Callout>
+            )}
 
-          {(unavailable || laneError) && (
-            <ErrorState
-              reason={(classify.error ?? propose.error ?? laneError) as string}
-              whatToDo="Nothing was sent. If the kernel does not serve the classification or propose-only path, those affordances stay dark and the conversation lane still works."
-            />
-          )}
+            {started && (
+              <SubmitOutcome
+                result={started}
+                run={runState}
+                onOpenSessions={() =>
+                  void navigate({ to: '/tasks', search: { focus: undefined } })
+                }
+              />
+            )}
+
+            {proposal && (
+              <ProposalCard
+                proposal={proposal}
+                busy={run.isLoading}
+                onRun={() => void run.mutate(proposal.steps, 'approved from chat')}
+                onOpenBuilder={() => {
+                  setPlanDraft({ title: activeTitle, steps: proposal.steps });
+                  void navigate({ to: '/plan-builder' });
+                }}
+                onDiscard={() => {
+                  setProposal(null);
+                  setQuestions([]);
+                }}
+              />
+            )}
+
+            {(unavailable || laneError) && (
+              <ErrorState
+                reason={(classify.error ?? propose.error ?? laneError) as string}
+                whatToDo="Nothing was sent. If the kernel does not serve the classification or propose-only path, those affordances stay dark and the conversation lane still works."
+              />
+            )}
+          </div>
         </div>
 
         <Composer
@@ -513,17 +548,24 @@ export function ChatConsole() {
   );
 }
 
-/**
- * A plan's steps as they run, inline in the conversation that started it.
- *
- * The card used to say progress lives in Sessions. That is true of the *full*
- * trace and stays one click away, but sending someone to another screen to learn
- * whether the thing they just approved is moving is the wrong default: the
- * question is asked here, so the answer belongs here.
- *
- * Every field comes from the feed fold — nothing polls, and nothing is invented
- * when the feed has not spoken yet.
- */
+/** The transcript and the composer share one centred reading column. */
+const CHAT_COLUMN = 'mx-auto w-full max-w-[780px] px-[var(--page-gutter)]';
+
+/** What an empty conversation says: what happens to a sentence typed here. */
+function ChatIntro() {
+  return (
+    <div className="my-auto flex flex-col items-center gap-2 py-10 text-center">
+      <h2 className="text-[18px] font-semibold tracking-[-0.01em] text-[var(--fg-primary)]">
+        What should Cambrian do?
+      </h2>
+      <p className="max-w-[46ch] text-[13.5px] leading-[1.6] text-[var(--fg-secondary)]">
+        Ask a question and it answers. Describe a job and it proposes a plan first — nothing
+        runs until you approve it.
+      </p>
+    </div>
+  );
+}
+
 /** Whether a finished plan ended badly, by the only signals the feed gives us. */
 function planFailed(plan: PlanInFlight): boolean {
   return /fail|error|abort|cancel/i.test(plan.status) || plan.steps?.some((st) => st.status === 'failed') === true;
@@ -564,7 +606,7 @@ function PlanLadder({
   // guarantees by keeping the outcome instead of dropping it.
   if (!run) {
     return (
-      <p className="text-[11.5px] leading-[1.5] text-[var(--fg-secondary)]">
+      <p className="text-[12.5px] leading-[1.5] text-[var(--fg-secondary)]">
         Accepted
         {result.execution_order.length > 0 ? ` · ${result.execution_order.length} steps` : ''}.
         Waiting for the first step to report.
@@ -578,57 +620,96 @@ function PlanLadder({
   const failed = steps.some((st) => st.status === 'failed');
 
   return (
-    <div className="flex flex-col gap-1.5" role="status" aria-live="polite">
-      <p className="font-mono text-[10.5px] text-[var(--fg-muted)]">
-        {plan.status}
-        {steps.length > 0 && ` · ${done} of ${steps.length} steps`}
-        {!finished && plan.active_agent && ` · ${plan.active_agent}`}
+    <div className="flex flex-col gap-2" role="status" aria-live="polite">
+      <p className="text-[12px] text-[var(--fg-muted)]">
+        {/* The headline already says "Running"; repeat the status only when it
+            says something else, such as paused. */}
+        {plan.status.toLowerCase() !== headline(run).toLowerCase() && (
+          <span className="inline-block first-letter:uppercase">{plan.status} · </span>
+        )}
+        {steps.length > 0 && `${done} of ${steps.length} steps done`}
+        {!finished && plan.active_agent && (
+          <>
+            {' · '}
+            <span className="font-mono text-[11px]">{plan.active_agent}</span>
+          </>
+        )}
       </p>
 
-      {steps.map((st) => {
-        // Only the running step is emphasised. Colouring every row would make
-        // the one that is actually moving impossible to find at a glance.
-        const tone =
-          st.status === 'running' && !finished
-            ? 'var(--status-live)'
-            : st.status === 'failed'
-              ? 'var(--status-err)'
-              : st.status === 'done'
-                ? 'var(--fg-secondary)'
-                : 'var(--fg-muted)';
-        return (
-          <div key={st.index} className="flex items-baseline gap-2 text-[12px] leading-[1.5]">
-            <span className="font-mono text-[10.5px] text-[var(--fg-muted)]">
-              {String(st.index + 1).padStart(2, '0')}
-            </span>
-            {st.status === 'running' && !finished && (
-              <span
-                aria-hidden
-                className="h-1.5 w-1.5 flex-none animate-pulse self-center rounded-full bg-[var(--status-live)]"
-              />
-            )}
-            <span style={{ color: tone }}>{st.label}</span>
-            {st.agent && (
-              <span className="font-mono text-[10.5px] text-[var(--fg-muted)]">{st.agent}</span>
-            )}
-          </div>
-        );
-      })}
+      {steps.length > 0 && (
+        <ol className="flex flex-col gap-1">
+          {steps.map((st) => {
+            // Only the running step is emphasised. Colouring every row would make
+            // the one that is actually moving impossible to find at a glance.
+            const running = st.status === 'running' && !finished;
+            const tone = running
+              ? 'var(--status-live)'
+              : st.status === 'failed'
+                ? 'var(--status-err)'
+                : st.status === 'done'
+                  ? 'var(--fg-secondary)'
+                  : 'var(--fg-muted)';
+            return (
+              <li key={st.index} className="flex items-center gap-2.5 text-[13px] leading-[1.5]">
+                <StepMark status={st.status} running={running} index={st.index} />
+                <span className={cn(running && 'font-medium')} style={{ color: tone }}>
+                  {st.label}
+                </span>
+                {st.agent && (
+                  <span className="font-mono text-[11px] text-[var(--fg-muted)]">{st.agent}</span>
+                )}
+              </li>
+            );
+          })}
+        </ol>
+      )}
 
       {/* A finished plan with no DAG is not a broken render — some emitters send
           no step structure at all. Say what is known rather than nothing. */}
       {finished && steps.length === 0 && (
-        <p className="text-[11.5px] leading-[1.5] text-[var(--fg-secondary)]">
-          The run ended. It reported no step detail — the full trace is in Sessions.
+        <p className="text-[12.5px] leading-[1.5] text-[var(--fg-secondary)]">
+          The run ended. It reported no step detail — the full trace is in Tasks.
         </p>
       )}
 
       {failed && (
-        <p className="text-[11.5px] leading-[1.5] text-[var(--status-err)]">
+        <p className="text-[12.5px] leading-[1.5] text-[var(--status-err)]">
           A step failed. The full trace, including the agent output, is in Tasks.
         </p>
       )}
     </div>
+  );
+}
+
+/** A step's state as a small mark: a tick, a live dot, a cross, or its number. */
+function StepMark({ status, running, index }: { status: string; running: boolean; index: number }) {
+  const base =
+    'flex size-[18px] flex-none items-center justify-center rounded-full text-[10.5px] font-medium tabular-nums';
+  if (status === 'done') {
+    return (
+      <span aria-label="done" className={cn(base, 'bg-[color-mix(in_srgb,var(--status-live)_16%,transparent)] text-[var(--status-live)]')}>
+        ✓
+      </span>
+    );
+  }
+  if (status === 'failed') {
+    return (
+      <span aria-label="failed" className={cn(base, 'bg-[color-mix(in_srgb,var(--status-err)_16%,transparent)] text-[var(--status-err)]')}>
+        ✕
+      </span>
+    );
+  }
+  if (running) {
+    return (
+      <span aria-label="running" className={cn(base, 'border border-[var(--status-live)]')}>
+        <span className="size-1.5 animate-pulse rounded-full bg-[var(--status-live)]" />
+      </span>
+    );
+  }
+  return (
+    <span className={cn(base, 'border border-[var(--border-subtle)] text-[var(--fg-muted)]')}>
+      {index + 1}
+    </span>
   );
 }
 
@@ -710,8 +791,13 @@ function Composer({
   onSubmit: (skipProposal: boolean) => void;
 }) {
   return (
-    <div className="flex flex-none flex-col gap-2 px-[26px] pb-3.5 pt-3 shadow-[inset_0_1px_0_var(--border-subtle)]">
-      <div className="flex max-w-[860px] items-end gap-2">
+    <div className={cn(CHAT_COLUMN, 'flex-none pb-4 pt-2')}>
+      <div
+        className={cn(
+          'flex flex-col rounded-[var(--radius-xl)] border border-[var(--input-border)] bg-[var(--input-bg)] shadow-[0_1px_2px_rgb(0_0_0/0.05)] transition-colors',
+          'focus-within:border-[var(--input-border-focus)] focus-within:ring-[3px] focus-within:ring-[color-mix(in_srgb,var(--input-border-focus)_22%,transparent)]',
+        )}
+      >
         <textarea
           value={text}
           onChange={(e) => onText(e.target.value)}
@@ -726,42 +812,48 @@ function Composer({
           rows={2}
           placeholder="Go through the refund logs and tell me if anything looks like the same customer refunded twice"
           aria-label="What do you want"
-          className="min-h-[44px] w-full resize-y rounded-md border border-[var(--input-border)] bg-[var(--input-bg)] px-3 py-2.5 text-[13.5px] leading-[1.5] text-[var(--input-fg)]"
+          className="max-h-[40vh] min-h-[56px] w-full resize-none bg-transparent px-3.5 pb-1 pt-3 text-[14px] leading-[1.55] text-[var(--input-fg)] placeholder:text-[var(--fg-muted)] focus:outline-none"
         />
-        <Button
-          className="h-11 shrink-0 px-4"
-          disabled={!text.trim() || busy}
-          onClick={() => onSubmit(false)}
-        >
-          {busy ? 'Working…' : 'Send'}
-        </Button>
+
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 px-3 pb-2.5 pt-1">
+          <CheckAffordance
+            label="Answer from memory only"
+            checked={memoryOnly}
+            onChange={onMemoryOnly}
+          />
+          <CheckAffordance
+            label="Always propose before running"
+            checked={alwaysPropose}
+            onChange={onAlwaysPropose}
+          />
+          <button
+            type="button"
+            disabled
+            title="Not wired on this build"
+            className="text-[12px] text-[var(--fg-muted)] opacity-60"
+          >
+            Attach a file
+          </button>
+          <Button
+            size="sm"
+            className="ml-auto"
+            disabled={!text.trim() || busy}
+            onClick={() => onSubmit(false)}
+          >
+            {busy ? 'Working…' : 'Send'}
+          </Button>
+        </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-        <CheckAffordance
-          label="Answer from memory only"
-          checked={memoryOnly}
-          onChange={onMemoryOnly}
-        />
-        <CheckAffordance
-          label="Always propose before running"
-          checked={alwaysPropose}
-          onChange={onAlwaysPropose}
-        />
-        <button
-          type="button"
-          disabled
-          title="Not wired on this build"
-          className="text-[11.5px] text-[var(--fg-muted)] underline underline-offset-4 opacity-50"
-        >
-          Attach a file
-        </button>
-        <span className="ml-auto font-mono text-[10.5px] text-[var(--fg-muted)]">
-          ⏎ send · ⇧⏎ newline · ⌘⏎ run without proposing
-        </span>
-      </div>
+      <p className="mt-1.5 text-center text-[11px] text-[var(--fg-muted)]">
+        <Kbd>⏎</Kbd> send · <Kbd>⇧⏎</Kbd> new line · <Kbd>⌘⏎</Kbd> run without proposing
+      </p>
     </div>
   );
+}
+
+function Kbd({ children }: { children: React.ReactNode }) {
+  return <kbd className="font-sans text-[var(--fg-secondary)]">{children}</kbd>;
 }
 
 function CheckAffordance({
@@ -774,12 +866,12 @@ function CheckAffordance({
   onChange: (v: boolean) => void;
 }) {
   return (
-    <label className="flex cursor-pointer items-center gap-1.5 text-[11.5px] text-[var(--fg-secondary)]">
+    <label className="flex cursor-pointer items-center gap-1.5 text-[12px] text-[var(--fg-secondary)] hover:text-[var(--fg-primary)]">
       <input
         type="checkbox"
         checked={checked}
         onChange={(e) => onChange(e.target.checked)}
-        className="size-3.5 accent-[var(--accent-bg)]"
+        className="size-3.5 accent-[var(--button-primary-bg)]"
       />
       {label}
     </label>
@@ -803,30 +895,21 @@ function ClassificationBanner({
   const c = CLASSIFICATION[classified.classification];
   return (
     <div
-      className="flex max-w-[820px] flex-wrap items-center gap-3 rounded-[var(--radius-lg)] p-3 tint-wash tint-ring"
-      style={{ '--tint': c.tone } as React.CSSProperties}
+      className="flex flex-wrap items-center gap-x-2.5 gap-y-1 border-l-2 py-0.5 pl-3"
+      style={{ borderColor: c.tone }}
     >
-      <span aria-hidden="true" style={{ color: c.tone }}>◎</span>
-      <span className="text-[13px] font-medium" style={{ color: c.tone }}>
+      <span className="inline-block text-[13px] font-medium first-letter:uppercase" style={{ color: c.tone }}>
         {c.label}
       </span>
-      <span
-        className="rounded-sm px-1.5 py-0.5 font-mono text-[10px]"
-        style={{
-          color: c.tone,
-          boxShadow: `inset 0 0 0 1px color-mix(in srgb, ${c.tone} 34%, transparent)`,
-        }}
-      >
-        {classified.classification}
-      </span>
-      <span className="min-w-0 flex-1 text-[12px] text-[var(--fg-secondary)]">
+      <Badge className="font-mono">{classified.classification}</Badge>
+      <span className="min-w-0 flex-1 text-[12.5px] text-[var(--fg-secondary)]">
         {classified.why}
       </span>
       {c.overrule && (
         <button
           type="button"
           onClick={onOverrule}
-          className="text-[12px] text-[var(--fg-muted)] underline underline-offset-4 hover:text-[var(--fg-primary)]"
+          className="text-[12.5px] font-medium text-[var(--color-accent-500)] hover:underline"
         >
           {c.overrule}
         </button>
@@ -860,68 +943,70 @@ function ProposalCard({
     .filter((i) => i >= 0);
 
   return (
-    <div className="flex max-w-[820px] flex-col gap-3 rounded-[var(--radius-lg)] bg-[var(--bg-surface)] p-3.5 shadow-[var(--elevation-1)]">
-      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-        <span className="text-[13px] font-medium">A plan, proposed</span>
-        <span className="font-mono text-[11px] text-[var(--fg-muted)]">
-          {proposal.steps.length} steps · {proposal.max_parallel} can run at once
-        </span>
-        <span className="font-mono text-[11px] text-[var(--fg-muted)]">
-          est. {formatTokens(proposal.estimated_tokens)} tokens · ~
+    <Card className="flex flex-col">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 px-4 pb-2 pt-3.5">
+        <h3 className="type-section-title text-[var(--fg-primary)]">Proposed plan</h3>
+        <span className="text-[12px] tabular-nums text-[var(--fg-muted)]">
+          {proposal.steps.length} steps · {proposal.max_parallel} at once · about{' '}
+          {formatTokens(proposal.estimated_tokens)} tokens · ~
           {formatDuration(proposal.estimated_wall_ms)}
         </span>
       </div>
 
-      <ol className="flex flex-col">
+      <ol className="flex flex-col px-4">
         {proposal.steps.map((s, i) => (
           <li
             key={i}
-            className="flex items-center gap-2.5 py-1.5 shadow-[inset_0_-1px_0_color-mix(in_srgb,var(--fg-primary)_6%,transparent)]"
+            className="flex items-center gap-3 border-t border-[var(--border-subtle)] py-2"
           >
-            <span className="w-[22px] shrink-0 font-mono text-[10.5px] text-[var(--fg-muted)]">
-              {String(i + 1).padStart(2, '0')}
+            <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-[var(--bg-elevated)] text-[11px] font-medium tabular-nums text-[var(--fg-secondary)]">
+              {i + 1}
             </span>
-            <span className="min-w-0 flex-1 text-[12.5px] leading-[1.4]">{s.query}</span>
+            <span className="min-w-0 flex-1 text-[13.5px] leading-[1.45]">{s.query}</span>
             {s.checkpoint_after ? (
-              <span className="shrink-0 font-mono text-[10.5px] text-[var(--status-live)]">
-                verified
-              </span>
+              <Badge variant="live" className="shrink-0">
+                Verified
+              </Badge>
             ) : (
               s.required_capabilities[0] && (
-                <span className="shrink-0 font-mono text-[10.5px] text-[var(--color-accent-400)]">
+                <span className="shrink-0 font-mono text-[11px] text-[var(--fg-muted)]">
                   {s.required_capabilities[0]}
                 </span>
               )
             )}
             {/* Who would take it. A pinned agent is named; otherwise dispatch
                 decides and saying so is more honest than naming a guess. */}
-            <span className="w-[92px] shrink-0 truncate text-right font-mono text-[10.5px] text-[var(--fg-muted)]">
-              {s.preferred_agent || 'dispatch'}
+            <span className="w-[110px] shrink-0 truncate text-right text-[12px] text-[var(--fg-muted)]">
+              {s.preferred_agent ? (
+                <span className="font-mono text-[11px]">{s.preferred_agent}</span>
+              ) : (
+                'any agent'
+              )}
             </span>
           </li>
         ))}
       </ol>
 
-      <div className="flex flex-wrap items-center gap-2">
-        <Button onClick={onRun} disabled={busy}>
-          {busy ? 'Starting…' : 'Run it'}
-        </Button>
-        <Button variant="secondary" onClick={onOpenBuilder}>
-          Open in the builder
-        </Button>
-        <Button variant="ghost" onClick={onDiscard}>
-          Plan it differently
-        </Button>
-      </div>
-
-      <p className="text-[11.5px] leading-[1.5] text-[var(--fg-muted)]">
+      <p className="border-t border-[var(--border-subtle)] px-4 py-2.5 text-[12px] leading-[1.5] text-[var(--fg-muted)]">
         {verifiedIndexes.length === 0
           ? 'No step is verified — nothing will be checked before the next one uses it.'
           : `Step ${verifiedIndexes
-              .map((i) => String(i + 1).padStart(2, '0'))
+              .map((i) => String(i + 1))
               .join(', ')} is verified, so a wrong answer gets caught before you see it.`}
       </p>
-    </div>
+
+      <div className="flex flex-wrap items-center gap-2 border-t border-[var(--border-subtle)] bg-[var(--bg-canvas)] px-4 py-3">
+        <Button size="sm" onClick={onRun} disabled={busy}>
+          {busy ? 'Starting…' : 'Run it'}
+        </Button>
+        <Button size="sm" variant="secondary" onClick={onOpenBuilder}>
+          Open in the builder
+        </Button>
+        <Button size="sm" variant="ghost" onClick={onDiscard}>
+          Plan it differently
+        </Button>
+      </div>
+    </Card>
   );
 }
 
@@ -929,7 +1014,7 @@ function ProposalCard({
  * What `Run it` did.
  *
  * A proposal that vanishes with no trace is indistinguishable from a click that
- * did nothing — and the session it started is real, so the screen has to say so
+ * did nothing — and the task it started is real, so the screen has to say so
  * and offer somewhere to watch it.
  */
 function SubmitOutcome({
@@ -946,33 +1031,33 @@ function SubmitOutcome({
 }) {
   const fatal = result.issues.filter((i) => i.fatal);
   const advisory = result.issues.filter((i) => !i.fatal);
+  const tone = !result.accepted
+    ? 'err'
+    : run?.finished
+      ? planFailed(run.plan)
+        ? 'err'
+        : undefined
+      : 'live';
 
   return (
-    <div
-      className="flex max-w-[820px] flex-col gap-2 rounded-[var(--radius-lg)] p-3 tint-wash tint-ring"
-      style={
-        {
-          '--tint': result.accepted ? 'var(--status-live)' : 'var(--status-err)',
-        } as React.CSSProperties
-      }
-    >
+    <Card tone={tone} className="flex flex-col gap-2.5 px-4 py-3.5">
       <div className="flex flex-wrap items-center gap-2">
         <span
-          className="text-[13px] font-medium"
+          className="text-[14px] font-semibold"
           style={{ color: result.accepted ? headlineTone(run) : 'var(--status-err)' }}
         >
           {result.accepted ? headline(run) : 'Not started'}
         </span>
         {result.accepted && result.session_id && (
-          <span className="font-mono text-[10.5px] text-[var(--fg-muted)]">
-            session {result.session_id}
+          <span className="font-mono text-[11.5px] text-[var(--fg-muted)]">
+            task {result.session_id}
           </span>
         )}
         {result.accepted && (
           <button
             type="button"
             onClick={onOpenSessions}
-            className="ml-auto text-[12px] text-[var(--fg-muted)] underline underline-offset-4 hover:text-[var(--fg-primary)]"
+            className="ml-auto text-[12.5px] font-medium text-[var(--color-accent-500)] hover:underline"
           >
             Watch it in Tasks →
           </button>
@@ -985,18 +1070,18 @@ function SubmitOutcome({
           would either alarm about something harmless or bury something that
           stopped the plan. */}
       {fatal.map((i, n) => (
-        <p key={`f${n}`} className="text-[11.5px] leading-[1.5] text-[var(--status-err)]">
-          {i.step_index >= 0 ? `Step ${String(i.step_index + 1).padStart(2, '0')}: ` : ''}
+        <p key={`f${n}`} className="text-[12.5px] leading-[1.5] text-[var(--status-err)]">
+          {i.step_index >= 0 ? `Step ${i.step_index + 1}: ` : ''}
           {i.message}
         </p>
       ))}
       {advisory.map((i, n) => (
-        <p key={`a${n}`} className="text-[11.5px] leading-[1.5] text-[var(--fg-muted)]">
-          {i.step_index >= 0 ? `Step ${String(i.step_index + 1).padStart(2, '0')}: ` : ''}
+        <p key={`a${n}`} className="text-[12.5px] leading-[1.5] text-[var(--fg-muted)]">
+          {i.step_index >= 0 ? `Step ${i.step_index + 1}: ` : ''}
           {i.message}
         </p>
       ))}
-    </div>
+    </Card>
   );
 }
 
@@ -1025,59 +1110,59 @@ export function InterviewCard({
   const complete = questions.every((_, i) => answers[i]);
 
   return (
-    <section className="flex max-w-[720px] flex-col gap-3.5 rounded-[var(--radius-lg)] bg-[var(--bg-surface)] p-3.5 shadow-[var(--elevation-1)]">
+    <Card className="flex flex-col gap-4 px-4 py-4">
       {/* The lead-in states WHY it is asking, so the interview reads as care
           rather than as an obstacle between the operator and their answer. */}
-      <p className="text-[12.5px] leading-[1.5] text-[var(--fg-secondary)]">
+      <p className="text-[13.5px] leading-[1.5] text-[var(--fg-secondary)]">
         {questions.length === 1 ? 'One thing' : `${numberWord(questions.length)} things`} before I
         plan this, because getting {questions.length === 1 ? 'it' : 'them'} wrong wastes the run:
       </p>
 
       {questions.map((q, i) => (
-        <div key={q.question} className="flex flex-col gap-1.5">
+        <div key={q.question} className="flex flex-col gap-2">
           <div className="flex items-baseline gap-2">
-            <span className="font-mono text-[10px] text-[var(--fg-muted)]">{q.kind}</span>
-            <span className="text-[13px] leading-[1.45]">{q.question}</span>
+            <span className="inline-block shrink-0 text-[11.5px] font-medium text-[var(--fg-muted)] first-letter:uppercase">
+              {q.kind}
+            </span>
+            <span className="text-[14px] font-medium leading-[1.45]">{q.question}</span>
           </div>
 
           {/* A judgement question says why the data does not decide it — that
               sentence is the reason the operator is being asked at all. */}
           {q.kind === 'judgement' && q.why_it_changes_the_answer && (
-            <p className="text-[11.5px] leading-[1.5] text-[var(--fg-muted)]">
+            <p className="text-[12.5px] leading-[1.5] text-[var(--fg-muted)]">
               {q.why_it_changes_the_answer}
             </p>
           )}
 
-          <div className="flex flex-wrap gap-1.5">
-            {q.options.map((o) => (
-              <button
-                key={o.label}
-                type="button"
-                onClick={() => onAnswer(i, o.label)}
-                aria-pressed={answers[i] === o.label}
-                className={cn(
-                  'flex flex-col gap-0.5 rounded-md px-2.5 py-1.5 text-left text-[12px]',
-                  'shadow-[inset_0_0_0_1px_var(--border-subtle)] hover:brightness-110',
-                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)]',
-                  answers[i] === o.label &&
-                    'tint-wash shadow-[inset_0_0_0_1px_var(--accent-bg)]',
-                )}
-                style={
-                  answers[i] === o.label
-                    ? ({ '--tint': 'var(--accent-bg)' } as React.CSSProperties)
-                    : undefined
-                }
-              >
-                <span>{o.label}</span>
-                {/* The count is the whole point — it is what makes this a
-                    decision rather than a preference. */}
-                <span className="font-mono text-[10.5px] text-[var(--fg-muted)]">{o.detail}</span>
-              </button>
-            ))}
+          <div className="grid gap-2 sm:grid-cols-2">
+            {q.options.map((o) => {
+              const chosen = answers[i] === o.label;
+              return (
+                <button
+                  key={o.label}
+                  type="button"
+                  onClick={() => onAnswer(i, o.label)}
+                  aria-pressed={chosen}
+                  className={cn(
+                    'flex flex-col gap-0.5 rounded-[var(--radius-md)] border px-3 py-2 text-left transition-colors',
+                    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)]',
+                    chosen
+                      ? 'border-[var(--input-border-focus)] bg-[var(--list-row-bg-selected)]'
+                      : 'border-[var(--border-subtle)] hover:border-[var(--border-strong)] hover:bg-[var(--list-row-bg-hover)]',
+                  )}
+                >
+                  <span className="text-[13px] font-medium">{o.label}</span>
+                  {/* The count is the whole point — it is what makes this a
+                      decision rather than a preference. */}
+                  <span className="text-[12px] text-[var(--fg-muted)]">{o.detail}</span>
+                </button>
+              );
+            })}
           </div>
 
           {q.kind !== 'judgement' && q.why_it_changes_the_answer && (
-            <p className="text-[11.5px] leading-[1.5] text-[var(--fg-muted)]">
+            <p className="text-[12.5px] leading-[1.5] text-[var(--fg-muted)]">
               {q.why_it_changes_the_answer}
             </p>
           )}
@@ -1087,7 +1172,7 @@ export function InterviewCard({
       <Button size="sm" className="self-start" disabled={!complete || busy} onClick={onSubmit}>
         Plan with these answers
       </Button>
-    </section>
+    </Card>
   );
 }
 

@@ -66,23 +66,24 @@ export function ExecutionPlanBlock({
         aria-hidden="true"
         className={cn(
           'size-[7px] shrink-0 rounded-full',
-          isLive ? 'cambrian-live-pulse bg-[var(--accent-bg)]' : 'bg-[var(--status-done)]',
+          isLive ? 'cambrian-live-pulse bg-[var(--status-live)]' : 'bg-[var(--status-done)]',
         )}
       />
-      <span className="text-[13px] font-medium">ExecutionPlan</span>
-      <span className="font-mono text-[10.5px] text-[var(--fg-muted)]">
+      <span className="type-section-title text-[var(--fg-primary)]">Plan</span>
+      <span className="font-mono text-[11.5px] text-[var(--fg-muted)]">
         {plan.plan_id.slice(0, 8)}
       </span>
-      <span className="text-[11.5px] text-[var(--fg-muted)]">
-        step {position} of {total}
+      <span className="text-[12px] text-[var(--fg-muted)]">
+        Step {position} of {total}
       </span>
       <div className="ml-auto flex items-center gap-3">
         <Progress
           value={progress}
+          tone={isLive ? 'var(--status-live)' : 'var(--fg-muted)'}
           className="w-[80px] sm:w-[120px]"
           aria-label={`Plan progress: ${done} of ${total} steps done`}
         />
-        <span className="font-mono text-[10.5px] text-[var(--fg-muted)]">
+        <span className="text-[12px] tabular-nums text-[var(--fg-muted)]">
           {formatTokens(plan.cost)} tok
         </span>
       </div>
@@ -94,14 +95,14 @@ export function ExecutionPlanBlock({
   );
 
   const shell =
-    'flex max-w-[820px] flex-col overflow-hidden rounded-[var(--radius-lg)] bg-[var(--bg-surface)] shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--fg-primary)_9%,transparent)]';
+    'flex flex-col overflow-hidden rounded-[var(--radius-lg)] border border-[var(--card-border)] bg-[var(--bg-surface)]';
 
   // Mobile: the header stays live and the steps fold. Defaults open, because a
   // collapsed plan on first paint hides the thing the operator came to watch.
   if (collapsible) {
     return (
       <Collapsible defaultOpen className={cn(shell, className)}>
-        <CollapsibleTrigger className="flex w-full items-center gap-2.5 px-3.5 py-[11px] text-left">
+        <CollapsibleTrigger className="flex w-full items-center gap-2.5 border-b border-[var(--border-subtle)] px-4 py-3 text-left">
           {header}
         </CollapsibleTrigger>
         <CollapsibleContent>{stepList}</CollapsibleContent>
@@ -111,7 +112,7 @@ export function ExecutionPlanBlock({
 
   return (
     <div className={cn(shell, className)}>
-      <div className="flex items-center gap-2.5 px-3.5 py-[11px]">
+      <div className="flex items-center gap-2.5 border-b border-[var(--border-subtle)] px-4 py-3">
         {header}
         {onOpenGraph && (
           <Button

@@ -9,6 +9,8 @@
 // subtitle, is what turns one into the other.
 
 import { useMemo } from 'react';
+import { Plus } from 'lucide-react';
+import { Button } from '@/design-system/components';
 import { cn } from '@/design-system/lib/utils';
 import type { ConversationSummary, PlanInFlight, HITLIntervention } from '@/ipc/types';
 
@@ -99,19 +101,12 @@ export function ConversationRail({
   }, [conversations]);
 
   return (
-    <aside className="flex h-full min-h-0 w-[248px] flex-none flex-col shadow-[inset_-1px_0_0_var(--border-subtle)]">
+    <aside className="flex h-full min-h-0 w-[248px] flex-none flex-col border-r border-[var(--border-subtle)] bg-[var(--bg-surface)]">
       <div className="flex-none px-3 pb-2 pt-3">
-        <button
-          type="button"
-          onClick={onNew}
-          className={cn(
-            'w-full rounded-md px-2.5 py-2 text-left text-[12.5px]',
-            'shadow-[inset_0_0_0_1px_var(--border-subtle)] hover:brightness-110',
-            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)]',
-          )}
-        >
+        <Button variant="secondary" size="sm" className="w-full justify-start" onClick={onNew}>
+          <Plus className="size-3.5" aria-hidden="true" />
           New conversation
-        </button>
+        </Button>
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-1.5 pb-2">
@@ -120,7 +115,7 @@ export function ConversationRail({
         <RailGroup label="Earlier" items={earlier} activeId={activeId} onSelect={onSelect}
           state={(c) => conversationState(c, plans, pendingHitl)} />
         {conversations.length === 0 && (
-          <p className="px-2 py-3 text-[11.5px] leading-[1.5] text-[var(--fg-muted)]">
+          <p className="px-2 py-3 text-[12px] leading-[1.5] text-[var(--fg-muted)]">
             No conversations yet. Start one — nothing is committed until you approve a plan.
           </p>
         )}
@@ -129,13 +124,12 @@ export function ConversationRail({
       {/* The reach every conversation in this rail inherits. It belongs on the
           list rather than inside a conversation, because it is the same for all
           of them and an operator asks it once. */}
-      <div className="flex-none px-3 py-2.5 shadow-[inset_0_1px_0_var(--border-subtle)]">
-        <div className="type-label text-[var(--fg-muted)]">
-          Scope
-        </div>
-        <div className="mt-0.5 text-[11.5px] text-[var(--fg-secondary)]">
-          {role ?? 'not connected'} · {scopeLabel}
-        </div>
+      <div className="flex-none border-t border-[var(--border-subtle)] px-3 py-2.5 text-[12px]">
+        <span className="text-[var(--fg-muted)]">Scope </span>
+        <span className="inline-block text-[var(--fg-secondary)] first-letter:uppercase">
+          {role ?? 'not connected'}
+        </span>
+        <span className="text-[var(--fg-secondary)]"> · {scopeLabel}</span>
       </div>
     </aside>
   );
@@ -170,16 +164,18 @@ function RailGroup({
               onClick={() => onSelect(c.id)}
               aria-current={activeId === c.id ? 'true' : undefined}
               className={cn(
-                'flex w-full flex-col gap-0.5 rounded-md px-2 py-1.5 text-left',
-                'hover:bg-[color-mix(in_srgb,var(--fg-primary)_5%,transparent)]',
+                'flex w-full flex-col gap-0.5 rounded-[var(--radius-md)] px-2 py-1.5 text-left',
+                'hover:bg-[var(--list-row-bg-hover)]',
                 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)]',
-                activeId === c.id && 'bg-[color-mix(in_srgb,var(--fg-primary)_8%,transparent)]',
+                activeId === c.id && 'bg-[var(--list-row-bg-selected)]',
               )}
             >
-              <span className="truncate text-[12.5px] leading-[1.35]">{c.title || 'Untitled'}</span>
+              <span className="truncate text-[13px] leading-[1.35] text-[var(--fg-primary)]">
+                {c.title || 'Untitled'}
+              </span>
               <span
                 className={cn(
-                  'truncate font-mono text-[10.5px]',
+                  'truncate text-[11.5px]',
                   live ? 'text-[var(--status-live)]' : 'text-[var(--fg-muted)]',
                 )}
               >

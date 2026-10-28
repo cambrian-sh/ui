@@ -12,6 +12,7 @@ import {
   TabsTrigger,
 } from '@/design-system/components';
 import { relativeTime } from '@/lib/relativeTime';
+import { formatTokens } from '@/lib/format';
 import { useMutation } from '@/lib/useMutation';
 import { TaskStatePill } from './TaskStatePill';
 import { ConfirmMutationDialog } from './ConfirmMutationDialog';
@@ -95,8 +96,10 @@ export function TaskDetail({ session, role }: SessionDetailProps) {
               value: <span className="tabular-nums">{session.plan_count}</span>,
             },
             {
-              label: 'Cost',
-              value: <span className="tabular-nums">${session.cost.toFixed(2)}</span>,
+              // Tokens, as everywhere else a task's cost is shown — the task list
+              // sums its plans' token costs into this same field.
+              label: 'Tokens',
+              value: <span className="tabular-nums">{formatTokens(session.cost)}</span>,
             },
             ...(session.agent_mix.length > 0
               ? [{ label: 'Agent mix', value: session.agent_mix.join(', '), mono: true }]

@@ -14,7 +14,7 @@ describe('ChatMessage', () => {
         timestamp="2026-06-26T17:30:00Z"
       />,
     );
-    expect(screen.getByText('operator')).toBeInTheDocument();
+    expect(screen.getByText('You')).toBeInTheDocument();
     expect(screen.getByText('hello kernel')).toBeInTheDocument();
     expect(screen.getByText(/^\d{2}:\d{2}$/)).toBeInTheDocument();
   });

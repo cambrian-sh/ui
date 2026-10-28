@@ -324,7 +324,7 @@ describe('SessionWorkSurface — plan and inspector', () => {
     projectionStore.getState().hydrate(makeState('operator'));
     render(<SessionWorkSurface sessionId="session-1" />);
 
-    expect(screen.getByText('ExecutionPlan')).toBeInTheDocument();
+    expect(screen.getByText('Plan')).toBeInTheDocument();
     expect(screen.getByText('Compare against ARMATA coverage')).toBeInTheDocument();
   });
 
@@ -354,7 +354,7 @@ describe('SessionWorkSurface — plan and inspector', () => {
     render(<SessionWorkSurface sessionId="session-1" />);
 
     expect(
-      screen.getByText('No blocks yet. The plan view appears here when a plan starts.'),
+      screen.getByText('Nothing has started yet. The plan appears here as soon as one forms.'),
     ).toBeInTheDocument();
     expect(screen.getByLabelText('Chat message')).toBeDisabled();
   });
@@ -363,7 +363,7 @@ describe('SessionWorkSurface — plan and inspector', () => {
     projectionStore.getState().hydrate(makeState('operator', []));
     const { container } = render(<SessionWorkSurface sessionId="session-1" />);
     await waitFor(() => {
-      expect(screen.getByText('ExecutionPlan')).toBeInTheDocument();
+      expect(screen.getByText('Plan')).toBeInTheDocument();
     });
     const results = await axe(container);
     expect(results).toHaveNoViolations();

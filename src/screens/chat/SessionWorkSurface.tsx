@@ -5,6 +5,9 @@ import { useStore } from '@/store/useStore';
 import { HITLInline } from '@/design-system/components/cambrian/hitl-inline';
 import { ErrorState } from '@/design-system/components/cambrian/error-state';
 import { Button } from '@/design-system/components/ui/button';
+import { Badge } from '@/design-system/components/ui/badge';
+import { TaskStatePill } from '@/screens/tasks/TaskStatePill';
+import type { SessionState } from '@/ipc/types';
 import { Inspector } from '@/components/InspectorSlot';
 import { ConfirmMutationDialog } from '@/screens/tasks/ConfirmMutationDialog';
 import { useMutation } from '@/lib/useMutation';
@@ -162,11 +165,12 @@ export function SessionWorkSurface({
       <div
         aria-live="polite"
         aria-label="Conversation"
-        className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto px-[26px] py-[22px]"
+        className="min-h-0 flex-1 overflow-y-auto"
       >
+        <div className={cn(WORK_COLUMN, 'flex min-h-full flex-col gap-5 py-6')}>
         {isEmpty ? (
-          <div className="flex h-full items-center justify-center text-sm text-[var(--fg-muted)]">
-            No blocks yet. The plan view appears here when a plan starts.
+          <div className="my-auto py-10 text-center text-[13.5px] text-[var(--fg-muted)]">
+            Nothing has started yet. The plan appears here as soon as one forms.
           </div>
         ) : (
           <>
@@ -218,16 +222,17 @@ export function SessionWorkSurface({
             )}
           </>
         )}
+        </div>
       </div>
 
       {sessionMutation.error && (
-        <div className="flex-none px-[26px] pb-2">
+        <div className={cn(WORK_COLUMN, 'flex-none pb-2')}>
           <ErrorState reason={sessionMutation.error} />
         </div>
       )}
 
       {sendError && (
-        <div className="flex-none px-[26px] pb-2">
+        <div className={cn(WORK_COLUMN, 'flex-none pb-2')}>
           <ErrorState reason={sendError} />
         </div>
       )}
@@ -241,6 +246,7 @@ export function SessionWorkSurface({
         planId={activePlan?.plan_id ?? null}
         disabled={Boolean(composerDisabledReason)}
         disabledReason={composerDisabledReason}
+        className={WORK_COLUMN}
       />
 
       {/* The inspector exists only while a step is selected. */}
@@ -261,11 +267,11 @@ export function SessionWorkSurface({
         <ConfirmMutationDialog
           open
           onOpenChange={(o) => !o && setConfirming(null)}
-          title={confirming === 'resume' ? 'Resume session' : 'Pause session'}
+          title={confirming === 'resume' ? 'Resume task' : 'Pause task'}
           description={
             confirming === 'resume'
-              ? 'The session resumes accepting work from where it stopped.'
-              : 'The session stops accepting new work. Running steps finish; nothing new starts.'
+              ? 'The task resumes accepting work from where it stopped.'
+              : 'The task stops accepting new work. Running steps finish; nothing new starts.'
           }
           confirmLabel={confirming === 'resume' ? 'Resume' : 'Pause'}
           onConfirm={async (reason) => {
@@ -277,6 +283,9 @@ export function SessionWorkSurface({
     </div>
   );
 }
+
+/** The task page reads as one centred column, like Chat. */
+const WORK_COLUMN = 'mx-auto w-full max-w-[880px] px-[var(--page-gutter)]';
 
 function SessionHeader({
   sessionId,
@@ -301,77 +310,64 @@ function SessionHeader({
   onPause: () => void;
   onResume: () => void;
 }) {
-  const isActive = state === 'active';
-  const tone = isActive
-    ? 'var(--status-live)'
-    : state === 'paused'
-      ? 'var(--status-warn)'
-      : 'var(--status-idle)';
+  const subject = sessionSubject(goal);
 
   return (
-    <header className="flex-none px-[26px] pb-3.5 pt-4 shadow-[inset_0_-1px_0_var(--border-subtle)]">
-      <div className="flex items-center gap-2 text-[11px]">
-        <span
-          aria-hidden="true"
-          className={cn('size-1.5 rounded-full', isActive && 'cambrian-live-pulse')}
-          style={{ background: tone }}
-        />
-        <span
-          className="type-label"
-          style={{ color: tone }}
-        >
-          {state ?? 'unknown'}
-        </span>
-        <span className="font-mono text-[10.5px] text-[color-mix(in_srgb,var(--fg-muted)_35%,transparent)]">
-          {sessionId}
-        </span>
-        {openedAt && (
-          <span className="text-[var(--fg-muted)]">opened {formatRelativeTime(openedAt)}</span>
-        )}
-      </div>
-
-      <div className="mt-1.5 flex items-start justify-between gap-4">
-        <div className="min-w-0">
-          {/* The heading is a derived subject; the goal is always shown verbatim
-              beneath it. A 200-character instruction is not a title, but the
-              operator still has to be able to read exactly what they asked for. */}
-          <h1 className="type-page-title max-w-[760px] text-pretty">
-            {sessionSubject(goal)}
-          </h1>
-          {goal && (
-            <p className="mt-1 line-clamp-2 max-w-[760px] text-[12.5px] leading-[1.5] text-[var(--fg-primary)] opacity-55">
-              “{goal}”
-            </p>
-          )}
+    <header className="flex-none border-b border-[var(--border-subtle)]">
+      <div className={cn(WORK_COLUMN, 'pb-4 pt-5')}>
+        <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[12px] text-[var(--fg-muted)]">
+          {state ? <TaskStatePill state={state as SessionState} /> : <Badge>Unknown</Badge>}
+          <span className="font-mono text-[11.5px]">{sessionId}</span>
+          {openedAt && <span>Opened {formatRelativeTime(openedAt)}</span>}
         </div>
 
-        <div className="flex flex-none items-center gap-2">
-          <Button size="sm" variant="secondary" onClick={onPause} disabled={!canMutate || busy}>
-            Pause session
-          </Button>
-          <Button size="sm" variant="ghost" onClick={onResume} disabled={!canMutate || busy}>
-            Resume
-          </Button>
-        </div>
-      </div>
-
-      <div className="mt-2 flex flex-wrap items-center gap-2">
-        {agents.map((agent, i) => (
-          <span
-            key={agent}
-            className={cn(
-              'rounded-sm px-1.5 py-0.5 font-mono text-[10px] leading-none',
-              i === 0
-                ? 'bg-[color-mix(in_srgb,var(--accent-bg)_14%,transparent)] text-[var(--color-accent-400)]'
-                : 'text-[var(--fg-muted)] shadow-[inset_0_0_0_1px_var(--border-subtle)]',
+        <div className="mt-2 flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            {/* The heading is a derived subject; the goal is always shown verbatim
+                beneath it. A 200-character instruction is not a title, but the
+                operator still has to be able to read exactly what they asked for. */}
+            <h1 className="type-page-title text-pretty text-[var(--fg-primary)]">{subject}</h1>
+            {goal && subject !== goal.trim() && (
+              <p className="mt-1 line-clamp-2 text-[13px] leading-[1.5] text-[var(--fg-secondary)]">
+                “{goal}”
+              </p>
             )}
-          >
-            {agent}
+          </div>
+
+          <div className="flex flex-none items-center gap-2">
+            {state === 'paused' ? (
+              <Button size="sm" onClick={onResume} disabled={!canMutate || busy}>
+                Resume
+              </Button>
+            ) : (
+              <>
+                <Button size="sm" variant="secondary" onClick={onPause} disabled={!canMutate || busy}>
+                  Pause task
+                </Button>
+                <Button size="sm" variant="ghost" onClick={onResume} disabled={!canMutate || busy}>
+                  Resume
+                </Button>
+              </>
+            )}
+          </div>
+        </div>
+
+        <div className="mt-3 flex flex-wrap items-center gap-1.5">
+          {agents.map((agent, i) => (
+            <span
+              key={agent}
+              className={cn(
+                'rounded-[var(--radius-sm)] border border-[var(--border-subtle)] px-1.5 py-0.5 font-mono text-[11px] leading-none',
+                i === 0 ? 'text-[var(--fg-primary)]' : 'text-[var(--fg-muted)]',
+              )}
+            >
+              {agent}
+            </span>
+          ))}
+          <span className="ml-1 text-[12px] tabular-nums text-[var(--fg-muted)]">
+            {formatTokenCount(cost)} so far
           </span>
-        ))}
-        <span className="font-mono text-[10.5px] text-[var(--fg-muted)]">
-          {formatTokenCount(cost)} this session
-        </span>
+        </div>
       </div>
     </header>
   );

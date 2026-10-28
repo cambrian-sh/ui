@@ -29,6 +29,9 @@ import type {
  * from one conversation into another is how you approve the wrong plan.
  */
 export interface ChatWorkState {
+  /** The sentence the router read. The interview and an overrule both act on
+   *  it, long after the composer has been cleared. */
+  goal: string;
   classified: ClassifiedInput | null;
   proposal: PlanProposal | null;
   questions: InterviewQuestion[];
@@ -38,6 +41,7 @@ export interface ChatWorkState {
 }
 
 export const EMPTY_WORK: ChatWorkState = {
+  goal: '',
   classified: null,
   proposal: null,
   questions: [],
