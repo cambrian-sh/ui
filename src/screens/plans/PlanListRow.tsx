@@ -44,10 +44,10 @@ export function PlanListRow({
   const isDone = plan.status === 'completed';
 
   const ring = isBlocked
-    ? 'shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--status-warn)_30%,transparent)]'
+    ? 'border-[color-mix(in_srgb,var(--status-warn)_40%,var(--card-border))]'
     : isRunning
-      ? 'shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--accent-bg)_24%,transparent)]'
-      : '';
+      ? 'border-[color-mix(in_srgb,var(--status-live)_30%,var(--card-border))]'
+      : 'border-[var(--card-border)]';
 
   return (
     <button
@@ -56,17 +56,17 @@ export function PlanListRow({
       aria-pressed={selected}
       aria-current={selected ? 'true' : undefined}
       className={cn(
-        'flex w-full flex-col rounded-[10px] bg-[var(--bg-surface)] p-[14px_16px] text-left transition-colors',
+        'flex w-full flex-col rounded-[var(--radius-lg)] border bg-[var(--card-bg)] px-4 py-3.5 text-left transition-colors',
         ring,
         isDone && 'opacity-70',
         selected && 'bg-[var(--list-row-bg-selected)]',
-        'hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)]',
+        'hover:bg-[var(--list-row-bg-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)]',
       )}
     >
       <div className="mb-[11px] flex items-center gap-2.5">
         {hotkeyIndex != null && (
           <span
-            className="w-3 shrink-0 font-mono text-[10px] leading-none text-[var(--fg-muted)]"
+            className="w-3 shrink-0 font-mono text-[11px] leading-none text-[var(--fg-muted)]"
             aria-hidden="true"
           >
             {hotkeyIndex}
@@ -91,21 +91,26 @@ export function PlanListRow({
         <span className="truncate text-[14.5px] font-medium leading-[1.35] text-[var(--fg-primary)]">
           {sessionSubject(plan.subject)}
         </span>
-        <span className="shrink-0 font-mono text-[10.5px] text-[var(--fg-muted)]">
+        <span className="shrink-0 font-mono text-[11px] text-[var(--fg-muted)]">
           {plan.plan_id.slice(0, 8)}
         </span>
-        <span aria-hidden="true" className="hidden text-[var(--fg-muted)] opacity-50 sm:inline">
-          ·
-        </span>
-        <span className="hidden min-w-0 truncate text-[12px] text-[var(--fg-secondary)] sm:inline">
-          {sessionTitle}
-        </span>
+        {/* The task it belongs to, unless that only repeats the subject. */}
+        {sessionSubject(sessionTitle) !== sessionSubject(plan.subject) && (
+          <>
+            <span aria-hidden="true" className="hidden text-[var(--fg-muted)] opacity-50 sm:inline">
+              ·
+            </span>
+            <span className="hidden min-w-0 truncate text-[12.5px] text-[var(--fg-secondary)] sm:inline">
+              {sessionTitle}
+            </span>
+          </>
+        )}
 
         <div className="ml-auto flex shrink-0 items-center gap-[18px] text-[12.5px] text-[var(--fg-secondary)]">
-          <span className="font-mono leading-none">{formatDuration(plan.elapsed_ms)} elapsed</span>
+          <span className="leading-none tabular-nums">{formatDuration(plan.elapsed_ms)} elapsed</span>
           {/* Tokens, never money: the kernel meters tokens, and a dollar figure
               here would be a number nobody derived (Part 2 §0). */}
-          <span className="font-mono leading-none">{formatTokens(plan.cost)} tok</span>
+          <span className="leading-none tabular-nums">{formatTokens(plan.cost)} tok</span>
           <PlanStatePill state={plan.status} />
         </div>
       </div>
@@ -113,13 +118,13 @@ export function PlanListRow({
       <StepRail steps={steps} fallbackCount={plan.step_count} className="mb-2" />
 
       {/* What is happening, and why it is stuck. */}
-      <p className="text-[12px] leading-[1.5] text-[var(--fg-secondary)]">
+      <p className={cn('text-[13px] leading-[1.5]', isBlocked ? 'text-[var(--status-warn)]' : 'text-[var(--fg-secondary)]')}>
         {isBlocked
-          ? `step ${blocking[0].step_id} · nothing has moved for ${formatIdle(idleSeconds(blocking[0]))} · waiting for you to decide`
+          ? `Step ${blocking[0].step_id} is waiting for your decision · nothing has moved for ${formatIdle(idleSeconds(blocking[0]))}`
           : failed
-            ? `step ${String(failed.index).padStart(2, '0')} failed — the plan stopped here`
+            ? `Step ${String(failed.index).padStart(2, '0')} failed — the plan stopped here`
             : running
-              ? `step ${done + 1} of ${steps.length || plan.step_count}${running.agent ? ` · ${running.agent}` : ''} · ${running.query}`
+              ? `Step ${done + 1} of ${steps.length || plan.step_count}${running.agent ? ` · ${running.agent}` : ''} · ${running.query}`
               : isDone
                 ? `${done} of ${steps.length || plan.step_count} steps done`
                 : `${done} of ${steps.length || plan.step_count} steps done · nothing running`}

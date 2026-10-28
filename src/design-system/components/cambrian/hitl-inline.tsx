@@ -8,6 +8,14 @@ import { cn } from "@/design-system/lib/utils";
 import { consequenceOf, formatIdle, idleSeconds, NATURE_LABEL, NATURE_TONE } from "@/lib/hitl";
 import type { HITLIntervention } from "@/ipc/types";
 
+const VERB = { approve: "Approve", reject: "Reject", edit: "Edit" } as const;
+const NOUN = { approve: "approval", reject: "rejection", edit: "this edit" } as const;
+const CONFIRM_LABEL = {
+  approve: "Confirm approval",
+  reject: "Confirm rejection",
+  edit: "Confirm edit",
+} as const;
+
 export interface HITLInlineProps {
   intervention: HITLIntervention;
   onApprove?: (interventionId: string, reason: string) => void;
@@ -59,31 +67,30 @@ export function HITLInline({
       role="region"
       aria-label={`HITL intervention ${intervention.intervention_id}`}
       className={cn(
-        "flex max-w-[820px] flex-col overflow-hidden rounded-[var(--radius-lg)] tint-wash tint-ring",
+        "flex flex-col overflow-hidden rounded-[var(--radius-lg)] border border-[color-mix(in_srgb,var(--tint)_34%,var(--card-border))] tint-wash",
         className,
       )}
       style={{ "--tint": toneVar } as React.CSSProperties}
     >
-      <div className="flex items-center justify-between gap-2 px-3.5 py-2.5">
-        <span
-          className="type-label"
-          style={{ color: toneVar }}
-        >
+      <div className="flex items-center justify-between gap-3 px-4 pt-3">
+        <span className="type-status" style={{ color: toneVar }}>
           Waiting on you · {NATURE_LABEL[intervention.nature]}
         </span>
-        <span className="font-mono text-[10px] text-[var(--fg-muted)]">
-          {intervention.intervention_id.slice(0, 8)} · {formatIdle(idle)}
+        <span className="flex items-center gap-2 text-[12px] text-[var(--fg-muted)]">
+          <span>Waiting {formatIdle(idle)}</span>
+          <span aria-hidden="true">·</span>
+          <span className="font-mono">{intervention.intervention_id.slice(0, 8)}</span>
         </span>
       </div>
 
-      <div className="flex flex-col gap-3 px-3.5 pb-3.5">
-        <p className="text-[13.5px] leading-[1.55] text-[var(--fg-primary)]">
+      <div className="flex flex-col gap-3 px-4 pb-4 pt-1.5">
+        <p className="text-[15px] font-medium leading-[1.5] text-[var(--fg-primary)]">
           {consequence.sentence}
         </p>
 
         {/* Never hidden, only folded. The operator must always be able to reach
             the exact thing they are approving. */}
-        <details className="text-[11.5px] text-[var(--fg-muted)]">
+        <details className="text-[12.5px] text-[var(--fg-muted)]">
           <summary className="cursor-pointer select-none hover:text-[var(--fg-secondary)]">
             Show the proposed action
           </summary>
@@ -92,7 +99,7 @@ export function HITLInline({
               <div className="type-label mb-1">
                 Proposed
               </div>
-              <pre className="overflow-x-auto rounded-md bg-[var(--bg-canvas)] p-2 font-mono text-[10.5px] leading-[1.5] whitespace-pre-wrap break-all text-[var(--fg-secondary)]">
+              <pre className="overflow-x-auto rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--bg-canvas)] p-2.5 font-mono text-[11.5px] leading-[1.5] whitespace-pre-wrap break-all text-[var(--fg-secondary)]">
                 {JSON.stringify(intervention.proposed_action, null, 2)}
               </pre>
             </div>
@@ -100,7 +107,7 @@ export function HITLInline({
               <div className="type-label mb-1">
                 Intended
               </div>
-              <pre className="overflow-x-auto rounded-md bg-[var(--bg-canvas)] p-2 font-mono text-[10.5px] leading-[1.5] whitespace-pre-wrap break-all text-[var(--fg-secondary)]">
+              <pre className="overflow-x-auto rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--bg-canvas)] p-2.5 font-mono text-[11.5px] leading-[1.5] whitespace-pre-wrap break-all text-[var(--fg-secondary)]">
                 {intervention.intended_action
                   ? JSON.stringify(intervention.intended_action, null, 2)
                   : "—"}
@@ -113,7 +120,7 @@ export function HITLInline({
           <ReasonField
             gate={gate}
             id={`hitl-reason-${intervention.intervention_id}`}
-            label={`Reason for ${mode}`}
+            label={`Reason for ${NOUN[mode]}`}
             disabled={blocked || busy}
           />
         )}
@@ -135,14 +142,18 @@ export function HITLInline({
             >
               Reject
             </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => setMode("edit")}
-              disabled={!onEdit || blocked || busy}
-            >
-              Edit the action
-            </Button>
+            {/* Only where the caller can apply an edit: a permanently disabled
+                button reads as broken. */}
+            {onEdit && (
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => setMode("edit")}
+                disabled={blocked || busy}
+              >
+                Edit the action
+              </Button>
+            )}
           </div>
         ) : (
           <div className="flex flex-wrap items-center gap-2">
@@ -159,7 +170,7 @@ export function HITLInline({
                 reset();
               }}
             >
-              {busy ? "Sending…" : gate.satisfied ? `Confirm ${mode}` : `${mode} — needs a reason`}
+              {busy ? "Sending…" : gate.satisfied ? CONFIRM_LABEL[mode] : `${VERB[mode]} — needs a reason`}
             </Button>
             <Button size="sm" variant="ghost" onClick={reset} disabled={busy}>
               Cancel
@@ -170,7 +181,7 @@ export function HITLInline({
         {/* A disabled control that does not say why is indistinguishable from a
             broken one. */}
         {disabledReason && (
-          <p className="text-[11.5px] text-[var(--status-warn)]">{disabledReason}</p>
+          <p className="text-[12.5px] text-[var(--status-warn)]">{disabledReason}</p>
         )}
       </div>
     </div>

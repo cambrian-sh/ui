@@ -42,7 +42,7 @@ export function StepRail({ steps, fallbackCount = 0, className }: StepRailProps)
           key={step?.step_id ?? i}
           className={cn(
             'h-1.5 flex-1 rounded-[3px]',
-            step?.status === 'running' && 'cambrian-live-pulse',
+            step?.status === 'running' && 'cambrian-live-fade',
           )}
           style={{ background: segmentColour(step) }}
         />
@@ -60,7 +60,7 @@ function segmentColour(step: PlanStep | null): string {
     case 'done':
       return 'var(--color-neutral-500)';
     case 'running':
-      return 'var(--accent-bg)';
+      return 'var(--status-live)';
     case 'failed':
       return 'var(--status-err)';
     case 'skipped':

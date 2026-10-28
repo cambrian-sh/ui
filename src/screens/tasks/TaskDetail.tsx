@@ -4,11 +4,8 @@ import { ipc } from '@/ipc';
 import type { Role, SessionSummary } from '@/ipc/types';
 import {
   Button,
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
   EmptyState,
+  KeyValue,
   Tabs,
   TabsContent,
   TabsList,
@@ -32,23 +29,23 @@ const MUTATION_META: Record<
   { title: string; description: string; confirmLabel: string; destructive: boolean }
 > = {
   pause: {
-    title: 'Pause session',
+    title: 'Pause task',
     description:
-      'The running plan is paused — queued steps stop dispatching — and the session is marked paused. It can be resumed later.',
+      'The running plan is paused — queued steps stop dispatching — and the task is marked paused. It can be resumed later.',
     confirmLabel: 'Pause',
     destructive: false,
   },
   resume: {
-    title: 'Resume session',
+    title: 'Resume task',
     description:
-      'The paused plan continues from where it stopped, and the session is marked active again.',
+      'The paused plan continues from where it stopped, and the task is marked active again.',
     confirmLabel: 'Resume',
     destructive: false,
   },
   complete: {
-    title: 'Complete session',
+    title: 'Complete task',
     description:
-      'The session is sealed and moved to the completed state. This is irreversible — a completed session cannot be resumed or reused for new work.',
+      'The task is sealed and moved to the completed state. This is irreversible — a completed task cannot be resumed or reused for new work.',
     confirmLabel: 'Complete',
     destructive: true,
   },
@@ -80,106 +77,99 @@ export function TaskDetail({ session, role }: SessionDetailProps) {
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
-      <div className="border-b border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4">
-        <div className="flex items-start justify-between gap-2">
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2">
-              <TaskStatePill state={session.state} />
-              <h2 className="truncate text-sm font-semibold">{session.title}</h2>
-            </div>
-            <p className="mt-1 font-mono text-xs text-[var(--fg-muted)]">
-              {session.session_id}
-            </p>
-          </div>
-        </div>
-        <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
-          <div>
-            <dt className="text-[var(--fg-muted)]">Created</dt>
-            <dd className="text-[var(--fg-secondary)]">
-              {relativeTime(session.created_at)}
-            </dd>
-          </div>
-          <div>
-            <dt className="text-[var(--fg-muted)]">Last activity</dt>
-            <dd className="text-[var(--fg-secondary)]">
-              {relativeTime(session.last_activity_at)}
-            </dd>
-          </div>
-          <div>
-            <dt className="text-[var(--fg-muted)]">Plans</dt>
-            <dd className="tabular-nums text-[var(--fg-secondary)]">{session.plan_count}</dd>
-          </div>
-          <div>
-            <dt className="text-[var(--fg-muted)]">Cost</dt>
-            <dd className="tabular-nums text-[var(--fg-secondary)]">
-              ${session.cost.toFixed(2)}
-            </dd>
-          </div>
-          {session.agent_mix.length > 0 && (
-            <div className="col-span-2">
-              <dt className="text-[var(--fg-muted)]">Agent mix</dt>
-              <dd className="text-[var(--fg-secondary)]">{session.agent_mix.join(', ')}</dd>
-            </div>
-          )}
-        </dl>
+      <div className="border-b border-[var(--border-subtle)] px-5 pb-4 pt-5">
+        <TaskStatePill state={session.state} />
+        <h2 className="mt-2 text-[15px] font-semibold leading-[1.35] text-[var(--fg-primary)]">
+          {session.title}
+        </h2>
+        <p className="mt-0.5 font-mono text-[11.5px] text-[var(--fg-muted)]">
+          {session.session_id}
+        </p>
+        <KeyValue
+          className="mt-4 text-[12.5px]"
+          items={[
+            { label: 'Created', value: relativeTime(session.created_at) },
+            { label: 'Last activity', value: relativeTime(session.last_activity_at) },
+            {
+              label: 'Plans',
+              value: <span className="tabular-nums">{session.plan_count}</span>,
+            },
+            {
+              label: 'Cost',
+              value: <span className="tabular-nums">${session.cost.toFixed(2)}</span>,
+            },
+            ...(session.agent_mix.length > 0
+              ? [{ label: 'Agent mix', value: session.agent_mix.join(', '), mono: true }]
+              : []),
+          ]}
+        />
       </div>
 
       <Tabs defaultValue="actions" className="flex flex-1 flex-col overflow-hidden">
-        <TabsList className="mx-4 mt-2 self-start">
+        <TabsList className="px-5">
           <TabsTrigger value="actions">Actions</TabsTrigger>
           <TabsTrigger value="checkpoints">Checkpoints</TabsTrigger>
         </TabsList>
 
         <TabsContent
           value="actions"
-          className="flex-1 overflow-y-auto px-4 pb-4 focus-visible:outline-none"
+          className="flex-1 overflow-y-auto px-5 py-4 focus-visible:outline-none"
         >
-          <Card>
-            <CardHeader>
-              <CardTitle>Session controls</CardTitle>
-            </CardHeader>
-            <CardContent className="flex flex-col gap-2">
+          <section className="flex flex-col gap-3">
+            <div>
+              <h3 className="type-section-title text-[var(--fg-primary)]">Task controls</h3>
+              <p className="mt-0.5 text-[12.5px] text-[var(--fg-secondary)]">
+                Each change asks for a reason, which goes into the audit log.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
               <Button
-                variant="default"
+                size="sm"
+                variant="secondary"
                 disabled={!canPause || isLoading}
                 onClick={() => setPending('pause')}
-                aria-label="Pause session"
+                aria-label="Pause task"
               >
                 Pause
               </Button>
               <Button
-                variant="default"
+                size="sm"
+                variant="secondary"
                 disabled={!canResume || isLoading}
                 onClick={() => setPending('resume')}
-                aria-label="Resume session"
+                aria-label="Resume task"
               >
                 Resume
               </Button>
+              {/* Irreversible, so it reads as a warning here; the confirm
+                  dialog carries the filled danger button. */}
               <Button
-                variant="danger"
+                size="sm"
+                variant="secondary"
+                className="text-[var(--status-err)]"
                 disabled={!canComplete || isLoading}
                 onClick={() => setPending('complete')}
-                aria-label="Complete session"
+                aria-label="Complete task"
               >
                 Complete
               </Button>
-              {error && <ErrorState reason={error} />}
-              {!isOperator && (
-                <p className="mt-2 text-xs text-[var(--fg-muted)]">
-                  These actions require the Operator role.
-                </p>
-              )}
-            </CardContent>
-          </Card>
+            </div>
+            {error && <ErrorState reason={error} />}
+            {!isOperator && (
+              <p className="text-[12.5px] text-[var(--fg-muted)]">
+                These actions require the Operator role.
+              </p>
+            )}
+          </section>
         </TabsContent>
 
         <TabsContent
           value="checkpoints"
-          className="flex-1 overflow-y-auto px-4 pb-4 focus-visible:outline-none"
+          className="flex-1 overflow-y-auto px-5 py-4 focus-visible:outline-none"
         >
           <EmptyState
             title="No checkpoints yet"
-            body="Checkpoints are written by the kernel as the session executes, but no read RPC exposes them yet, so none can be listed here."
+            body="The kernel writes checkpoints as the task runs, but no read RPC exposes them yet, so none can be listed here."
           />
         </TabsContent>
       </Tabs>

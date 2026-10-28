@@ -162,10 +162,10 @@ describe('SessionWorkSurface — HITL', () => {
     render(<SessionWorkSurface sessionId="session-1" />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Approve with reason' }));
-    fireEvent.change(screen.getByLabelText(/Reason for approve/i), {
+    fireEvent.change(screen.getByLabelText(/Reason for approval/i), {
       target: { value: 'this action is safe to proceed' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Confirm approve' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm approval' }));
 
     await waitFor(() => {
       expect(ipc.resolveHITL).toHaveBeenCalledWith({
@@ -181,10 +181,10 @@ describe('SessionWorkSurface — HITL', () => {
     render(<SessionWorkSurface sessionId="session-1" />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Reject' }));
-    fireEvent.change(screen.getByLabelText(/Reason for reject/i), {
+    fireEvent.change(screen.getByLabelText(/Reason for rejection/i), {
       target: { value: 'this action is too dangerous' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Confirm reject' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm rejection' }));
 
     await waitFor(() => {
       expect(ipc.resolveHITL).toHaveBeenCalledWith({
@@ -200,12 +200,12 @@ describe('SessionWorkSurface — HITL', () => {
     render(<SessionWorkSurface sessionId="session-1" />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Approve with reason' }));
-    fireEvent.change(screen.getByLabelText(/Reason for approve/i), {
+    fireEvent.change(screen.getByLabelText(/Reason for approval/i), {
       target: { value: 'short' },
     });
 
     expect(
-      screen.getByRole('button', { name: 'approve — needs a reason' }),
+      screen.getByRole('button', { name: 'Approve — needs a reason' }),
     ).toBeDisabled();
     // The bar is not the only feedback: the sentence counts down in words.
     expect(screen.getByText(/11 more characters/)).toBeInTheDocument();
@@ -217,10 +217,10 @@ describe('SessionWorkSurface — HITL', () => {
     render(<SessionWorkSurface sessionId="session-1" />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Approve with reason' }));
-    fireEvent.change(screen.getByLabelText(/Reason for approve/i), {
+    fireEvent.change(screen.getByLabelText(/Reason for approval/i), {
       target: { value: 'this action is safe to proceed' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Confirm approve' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm approval' }));
 
     const alert = await screen.findByRole('alert');
     expect(alert).toHaveTextContent('PermissionDenied');
@@ -231,14 +231,14 @@ describe('SessionWorkSurface — HITL', () => {
     render(<SessionWorkSurface sessionId="session-1" />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Approve with reason' }));
-    fireEvent.change(screen.getByLabelText(/Reason for approve/i), {
+    fireEvent.change(screen.getByLabelText(/Reason for approval/i), {
       target: { value: 'this action is safe to proceed' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Confirm approve' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm approval' }));
 
     await waitFor(() => expect(ipc.resolveHITL).toHaveBeenCalled());
 
-    expect(screen.queryByLabelText(/Reason for approve/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/Reason for approval/i)).not.toBeInTheDocument();
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     expect(
       screen.getByRole('button', { name: 'Approve with reason' }),

@@ -22,7 +22,7 @@ interface TaskListRowProps {
 const KICKER: Record<RankedSession['attention'], { label: string; tone: string }> = {
   waiting: { label: 'Waiting on you', tone: 'var(--status-warn)' },
   failed: { label: 'Failed', tone: 'var(--status-err)' },
-  running: { label: 'Running', tone: 'var(--color-accent-400)' },
+  running: { label: 'Running', tone: 'var(--status-live)' },
   paused: { label: 'Paused', tone: 'var(--status-warn)' },
   dormant: { label: 'Dormant', tone: 'var(--fg-muted)' },
   pending: { label: 'Not started', tone: 'var(--fg-muted)' },
@@ -56,7 +56,7 @@ export function TaskListRow({ ranked, selected, onClick, compact }: TaskListRowP
         'flex w-full transition-colors',
         compact
           ? 'mx-3 my-1 flex-col gap-2 rounded-[var(--radius-xl)] p-[13px_14px] shadow-[var(--elevation-1)]'
-          : 'items-start gap-[18px] px-[22px] py-[13px] shadow-[inset_0_-1px_0_color-mix(in_srgb,var(--fg-primary)_7%,transparent)]',
+          : 'items-start gap-[18px] px-[var(--page-gutter)] py-3.5 shadow-[inset_0_-1px_0_color-mix(in_srgb,var(--fg-primary)_7%,transparent)]',
         waiting &&
           'tint-wash shadow-[inset_3px_0_0_var(--status-warn),inset_0_-1px_0_color-mix(in_srgb,var(--fg-primary)_7%,transparent)]',
         // A failure is tinted for the same reason a waiting row is: a pill alone
@@ -86,7 +86,7 @@ export function TaskListRow({ ranked, selected, onClick, compact }: TaskListRowP
             bare dot: a colour alone asks the operator to remember a legend. */}
         <div className="mb-[5px] flex items-center gap-[9px]">
           <span
-            className="type-label inline-flex flex-none items-center gap-1.5 leading-none"
+            className="type-status inline-flex flex-none items-center gap-1.5 leading-none"
             style={{ color: kicker.tone }}
           >
             {attention === 'running' && (
@@ -101,15 +101,16 @@ export function TaskListRow({ ranked, selected, onClick, compact }: TaskListRowP
           <span className="min-w-0 truncate text-[14.5px] font-medium leading-[1.35]">
             {sessionSubject(session.title)}
           </span>
-          <span className="flex-none font-mono text-[10.5px] leading-none text-[var(--fg-muted)]">
+          <span className="flex-none font-mono text-[11px] leading-none text-[var(--fg-muted)]">
             {session.session_id.slice(0, 12)}
           </span>
         </div>
 
         {/* The instruction verbatim. Clamped, not truncated: two lines of the real
             wording beat one line of a sentence that stops mid-word. */}
-        {session.title && (
-          <p className="mb-1.5 line-clamp-2 max-w-[640px] text-[12.5px] leading-[1.5] text-[var(--fg-primary)] opacity-55">
+        {/* Only when it says more than the subject above it already does. */}
+        {session.title && sessionSubject(session.title) !== session.title.trim() && (
+          <p className="mb-1.5 line-clamp-2 max-w-[640px] text-[13px] leading-[1.5] text-[var(--fg-secondary)]">
             “{session.title}”
           </p>
         )}
@@ -118,11 +119,11 @@ export function TaskListRow({ ranked, selected, onClick, compact }: TaskListRowP
           {session.agent_mix.map((a, i) => (
             <span
               key={a}
+              // The lead agent reads first; the rest are quieter. Neutral, not
+              // blue: blue on this screen means a link.
               className={cn(
-                'rounded px-1.5 py-0.5 font-mono text-[10px]',
-                i === 0
-                  ? 'bg-[color-mix(in_srgb,var(--color-accent-400)_14%,transparent)] text-[var(--color-accent-400)]'
-                  : 'bg-[color-mix(in_srgb,var(--fg-primary)_8%,transparent)] text-[var(--fg-secondary)]',
+                'rounded-[var(--radius-sm)] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-1.5 py-[2px] font-mono text-[11px] leading-none',
+                i === 0 ? 'text-[var(--fg-primary)]' : 'text-[var(--fg-muted)]',
               )}
             >
               {a}
@@ -131,16 +132,16 @@ export function TaskListRow({ ranked, selected, onClick, compact }: TaskListRowP
 
           {/* Why it is stopped, not just that it is. */}
           {waiting && blocking && (
-            <span className="text-[11.5px] text-[var(--status-warn)]">
-              step {blocking.step_id} needs an approval — idle {formatIdle(idleSeconds(blocking))}
+            <span className="text-[12.5px] text-[var(--status-warn)]">
+              Step {blocking.step_id} needs your approval · waiting {formatIdle(idleSeconds(blocking))}
             </span>
           )}
 
           {attention === 'running' && runningPlan && (
-            <span className="text-[11.5px] text-[var(--fg-muted)]">
+            <span className="text-[12.5px] text-[var(--fg-muted)]">
               {totalSteps > 0
-                ? `step ${runningPlan.step_count} of ${totalSteps}`
-                : `step ${runningPlan.step_count}`}{' '}
+                ? `Step ${runningPlan.step_count} of ${totalSteps}`
+                : `Step ${runningPlan.step_count}`}{' '}
               · {relativeTime(session.last_activity_at)}
               {progress != null && ` · ${progress}%`}
             </span>
@@ -151,33 +152,33 @@ export function TaskListRow({ ranked, selected, onClick, compact }: TaskListRowP
             // `SessionSummaryOp` carries none, so the row says WHEN rather than
             // inventing WHY — a fabricated reason in an audit-adjacent list is
             // worse than an absent one.
-            <span className="text-[11.5px] text-[var(--fg-muted)]">
-              you paused it {relativeTime(session.last_activity_at)} — the reason is not reported
+            <span className="text-[12.5px] text-[var(--fg-muted)]">
+              You paused it {relativeTime(session.last_activity_at)} — the reason is not reported
             </span>
           )}
 
           {attention === 'failed' && (
-            <span className="text-[11.5px] text-[var(--status-err)]">
-              a plan failed {relativeTime(session.last_activity_at)} — nothing is running
+            <span className="text-[12.5px] text-[var(--status-err)]">
+              A plan failed {relativeTime(session.last_activity_at)} — nothing is running
             </span>
           )}
 
           {attention === 'done' && (
-            <span className="text-[11.5px] text-[var(--fg-muted)]">
+            <span className="text-[12.5px] text-[var(--fg-muted)]">
               {session.state === 'completed'
-                ? `finished ${relativeTime(session.last_activity_at)}`
+                ? `Finished ${relativeTime(session.last_activity_at)}`
                 : // Nothing closes a task on its own — only the operator's
                   // Complete command does — so a task whose work is over sits
                   // here open. Saying that beats calling it idle.
-                  `work finished ${relativeTime(session.last_activity_at)} — the task is still open`}
+                  `Work finished ${relativeTime(session.last_activity_at)} — the task is still open`}
             </span>
           )}
 
           {attention === 'dormant' && (
             // Not neglected — asleep on purpose. Saying which is the difference
             // between an operator poking it and leaving it alone.
-            <span className="text-[11.5px] text-[var(--fg-muted)]">
-              dormant since {relativeTime(session.last_activity_at)} — it wakes on its next bid,
+            <span className="text-[12.5px] text-[var(--fg-muted)]">
+              Dormant since {relativeTime(session.last_activity_at)} — it wakes on its next bid,
               not on a timer
             </span>
           )}
@@ -185,8 +186,8 @@ export function TaskListRow({ ranked, selected, onClick, compact }: TaskListRowP
           {attention === 'pending' && (
             // Not "quiet" — nothing was ever created for it. That is worth
             // seeing: it usually means the planner produced nothing.
-            <span className="text-[11.5px] text-[var(--fg-muted)]">
-              no plan has been created — opened {relativeTime(session.created_at)}
+            <span className="text-[12.5px] text-[var(--fg-muted)]">
+              No plan has been created — opened {relativeTime(session.created_at)}
             </span>
           )}
         </div>
@@ -218,8 +219,8 @@ export function TaskListRow({ ranked, selected, onClick, compact }: TaskListRowP
 function Stat({ value, label }: { value: string; label: string }) {
   return (
     <div className="text-right">
-      <div className="font-mono text-[14px] leading-[1.3] tabular-nums">{value}</div>
-      <div className="text-[10.5px] text-[var(--fg-muted)]">{label}</div>
+      <div className="text-[14px] font-medium leading-[1.3] tabular-nums">{value}</div>
+      <div className="text-[11.5px] text-[var(--fg-muted)]">{label}</div>
     </div>
   );
 }

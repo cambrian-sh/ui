@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { Link } from '@tanstack/react-router';
-import { ScrollArea } from '@/design-system/components';
+import { ScrollArea, SectionHeader, Stat } from '@/design-system/components';
 import { StepRail } from '@/screens/plans/StepRail';
 import { useStore } from '@/store/useStore';
 import { projectionStore } from '@/store/projection';
@@ -55,53 +55,63 @@ export function NowConsole() {
 
   return (
     <ScrollArea className="h-full">
-      <div className="flex flex-col gap-6 px-[22px] pb-10 pt-5">
+      <div className="mx-auto flex w-full max-w-[1080px] flex-col gap-8 px-[var(--page-gutter)] pb-12 pt-7">
         <section>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2.5">
             <span
               aria-hidden="true"
               className={cn(
-                'size-2 rounded-full',
+                'size-2.5 flex-none rounded-full',
                 connection === 'live' && 'cambrian-live-pulse',
               )}
               style={{ background: headline.tone }}
             />
-            <h1 className="text-[22px] font-medium leading-[1.2] tracking-[-0.02em] sm:text-[26px]">
+            <h1 className="text-[24px] font-semibold leading-[1.2] tracking-[-0.02em] sm:text-[28px]">
               {headline.title}
             </h1>
           </div>
-          <p className="mt-1.5 max-w-[640px] text-[13px] leading-[1.6] text-[var(--fg-secondary)]">
-            {headline.body}
-          </p>
+          <p className="type-page-description mt-2 max-w-[640px] text-[14px]">{headline.body}</p>
         </section>
 
-        <section className="grid gap-3 sm:grid-cols-2">
-          <Tile
-            label="Feed"
-            value={connection === 'live' ? `seq ${(state?.cursor ?? 0).toLocaleString()}` : connection}
-            hint={
-              connection === 'live'
-                ? 'folding events as they arrive'
-                : 'the numbers below are the last state received'
-            }
+        <section className="grid grid-cols-2 gap-3 lg:grid-cols-4" aria-label="At a glance">
+          <Stat
+            label="Waiting on you"
+            value={pending.length}
+            tone={pending.length > 0 ? 'warn' : undefined}
+            caption={pending.length > 0 ? 'decisions holding a plan' : 'nothing is blocked'}
           />
-          <Tile
+          <Stat
+            label="Plans in flight"
+            value={running.length}
+            caption={running.length === 1 ? 'plan running now' : 'plans running now'}
+          />
+          <Stat
             label="Spend rate"
             value={formatTokenRate(spendRate)}
-            hint={
+            tone={degraded.length > 0 ? 'warn' : undefined}
+            caption={
               degraded.length > 0
                 ? `${degraded.length} circuit breaker${degraded.length === 1 ? '' : 's'} tripping`
                 : 'all circuit breakers ok'
             }
           />
+          <Stat
+            label="Feed"
+            value={connection === 'live' ? 'Live' : connection === 'reconnecting' ? 'Reconnecting' : 'Down'}
+            tone={connection === 'live' ? undefined : connection === 'reconnecting' ? 'warn' : 'err'}
+            caption={
+              connection === 'live'
+                ? `seq ${(state?.cursor ?? 0).toLocaleString()} · folding events as they arrive`
+                : 'the numbers here are the last state received'
+            }
+          />
         </section>
 
         <section>
-          <SectionTitle
+          <SectionHeader
             title="Needs you"
             count={pending.length}
-            to="/inbox"
-            linkLabel="Open the inbox"
+            action={<SectionLink to="/inbox">Open the inbox</SectionLink>}
           />
           {pending.length === 0 ? (
             <Quiet>Nothing is blocked on a decision.</Quiet>
@@ -111,14 +121,19 @@ export function NowConsole() {
                 <li key={h.intervention_id}>
                   <Link
                     to="/inbox"
-                    className="flex flex-col gap-1 rounded-[var(--radius-lg)] p-3 tint-wash tint-ring"
+                    className="group flex items-center gap-4 rounded-[var(--radius-lg)] border border-[color-mix(in_srgb,var(--status-warn)_32%,var(--card-border))] px-4 py-3 tint-wash no-underline transition-colors hover:no-underline hover:border-[var(--status-warn)]"
                     style={{ '--tint': 'var(--status-warn)' } as React.CSSProperties}
                   >
-                    <span className="text-[13.5px] leading-[1.5] text-[var(--fg-primary)]">
-                      {consequenceOf(h).sentence}
-                    </span>
-                    <span className="font-mono text-[10.5px] text-[var(--status-warn)]">
-                      idle {formatIdle(idleSeconds(h))}
+                    <div className="min-w-0 flex-1">
+                      <div className="text-[14px] leading-[1.45] text-[var(--fg-primary)]">
+                        {consequenceOf(h).sentence}
+                      </div>
+                      <div className="type-status mt-0.5 text-[var(--status-warn)]">
+                        Waiting {formatIdle(idleSeconds(h))}
+                      </div>
+                    </div>
+                    <span className="flex-none text-[13px] font-medium text-[var(--fg-secondary)] group-hover:text-[var(--fg-primary)]">
+                      Review →
                     </span>
                   </Link>
                 </li>
@@ -128,11 +143,10 @@ export function NowConsole() {
         </section>
 
         <section>
-          <SectionTitle
+          <SectionHeader
             title="In flight"
             count={running.length}
-            to="/plans"
-            linkLabel="All plans"
+            action={<SectionLink to="/plans">All plans</SectionLink>}
           />
           {running.length === 0 ? (
             <Quiet>No plan is running.</Quiet>
@@ -140,20 +154,27 @@ export function NowConsole() {
             <ul className="flex flex-col gap-2">
               {running.slice(0, 4).map((plan) => {
                 const steps = withApprovals(stepsOf(plan), blockingByPlan.get(plan.plan_id) ?? []);
+                const done = steps.filter((s) => s.status === 'done').length;
+                const total = steps.length || plan.step_count;
                 return (
-                  <li
-                    key={plan.plan_id}
-                    className="flex flex-col gap-2 rounded-[var(--radius-lg)] bg-[var(--bg-surface)] p-3 shadow-[var(--elevation-1)]"
-                  >
-                    <div className="flex items-center gap-2">
-                      <span className="min-w-0 flex-1 truncate text-[13.5px] font-medium">
-                        {sessionSubject(plan.subject)}
-                      </span>
-                      <span className="font-mono text-[10.5px] text-[var(--fg-muted)]">
-                        {formatTokens(plan.cost)} tok
-                      </span>
-                    </div>
-                    <StepRail steps={steps} fallbackCount={plan.step_count} />
+                  <li key={plan.plan_id}>
+                    <Link
+                      to="/plans"
+                      search={{ focus: plan.plan_id }}
+                      className="flex flex-col gap-2.5 rounded-[var(--radius-lg)] border border-[var(--card-border)] bg-[var(--card-bg)] px-4 py-3 text-[var(--fg-primary)] no-underline transition-colors hover:no-underline hover:border-[var(--border-strong)] hover:bg-[var(--list-row-bg-hover)]"
+                    >
+                      <div className="flex items-baseline gap-3">
+                        <span className="min-w-0 flex-1 truncate text-[14px] font-medium">
+                          {sessionSubject(plan.subject)}
+                        </span>
+                        <span className="flex-none text-[12px] text-[var(--fg-muted)]">
+                          {steps.length > 0 ? `${done} of ${total} steps` : `${total} steps`}
+                          <span className="mx-1.5">·</span>
+                          <span className="font-mono">{formatTokens(plan.cost)} tok</span>
+                        </span>
+                      </div>
+                      <StepRail steps={steps} fallbackCount={plan.step_count} />
+                    </Link>
                   </li>
                 );
               })}
@@ -212,50 +233,22 @@ function headlineFor({
   };
 }
 
-function SectionTitle({
-  title,
-  count,
-  to,
-  linkLabel,
-}: {
-  title: string;
-  count: number;
-  to: '/inbox' | '/plans';
-  linkLabel: string;
-}) {
+function SectionLink({ to, children }: { to: '/inbox' | '/plans'; children: React.ReactNode }) {
   return (
-    <div className="mb-2 flex items-baseline justify-between gap-3">
-      <h2 className="text-[13px] font-medium">
-        {title}
-        {count > 0 && (
-          <span className="ml-2 font-mono text-[11px] text-[var(--fg-muted)]">{count}</span>
-        )}
-      </h2>
-      <Link
-        to={to}
-        search={to === '/plans' ? { focus: undefined } : undefined}
-        className="text-[11.5px] text-[var(--fg-muted)] hover:text-[var(--fg-primary)]"
-      >
-        {linkLabel}
-      </Link>
-    </div>
-  );
-}
-
-function Tile({ label, value, hint }: { label: string; value: string; hint: string }) {
-  return (
-    <div className="rounded-[var(--radius-lg)] bg-[var(--bg-surface)] p-3 shadow-[var(--elevation-1)]">
-      <div className="type-label text-[var(--fg-muted)]">
-        {label}
-      </div>
-      <div className="mt-1 font-mono text-[18px] leading-[1.2] text-[var(--fg-primary)]">
-        {value}
-      </div>
-      <div className="mt-1 text-[11.5px] text-[var(--fg-muted)]">{hint}</div>
-    </div>
+    <Link
+      to={to}
+      search={to === '/plans' ? { focus: undefined } : undefined}
+      className="text-[13px] text-[var(--fg-muted)] hover:text-[var(--fg-primary)]"
+    >
+      {children}
+    </Link>
   );
 }
 
 function Quiet({ children }: { children: React.ReactNode }) {
-  return <p className="text-[12.5px] text-[var(--fg-muted)]">{children}</p>;
+  return (
+    <p className="rounded-[var(--radius-lg)] border border-dashed border-[var(--border-subtle)] px-4 py-3 text-[13px] text-[var(--fg-muted)]">
+      {children}
+    </p>
+  );
 }

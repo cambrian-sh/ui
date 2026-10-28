@@ -37,7 +37,7 @@ describe('TaskDetail mutation errors', () => {
 
     render(<TaskDetail session={makeSession({ state: 'active' })} role="operator" />);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Pause session' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Pause task' }));
 
     const reasonInput = screen.getByLabelText(/Reason/i);
     fireEvent.change(reasonInput, { target: { value: 'investigating' } });
@@ -57,7 +57,7 @@ describe('TaskDetail mutation errors', () => {
 
     render(<TaskDetail session={makeSession({ state: 'active' })} role="operator" />);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Complete session' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Complete task' }));
 
     const reasonInput = screen.getByLabelText(/Reason/i);
     fireEvent.change(reasonInput, { target: { value: 'closing out' } });
@@ -71,7 +71,7 @@ describe('TaskDetail mutation errors', () => {
   it('does not surface an error on success', async () => {
     render(<TaskDetail session={makeSession({ state: 'active' })} role="operator" />);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Pause session' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Pause task' }));
 
     const reasonInput = screen.getByLabelText(/Reason/i);
     fireEvent.change(reasonInput, { target: { value: 'pausing for review' } });
@@ -90,9 +90,9 @@ describe('TaskDetail mutation errors', () => {
   it('disables all mutation buttons and shows the operator-required message for Viewer role', () => {
     render(<TaskDetail session={makeSession({ state: 'active' })} role="viewer" />);
 
-    expect(screen.getByRole('button', { name: 'Pause session' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Resume session' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Complete session' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Pause task' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Resume task' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Complete task' })).toBeDisabled();
     expect(screen.getByText('These actions require the Operator role.')).toBeInTheDocument();
   });
 
@@ -101,7 +101,7 @@ describe('TaskDetail mutation errors', () => {
 
     render(<TaskDetail session={makeSession({ state: 'paused' })} role="operator" />);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Resume session' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Resume task' }));
 
     const reasonInput = screen.getByLabelText(/Reason/i);
     fireEvent.change(reasonInput, { target: { value: 'resuming work' } });
@@ -115,7 +115,7 @@ describe('TaskDetail mutation errors', () => {
   it('closes the confirm dialog on successful pause', async () => {
     render(<TaskDetail session={makeSession({ state: 'active' })} role="operator" />);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Pause session' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Pause task' }));
     fireEvent.change(screen.getByLabelText(/Reason/i), { target: { value: 'pausing for review' } });
     fireEvent.click(screen.getByRole('button', { name: 'Pause' }));
 

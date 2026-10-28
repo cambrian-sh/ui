@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearch } from '@tanstack/react-router';
-import { Button, EmptyState, ScrollArea } from '@/design-system/components';
+import { Button, EmptyState, PageHeader, ScrollArea } from '@/design-system/components';
 import { Inspector } from '@/components/InspectorSlot';
 import { useStore } from '@/store/useStore';
 import { projectionStore } from '@/store/projection';
@@ -145,31 +145,33 @@ export function TasksConsole() {
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex flex-none items-start justify-between gap-4 px-[22px] pb-3 pt-4">
-        <div>
-          <h1 className="type-page-title">Tasks</h1>
-          <p className="type-page-description mt-1">
-            {sessions.length}
+      <PageHeader
+        className="flex-none pb-3"
+        title="Tasks"
+        description={
+          <>
+            Everything you have asked Cambrian to do. {sessions.length}{' '}
+            {sessions.length === 1 ? 'task' : 'tasks'}
             {runningCount > 0 && ` · ${runningCount} with a plan running`}
             {waitingCount > 0 && ` · ${waitingCount} waiting on you`}
-          </p>
-        </div>
-        <Button size="sm" variant="secondary">New task</Button>
-      </div>
+          </>
+        }
+        actions={
+          // A task is started by asking for something, which happens in Chat.
+          <Button size="sm" onClick={() => navigate({ to: '/chat' })}>
+            New task
+          </Button>
+        }
+      />
 
-      <div className="flex flex-none flex-wrap items-center gap-3 px-[22px] pb-3">
-        <TaskFilters
-          filters={filters}
-          onChange={setFilters}
-          availableAgents={availableAgents}
-          sessions={sessions}
-        />
-        {/* The ordering rule, stated. Rows that jump the queue without saying why
-            read as a bug — this is the one line that makes the sort legible. */}
-        <span className="ml-auto text-[11.5px] text-[var(--fg-muted)]">
-          Sorted by what needs you, then by last activity
-        </span>
-      </div>
+      {/* The filter bar also states the ordering rule: rows that jump the
+          queue without saying why read as a bug. */}
+      <TaskFilters
+        filters={filters}
+        onChange={setFilters}
+        availableAgents={availableAgents}
+        sessions={sessions}
+      />
 
       {/* One list, full width. The console used to render its own 360px aside
           INSIDE the shell's 360px inspector, leaving the list 480px of a 1440px

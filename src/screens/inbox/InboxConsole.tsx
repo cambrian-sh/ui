@@ -1,7 +1,9 @@
 import { useMemo, useState } from 'react';
 import { Link } from '@tanstack/react-router';
 import {
+  Badge,
   EmptyState,
+  PageHeader,
   ErrorState,
   HITLInline,
   ScrollArea,
@@ -75,31 +77,35 @@ export function InboxConsole() {
 
   if (ordered.length === 0) {
     return (
-      <div className="flex h-full flex-col">
-        <InboxHeader count={0} />
-        <EmptyState
-          title="Nothing is waiting on you"
-          body="Interventions appear here the moment a plan raises one. Nothing polls — this list is folded from the kernel feed."
-        />
-      </div>
+      <ScrollArea className="h-full">
+        <div className={COLUMN}>
+          <InboxHeader count={0} />
+          <EmptyState
+            className="mt-4 rounded-[var(--radius-lg)] border border-dashed border-[var(--border-subtle)]"
+            title="Nothing is waiting on you"
+            body="Decisions appear here the moment a plan stops to ask for one. Nothing polls — this list is folded from the kernel feed."
+          />
+        </div>
+      </ScrollArea>
     );
   }
 
   return (
     <div className="flex h-full flex-col">
-      <InboxHeader count={ordered.length} />
-
-      {resolve.error && (
-        <div className="px-[26px] pt-3">
-          <ErrorState
-            reason={resolve.error}
-            whatToDo="The intervention is still pending — nothing was decided. Try again, or open the task to see what the plan is waiting on."
-          />
-        </div>
-      )}
-
       <ScrollArea className="flex-1">
-        <ul className="flex flex-col gap-3 px-[26px] py-[22px]">
+        <div className={COLUMN}>
+        <InboxHeader count={ordered.length} />
+
+        {resolve.error && (
+          <div className="pb-3">
+            <ErrorState
+              reason={resolve.error}
+              whatToDo="The intervention is still pending — nothing was decided. Try again, or open the task to see what the plan is waiting on."
+            />
+          </div>
+        )}
+
+        <ul className="flex flex-col gap-5">
           {ordered.map((h) => (
             <li key={h.intervention_id}>
               {isMobile ? (
@@ -126,6 +132,7 @@ export function InboxConsole() {
             </li>
           ))}
         </ul>
+        </div>
       </ScrollArea>
 
       {/* An irreversible action gets the whole screen and a slide, not a sheet
@@ -170,16 +177,21 @@ export function InboxConsole() {
   );
 }
 
+/** Reading screens sit in one centred column, like Home. */
+const COLUMN = 'mx-auto flex w-full max-w-[880px] flex-col px-[var(--page-gutter)] pb-12 pt-7';
+
 function InboxHeader({ count }: { count: number }) {
   return (
-    <div className="flex-none px-[26px] pb-3.5 pt-4 shadow-[inset_0_-1px_0_var(--border-subtle)]">
-      <h1 className="type-page-title">Inbox</h1>
-      <p className="type-page-description mt-1">
-        {count === 0
+    <PageHeader
+      className="px-0 pt-0"
+      title="Inbox"
+      meta={count > 0 ? <Badge variant="warn">{count} waiting</Badge> : undefined}
+      description={
+        count === 0
           ? 'Nothing is blocked on a decision.'
-          : `${count} decision${count === 1 ? '' : 's'} blocking a plan · longest waiting first`}
-      </p>
-    </div>
+          : `${count === 1 ? 'A plan is' : 'Plans are'} stopped until you decide. Longest waiting first.`
+      }
+    />
   );
 }
 
@@ -191,17 +203,19 @@ function SessionLink({
   planId: string;
 }) {
   return (
-    <div className="flex items-center gap-2 font-mono text-[10.5px] text-[var(--fg-muted)]">
-      <span>plan {planId.slice(0, 8)}</span>
+    <div className="flex items-center gap-2 text-[12.5px] text-[var(--fg-muted)]">
+      <span>
+        Plan <span className="font-mono">{planId.slice(0, 8)}</span>
+      </span>
       {sessionId && (
         <>
           <span aria-hidden="true">·</span>
           <Link
             to="/tasks/$taskId"
             params={{ taskId: sessionId }}
-            className="hover:text-[var(--fg-primary)]"
+            className="text-[var(--fg-secondary)] hover:text-[var(--fg-primary)]"
           >
-            open the session
+            Open the task →
           </Link>
         </>
       )}
@@ -247,7 +261,7 @@ function ApprovalCard({
         {consequence.sentence}
       </p>
       <span className="font-mono text-[10.5px] text-[var(--fg-muted)]">
-        {sessionId ? `session ${sessionId.slice(0, 8)}` : `plan ${intervention.plan_id.slice(0, 8)}`}
+        {sessionId ? `task ${sessionId.slice(0, 8)}` : `plan ${intervention.plan_id.slice(0, 8)}`}
       </span>
     </button>
   );

@@ -7,6 +7,8 @@ import {
   SelectTrigger,
   SelectValue,
   Button,
+  ToggleGroup,
+  ToggleGroupItem,
 } from '@/design-system/components';
 import type { PlanStatus } from '@/ipc/types';
 
@@ -53,29 +55,20 @@ export function PlanFilters({
     <div
       role="toolbar"
       aria-label="Plan filters"
-      className="flex flex-wrap items-center gap-2 border-b border-[var(--border-subtle)] bg-[var(--bg-surface)] px-4 py-2"
+      className="flex flex-wrap items-center gap-2 border-b border-[var(--border-subtle)] px-[var(--page-gutter)] pb-3"
     >
-      <div className="flex items-center gap-1" role="group" aria-label="Filter by status">
-        {PLAN_STATUS_OPTIONS.map((s) => {
-          const active = filters.statuses.includes(s.value);
-          return (
-            <Button
-              key={s.value}
-              variant={active ? 'default' : 'ghost'}
-              size="sm"
-              aria-pressed={active}
-              onClick={() => {
-                const next = active
-                  ? filters.statuses.filter((x) => x !== s.value)
-                  : [...filters.statuses, s.value];
-                onChange({ ...filters, statuses: next });
-              }}
-            >
-              {s.label}
-            </Button>
-          );
-        })}
-      </div>
+      <ToggleGroup
+        type="multiple"
+        value={filters.statuses}
+        onValueChange={(next) => onChange({ ...filters, statuses: next as PlanStatus[] })}
+        aria-label="Filter by status"
+      >
+        {PLAN_STATUS_OPTIONS.map((s) => (
+          <ToggleGroupItem key={s.value} value={s.value}>
+            {s.label}
+          </ToggleGroupItem>
+        ))}
+      </ToggleGroup>
 
       <div className="h-6 w-px bg-[var(--border-subtle)]" aria-hidden="true" />
 
@@ -86,20 +79,20 @@ export function PlanFilters({
         }
         disabled={availableSessions.length === 0}
       >
-        <SelectTrigger className="w-48" aria-label="Filter by session">
+        <SelectTrigger className="w-48" aria-label="Filter by task">
           <SelectValue
             placeholder={
               availableSessions.length === 0
-                ? 'No sessions'
+                ? 'No tasks'
                 : filters.session
                 ? availableSessions.find((s) => s.id === filters.session)?.title ??
                   filters.session
-                : `All sessions (${availableSessions.length})`
+                : `All tasks (${availableSessions.length})`
             }
           />
         </SelectTrigger>
         <SelectContent>
-          <SelectItem value={ALL_SESSIONS}>All sessions</SelectItem>
+          <SelectItem value={ALL_SESSIONS}>All tasks</SelectItem>
           {availableSessions.map((s) => (
             <SelectItem key={s.id} value={s.id}>
               {s.title}
@@ -117,7 +110,10 @@ export function PlanFilters({
         className="w-56"
       />
 
-      <div className="ml-auto">
+      <div className="ml-auto flex items-center gap-3">
+        <span className="hidden text-[12px] text-[var(--fg-muted)] 2xl:inline">
+          Press 1–9 to open a plan
+        </span>
         <Button
           variant="ghost"
           size="sm"

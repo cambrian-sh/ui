@@ -94,8 +94,8 @@
 }
 
 @keyframes cambrian-halo {
-  0%   { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent-bg) 50%, transparent); }
-  100% { box-shadow: 0 0 0 7px color-mix(in srgb, var(--accent-bg) 0%, transparent); }
+  0%   { box-shadow: 0 0 0 0 color-mix(in srgb, var(--status-live) 50%, transparent); }
+  100% { box-shadow: 0 0 0 7px color-mix(in srgb, var(--status-live) 0%, transparent); }
 }
 
 @keyframes cambrian-caret {
@@ -116,6 +116,15 @@
 /* A live dot: connection, a running plan, a streaming step. */
 .cambrian-live-pulse {
   animation: cambrian-live-pulse 2.4s var(--ease-in-out) infinite;
+}
+
+/* The same heartbeat for a bar or segment, which must not change size. */
+@keyframes cambrian-live-fade {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.45; }
+}
+.cambrian-live-fade {
+  animation: cambrian-live-fade 2.4s var(--ease-in-out) infinite;
 }
 
 /* The one currently-running step. Expanding ring, not a spinner. */

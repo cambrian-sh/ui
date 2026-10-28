@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearch } from '@tanstack/react-router';
 import { useHotkeys } from 'react-hotkeys-hook';
-import { Card, CardContent, EmptyState, ScrollArea } from '@/design-system/components';
+import { Badge, Card, CardContent, EmptyState, PageHeader, ScrollArea } from '@/design-system/components';
 import { useStore } from '@/store/useStore';
 import { projectionStore } from '@/store/projection';
 import { formatTokenCount } from '@/lib/format';
@@ -114,19 +114,23 @@ export function PlansInFlight() {
     <div className="flex h-full flex-col">
       {/* Title and totals share a baseline (`2b`): the counts are a qualifier on
           the heading, and stacking them made the screen read as two headings. */}
-      <div className="flex flex-none flex-wrap items-baseline gap-2.5 px-[22px] pb-[13px] pt-4 shadow-[inset_0_-1px_0_color-mix(in_srgb,var(--fg-primary)_8%,transparent)]">
-        <h1 className="type-page-title">
-          Plans in flight
-        </h1>
-        <span className="font-mono text-[11px] leading-none text-[var(--fg-muted)]">
-          {runningCount} running
-          {blockedCount > 0 && ` · ${blockedCount} blocked`}
-          {` · ${formatTokenCount(committed)} committed`}
-        </span>
-        <span className="ml-auto hidden text-[11.5px] text-[var(--fg-muted)] lg:inline">
-          Press 1–9 to open a plan · nothing here polls
-        </span>
-      </div>
+      <PageHeader
+        className="flex-none pb-3"
+        title="Plans in flight"
+        meta={
+          <>
+            <Badge variant="live" dot>
+              {runningCount} running
+            </Badge>
+            {blockedCount > 0 && (
+              <Badge variant="warn" dot>
+                {blockedCount} waiting on you
+              </Badge>
+            )}
+          </>
+        }
+        description={`Every plan Cambrian is carrying out, newest first. ${formatTokenCount(committed)} committed so far.`}
+      />
 
       <PlanFilters
         filters={filters}
@@ -136,13 +140,13 @@ export function PlansInFlight() {
 
       <ScrollArea className="flex-1">
         {filtered.length === 0 ? (
-          <Card className="m-4">
-            <CardContent className="pt-6">
+          <Card className="m-[var(--page-gutter)]">
+            <CardContent>
               <EmptyState
                 title={plans.length === 0 ? 'No plans in flight' : 'No plans match the filters'}
                 body={
                   plans.length === 0
-                    ? 'Start a session from the chat surface to begin a plan.'
+                    ? 'Ask for something in Chat and the plan it produces appears here.'
                     : 'Adjust or reset the filters to see more plans.'
                 }
                 action={plans.length > 0 && isFiltered ? { label: 'Clear filters', onClick: () => setFilters(INITIAL_FILTERS) } : undefined}
@@ -156,7 +160,7 @@ export function PlansInFlight() {
             tabIndex={0}
             onFocus={() => setListFocused(true)}
             onBlur={() => setListFocused(false)}
-            className="flex flex-col gap-2 p-[14px_18px]"
+            className="flex flex-col gap-2 px-[var(--page-gutter)] py-4"
           >
             {filtered.map((p, i) => (
               <li key={p.plan_id}>

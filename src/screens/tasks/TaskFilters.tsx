@@ -68,7 +68,7 @@ export function TaskFilters({
     <div
       role="toolbar"
       aria-label="Session filters"
-      className="flex flex-wrap items-center gap-2 px-[22px] py-2.5 shadow-[inset_0_-1px_0_var(--border-subtle)]"
+      className="flex flex-wrap items-center gap-2 border-b border-[var(--border-subtle)] px-[var(--page-gutter)] pb-3"
     >
       {/* The count is part of the label, so the filter says how much it will
           show before it is pressed — "Paused 1" rather than "Paused", pressed,
@@ -82,7 +82,7 @@ export function TaskFilters({
         {SESSION_STATES.map((s) => (
           <ToggleGroupItem key={s.value} value={s.value} aria-label={s.label}>
             {s.label}
-            <span className="font-mono text-[10px] text-[var(--fg-muted)]">
+            <span className="text-[11.5px] tabular-nums text-[var(--fg-muted)]">
               {counts[s.value] ?? 0}
             </span>
           </ToggleGroupItem>
@@ -141,7 +141,7 @@ export function TaskFilters({
       />
 
       <div className="ml-auto flex items-center gap-3">
-        <span className="hidden text-[11.5px] text-[var(--fg-muted)] lg:inline">
+        <span className="hidden text-[12px] text-[var(--fg-muted)] 2xl:inline">
           Sorted by what needs you, then by last activity
         </span>
         <Button
