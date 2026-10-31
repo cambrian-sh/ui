@@ -202,6 +202,8 @@ pub struct DiscoveryProposal {
     pub collection_root: String,
     pub cursor_path: String,
     pub cursor_param: String,
+    /// body | header | link; empty reads as body.
+    pub cursor_source: String,
     pub auth_scheme_ref: String,
 }
 
@@ -887,6 +889,7 @@ fn discovery_session_from(r: pb::ingress::DiscoverySession) -> DiscoverySession 
             collection_root: p.collection_root,
             cursor_path: p.cursor_path,
             cursor_param: p.cursor_param,
+            cursor_source: p.cursor_source,
             auth_scheme_ref: p.auth_scheme_ref,
         }),
         pending_origins: r.pending_origins,

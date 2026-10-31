@@ -852,6 +852,7 @@ function Accept({
         {p.cadence_seconds > 0 && ` · ${humanCadence(p.cadence_seconds)}`}
         {p.collection_root !== "" && ` · records at ${p.collection_root}`}
         {p.cursor_path !== "" && ` · cursor from ${p.cursor_path}`}
+        {p.cursor_source === "link" && ` · pages by next link (${p.cursor_param || "parameter not set"})`}
       </div>
       {p.cadence_seconds > 0 && (
         /* The number alone cannot be checked. An operator was asked "every few

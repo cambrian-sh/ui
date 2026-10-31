@@ -175,7 +175,7 @@ describe('creating an ingress from a sentence and an endpoint', () => {
       proposal: {
         revision: 1, archetype: 'poller', protocol: 'http', format: 'json',
         cadence_seconds: 60, collection_root: '/items', cursor_path: '',
-        cursor_param: '', auth_scheme_ref: '', cadence_because: '',
+        cursor_param: '', cursor_source: '', auth_scheme_ref: '', cadence_because: '',
       },
     }));
     render(<DiscoverSource ingressId="usgs" onChanged={() => {}} />);
@@ -192,7 +192,7 @@ describe('creating an ingress from a sentence and an endpoint', () => {
       proposal: {
         revision: 1, archetype: 'poller', protocol: 'http', format: 'geojson',
         cadence_seconds: 60, collection_root: '/features', cursor_path: '',
-        cursor_param: '', auth_scheme_ref: '', cadence_because: '',
+        cursor_param: '', cursor_source: '', auth_scheme_ref: '', cadence_because: '',
       },
     }));
     acceptDiscovery.mockResolvedValue({ ok: true, error: '', revision: 3 });
@@ -221,7 +221,7 @@ describe('creating an ingress from a sentence and an endpoint', () => {
       proposal: {
         revision: 1, archetype: 'poller', protocol: 'http', format: 'json',
         cadence_seconds: 5, collection_root: '/hourly', cursor_path: '',
-        cursor_param: '', auth_scheme_ref: '', cadence_because: '',
+        cursor_param: '', cursor_source: '', auth_scheme_ref: '', cadence_because: '',
       },
     }));
     commentDiscovery.mockResolvedValue({
@@ -250,7 +250,7 @@ describe('creating an ingress from a sentence and an endpoint', () => {
       proposal: {
         revision: 1, archetype: 'poller', protocol: 'http', format: 'json',
         cadence_seconds: 5, collection_root: '/hourly', cursor_path: '',
-        cursor_param: '', auth_scheme_ref: '', cadence_because: '',
+        cursor_param: '', cursor_source: '', auth_scheme_ref: '', cadence_because: '',
       },
     }));
     render(<DiscoverSource ingressId="usgs" onChanged={() => {}} />);
@@ -277,7 +277,7 @@ describe('creating an ingress from a sentence and an endpoint', () => {
       proposal: {
         revision: 1, archetype: 'poller', protocol: 'http', format: 'json',
         cadence_seconds: 3600, collection_root: '/hourly', cursor_path: '',
-        cursor_param: '', auth_scheme_ref: '', cadence_because: 'hourly is plenty',
+        cursor_param: '', cursor_source: '', auth_scheme_ref: '', cadence_because: 'hourly is plenty',
       },
     }));
     render(<DiscoverSource ingressId="usgs" onChanged={() => {}} />);
@@ -295,7 +295,7 @@ describe('creating an ingress from a sentence and an endpoint', () => {
       proposal: {
         revision: 1, archetype: 'poller', protocol: 'http', format: 'json',
         cadence_seconds: 10, collection_root: '/hourly', cursor_path: '',
-        cursor_param: '', auth_scheme_ref: '', cadence_because: '',
+        cursor_param: '', cursor_source: '', auth_scheme_ref: '', cadence_because: '',
       },
     }));
     render(<DiscoverSource ingressId="usgs" onChanged={() => {}} />);

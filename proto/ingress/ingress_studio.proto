@@ -559,6 +559,11 @@ message DiscoveryProposePollerRequest {
   string cursor_param = 8;
   // Why the agent believes each field. A proposal that cites nothing is refused.
   string reason = 9;
+  // Where the next cursor comes from: body (cursor_path, the default when empty),
+  // header, or link (`Link: <...>; rel="next"`, cursor_param read from the
+  // next URL's query). The same closed set as the transport spec's
+  // cursor_source; a next-link source is unrepresentable without it.
+  string cursor_source = 10;
 }
 
 message DiscoveryProposeStreamRequest {
@@ -676,6 +681,8 @@ message DiscoveryProposal {
   string cursor_path = 7;
   string cursor_param = 8;
   string auth_scheme_ref = 9;
+  // body | header | link; empty reads as body. See DiscoveryProposePollerRequest.
+  string cursor_source = 13;
 }
 
 message DiscoverySession {

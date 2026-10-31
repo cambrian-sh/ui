@@ -1483,6 +1483,8 @@ export interface DiscoveryProposal {
   collection_root: string;
   cursor_path: string;
   cursor_param: string;
+  /** body | header | link; empty reads as body. */
+  cursor_source: string;
   auth_scheme_ref: string;
 }
 
