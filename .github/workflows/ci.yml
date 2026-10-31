@@ -1,0 +1,73 @@
+# Operator console CI.
+#
+# Until 2026-10-31 this was the only sub-repo with no workflow at all: 78 vitest
+# files, a Rust core and a pinned operator contract, and nothing ran unless
+# someone launched the desktop app by hand (T-20261031-ui-has-no-ci-workflow-
+# at-all-vitest-typecheck). Three independent jobs so a Rust toolchain hiccup
+# never masks a failing TypeScript test:
+#
+#   web        — bun install, tsc --noEmit, vitest run (what `bun run test` does locally)
+#   rust       — cargo check of src-tauri on Linux with the Tauri 2 system deps
+#   proto-sync — ui/proto/operator.proto must be byte-identical to core's copy
+#                (AGENTS.md §4.4); core's own proto-sync job checks the same
+#                thing from the other side, but a drift should go red here too.
+#
+# The Playwright e2e layer is a separate ticket
+# (T-20261031-ui-has-no-playwright-e2e-layer-test-e2e-script); `test:e2e` is not run.
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: latest
+      - name: Install (frozen lockfile)
+        run: bun install --frozen-lockfile
+      - name: Gate — typecheck
+        run: bun run typecheck
+      - name: Gate — unit tests
+        run: bun run test
+
+  rust:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      # Tauri 2 on Linux links against WebKitGTK 4.1 and friends; cargo check
+      # fails at the build-script stage without them.
+      - name: Install Tauri system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libwebkit2gtk-4.1-dev build-essential curl wget file \
+            libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        with:
+          workspaces: src-tauri
+      - name: Gate — cargo check
+        run: cargo check --manifest-path src-tauri/Cargo.toml --locked
+
+  proto-sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          path: ui
+      - name: Checkout cambrian-core (source of truth for operator.proto)
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          repository: cambrian-sh/core
+          path: cambrian-core
+          token: ${{ secrets.SIBLING_CHECKOUT_TOKEN || secrets.GITHUB_TOKEN }}
+      - name: Gate — vendored operator.proto matches core
+        run: diff -u cambrian-core/api/proto/operator.proto ui/proto/operator.proto

@@ -12,6 +12,7 @@ import { formatDuration, formatTokens } from '@/lib/format';
 import { useNavigate } from '@tanstack/react-router';
 import { setPlanDraft } from '@/screens/plan/planDraft';
 import { ConversationRail } from './ConversationRail';
+import { useDraftPersistence } from './useDraftPersistence';
 import {
   EMPTY_WORK,
   rememberConversation,
@@ -85,7 +86,6 @@ export function ChatConsole() {
   const projection = useStore(projectionStore);
   const state = projection.state;
 
-  const [text, setText] = useState('');
   const [memoryOnly, setMemoryOnly] = useState(false);
   const [alwaysPropose, setAlwaysPropose] = useState(true);
 
@@ -106,6 +106,12 @@ export function ChatConsole() {
   // what stops the screen growing a second one.
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [activeId, setActiveId] = useState<string | null>(rememberedConversation());
+  // The composer's draft outlives the process (UI-009 / PRD-03 §11, Story 53):
+  // the same hook the task surface uses, keyed by conversation so a half-written
+  // sentence survives a refresh, a restart and a switch to another conversation
+  // and back. It lived in `useState('')` here, so the /chat screen — the one
+  // composer an operator types into most — was the one place a restart lost it.
+  const [text, setText] = useDraftPersistence('chat', activeId ?? 'new');
   const [messages, setMessages] = useState<ConversationMessage[]>([]);
   const [laneError, setLaneError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
