@@ -30,13 +30,6 @@ fn main() {
                 // client compiles unconditionally; an OSS kernel simply never advertises
                 // the "telemetry-admin" capability and the surface stays hidden.
                 "../proto/telemetry/telemetry_admin.proto",
-                // ADR-0102: the premium RECORD LANE plane, which carries the drift
-                // product's own output — alerts, the outcome tally, refusals and
-                // retention runs. It is deliberately NOT on operator.proto:
-                // operator.proto is a held-stable contract, and an unproven product
-                // feature should not become a permanent commitment on it. Same
-                // reasoning, and the same mounting, as authz above.
-                "../proto/records/records.proto",
                 // ADR-0112: the Ingress Studio's operator plane (plan D8) —
                 // the full ingress lifecycle over the server-enforced state
                 // machine. Premium-owned for the ADR-0073 reason; the client
@@ -58,7 +51,6 @@ fn main() {
     println!("cargo:rerun-if-changed=../proto/authz/access_policy.proto");
     println!("cargo:rerun-if-changed=../proto/telegram/telegram_admin.proto");
     println!("cargo:rerun-if-changed=../proto/telemetry/telemetry_admin.proto");
-    println!("cargo:rerun-if-changed=../proto/records/records.proto");
     println!("cargo:rerun-if-changed=../proto/ingress/ingress_studio.proto");
     println!("cargo:rerun-if-changed=../proto/substrate/substrate.proto");
 

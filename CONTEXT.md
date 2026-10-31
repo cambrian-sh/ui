@@ -42,12 +42,13 @@ cargo tauri dev              # full Tauri dev (Rust + webview)
 
 - **Contract pinned to `0095`** (kernel v0.6.10-alpha). The Rust core handshakes
   and shows a skew banner on mismatch.
-- **Premium planes**: AccessPolicyAdmin, TelegramAdmin, RecordLane,
+- **Premium planes**: AccessPolicyAdmin, TelegramAdmin,
   IngressStudioAdmin, SubstrateLane, Telemetry, Links (on the OSS contract).
   Each rides the same gRPC channel + bearer token; gated by capability strings.
 - **Data flow**: Rust core streams `kernel://state` (absolute-state projection)
   → Zustand store → React screens. Writes go through `invoke('op_*')` →
-  Rust core → gRPC → kernel. No polling except the drift console (no feed lane).
+  Rust core → gRPC → kernel. No polling. (The drift console and its RecordLane
+  plane were removed 2026-10-31 with the premium drift product.)
 - **Plugin surfaces** wrap in `PluginSurface.tsx` (ADR-0089) — per-plugin skew
   banner, absent state, all automatic.
 

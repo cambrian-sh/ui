@@ -28,23 +28,11 @@ pub mod telegram {
     tonic::include_proto!("cambrian.premium.telegram");
 }
 
-/// The premium record lane (ADR-0102) — the drift product's own plane.
-///
-/// Compiled in unconditionally, like every other premium plane here. Whether the
-/// SERVER exists is what varies, and it varies on something the manifest cannot
-/// know: the lane needs Postgres, so the plugin declares no capability at
-/// registration and reports [`RECORD_LANE_CAPABILITY`] only after Build finds a
-/// store. A kernel with the plugin and no database is a CORRECT deployment that
-/// never advertises it.
-pub mod records {
-    tonic::include_proto!("cambrian.premium.records");
-}
-
 /// The premium Ingress Studio plane (ADR-0112 §13) — the full ingress
 /// lifecycle: capture, draft, confirm, dry-run, arm, pause, repair, retire.
 ///
 /// Compiled in unconditionally like every premium plane here. The capability
-/// is reported post-Build (the record-lane precedent): a kernel without
+/// is reported post-Build (REC-02): a kernel without
 /// Postgres or evidence capture is a CORRECT deployment that never advertises
 /// it, and the surface stays hidden rather than broken.
 pub mod ingress {
@@ -57,7 +45,7 @@ pub mod ingress {
 /// (`Overview` / `ListEntities`).
 ///
 /// Compiled in unconditionally like every premium plane here. The capability
-/// is reported post-Build (the record-lane precedent): a kernel with the
+/// is reported post-Build (REC-02): a kernel with the
 /// substrate plugin and no Postgres is a CORRECT deployment that never
 /// advertises it, and the surface stays hidden rather than broken.
 pub mod substrate {
@@ -69,17 +57,6 @@ pub mod substrate {
 /// (ADR-0082 D2: the kernel forwards plugin capabilities without interpreting
 /// them, which is what keeps premium vocabulary out of the OSS core).
 pub const ACCESS_POLICY_CAPABILITY: &str = "access-policy";
-
-/// The capability the kernel advertises when the record lane has a store
-/// (ADR-0102, `driftplugin.Capability`).
-///
-/// Its ABSENCE is meaningful and must not be rendered as a fault: a deployment
-/// with no Postgres has no reconciler, which is a complete configuration rather
-/// than a missing piece. This is also distinct from `GetDriftStats.available` —
-/// the capability says the plane is mounted, `available` says there is something
-/// behind it, and a console that conflates them will eventually report "0 issues"
-/// for a detector that was never switched on.
-pub const RECORD_LANE_CAPABILITY: &str = "record-lane";
 
 /// The capability the kernel advertises when the Ingress Studio is live
 /// (ADR-0112; reported via `LiveCapabilities` after Build finds Postgres and
@@ -95,9 +72,9 @@ pub const SUBSTRATE_CAPABILITY: &str = "substrate-query";
 /// The capability gating `RetentionRunOp` on the operator feed (contract 0084,
 /// ADR-0102 A1).
 ///
-/// Separate from [`RECORD_LANE_CAPABILITY`] because the event is SOURCE-AGNOSTIC:
-/// the record compactor and the reactive-journal GC publish the same shape, so a
-/// deployment can have retention events with no record lane at all.
+/// The event is SOURCE-AGNOSTIC: the reactive-journal GC publishes it today (the
+/// premium record compactor that also did was removed with the drift product on
+/// 2026-10-31).
 pub const RETENTION_FEED_CAPABILITY: &str = "retention-feed";
 
 /// The contract version this client is pinned to. Compare against
@@ -218,7 +195,6 @@ pub const PINNED_CONTRACT_VERSION: &str = "0098";
 pub const PINNED_PLUGIN_VERSIONS: &[(&str, &str)] = &[
     ("authz", "1.0.0"),
     ("reactive", "1.0.0"),
-    ("drift", "0.1.0"),
     ("substrate", "0.1.0"),
 ];
 

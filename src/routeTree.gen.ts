@@ -26,7 +26,6 @@ import { Route as LifecycleRouteImport } from './routes/lifecycle'
 import { Route as KnowledgeRouteImport } from './routes/knowledge'
 import { Route as IngressStudioRouteImport } from './routes/ingress-studio'
 import { Route as InboxRouteImport } from './routes/inbox'
-import { Route as DriftRouteImport } from './routes/drift'
 import { Route as CostRouteImport } from './routes/cost'
 import { Route as ChatRouteImport } from './routes/chat'
 import { Route as AuditRouteImport } from './routes/audit'
@@ -120,11 +119,6 @@ const InboxRoute = InboxRouteImport.update({
   path: '/inbox',
   getParentRoute: () => rootRouteImport,
 } as any)
-const DriftRoute = DriftRouteImport.update({
-  id: '/drift',
-  path: '/drift',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const CostRoute = CostRouteImport.update({
   id: '/cost',
   path: '/cost',
@@ -167,7 +161,6 @@ export interface FileRoutesByFullPath {
   '/audit': typeof AuditRoute
   '/chat': typeof ChatRoute
   '/cost': typeof CostRoute
-  '/drift': typeof DriftRoute
   '/inbox': typeof InboxRoute
   '/ingress-studio': typeof IngressStudioRoute
   '/knowledge': typeof KnowledgeRoute
@@ -194,7 +187,6 @@ export interface FileRoutesByTo {
   '/audit': typeof AuditRoute
   '/chat': typeof ChatRoute
   '/cost': typeof CostRoute
-  '/drift': typeof DriftRoute
   '/inbox': typeof InboxRoute
   '/ingress-studio': typeof IngressStudioRoute
   '/knowledge': typeof KnowledgeRoute
@@ -222,7 +214,6 @@ export interface FileRoutesById {
   '/audit': typeof AuditRoute
   '/chat': typeof ChatRoute
   '/cost': typeof CostRoute
-  '/drift': typeof DriftRoute
   '/inbox': typeof InboxRoute
   '/ingress-studio': typeof IngressStudioRoute
   '/knowledge': typeof KnowledgeRoute
@@ -251,7 +242,6 @@ export interface FileRouteTypes {
     | '/audit'
     | '/chat'
     | '/cost'
-    | '/drift'
     | '/inbox'
     | '/ingress-studio'
     | '/knowledge'
@@ -278,7 +268,6 @@ export interface FileRouteTypes {
     | '/audit'
     | '/chat'
     | '/cost'
-    | '/drift'
     | '/inbox'
     | '/ingress-studio'
     | '/knowledge'
@@ -305,7 +294,6 @@ export interface FileRouteTypes {
     | '/audit'
     | '/chat'
     | '/cost'
-    | '/drift'
     | '/inbox'
     | '/ingress-studio'
     | '/knowledge'
@@ -333,7 +321,6 @@ export interface RootRouteChildren {
   AuditRoute: typeof AuditRoute
   ChatRoute: typeof ChatRoute
   CostRoute: typeof CostRoute
-  DriftRoute: typeof DriftRoute
   InboxRoute: typeof InboxRoute
   IngressStudioRoute: typeof IngressStudioRoute
   KnowledgeRoute: typeof KnowledgeRoute
@@ -476,13 +463,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof InboxRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/drift': {
-      id: '/drift'
-      path: '/drift'
-      fullPath: '/drift'
-      preLoaderRoute: typeof DriftRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/cost': {
       id: '/cost'
       path: '/cost'
@@ -541,7 +521,6 @@ const rootRouteChildren: RootRouteChildren = {
   AuditRoute: AuditRoute,
   ChatRoute: ChatRoute,
   CostRoute: CostRoute,
-  DriftRoute: DriftRoute,
   InboxRoute: InboxRoute,
   IngressStudioRoute: IngressStudioRoute,
   KnowledgeRoute: KnowledgeRoute,

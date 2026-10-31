@@ -10,7 +10,7 @@ export const Route = createFileRoute('/knowledge')({
    * All three are search params rather than component state because each is a
    * thing an operator SENDS someone: "look at purchase_order/PO-800's
    * neighborhood" or "here is the receipt behind that number" is a link or it
-   * is a paragraph of instructions — the same pattern as `?alert=` on /drift.
+   * is a paragraph of instructions.
    */
   validateSearch: (search: Record<string, unknown>) => ({
     tab: typeof search.tab === 'string' ? search.tab : undefined,

@@ -15,7 +15,6 @@ Read `../CONTEXT.md` for the project overview. Wire types are in
 |---|---|
 | `build.rs` | `tonic-build` codegen — generates `OperatorConsole` client from `../proto/operator.proto`. |
 | `src/pb.rs` | `tonic::include_proto!("cambrian")` + `PINNED_CONTRACT_VERSION` (currently `0085`) + plugin skew table. |
-| `src/records.rs` | Record lane (ADR-0102): alerts, drift tally, refusals, retention. Read-only. |
 | `src/links.rs` | Identity plane review lane (contract 0098): candidates, confirm, retract. |
 | `src/state.rs` | `StateOfRecord` — idempotent absolute-state fold (last-writer-wins by id). |
 | `src/transport.rs` | gRPC client + `AuthInterceptor` (bearer), login, feed loop (`run_feed`/`drain`/`backoff`). |
@@ -57,7 +56,7 @@ emit "kernel unreachable". `op_disconnect` sets a stop flag + wakes the loop.
 ## The Operator Plane (two services, one connection)
 
 1. **`cambrian.OperatorConsole`** — pinned OSS contract, version-handshaked.
-2. **Premium planes** (AccessPolicyAdmin, TelegramAdmin, RecordLane,
+2. **Premium planes** (AccessPolicyAdmin, TelegramAdmin,
    IngressStudioAdmin, SubstrateLane, Telemetry) — same channel + bearer token.
    No separate version handshake; gated by capability strings.
 

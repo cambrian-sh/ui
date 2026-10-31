@@ -1755,11 +1755,9 @@ pub struct ConversationProgress {
 
 /// One retention/compaction pass off the feed (`RetentionRunOp`, contract 0084).
 ///
-/// Shaped identically to `records::RetentionRun` on the plugin plane on purpose:
-/// the panel merges the two — the feed is the live lane, the RPC backfills the
-/// history the feed cannot replay — and a console whose retention page showed a
-/// different history depending on how long it had been connected would be worse
-/// than one that showed none.
+/// Folded into the projection; no screen renders it since the drift console (its
+/// only reader, which merged it with the record lane's own retention RPC) was
+/// removed on 2026-10-31.
 #[derive(Clone, Serialize, Default)]
 pub struct RetentionRunEvent {
     /// The retention domain that ran, e.g. "records" or "reactive_journal". Read

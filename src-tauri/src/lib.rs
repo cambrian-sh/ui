@@ -9,7 +9,6 @@ pub mod links;
 pub mod logs;
 pub mod pb;
 pub mod policy;
-pub mod records;
 pub mod state;
 pub mod substrate;
 mod telegram;
@@ -1021,17 +1020,6 @@ async fn op_stop_log_tail(tail: State<'_, crate::logs::LogTail>) -> Result<(), S
 }
 
 // ---------------------------------------------------------------------------
-// Record lane (ADR-0102) — the drift product's surfaces.
-//
-// All four are request/response reads on the premium plane, deliberately NOT on
-// the projection: `ListAlerts` is poll-only (alerts are not on the operator event
-// feed, and putting them there is a contract bump), and the drift tally is a
-// process-lifetime gauge rather than folded state. The one exception is retention,
-// which IS on the feed as `RetentionRunOp` — `op_list_retention_runs` only
-// backfills the history the feed cannot replay.
-// ---------------------------------------------------------------------------
-
-// ---------------------------------------------------------------------------
 // Knowledge substrate (ADR-0118) — the premium query/explore plane. All four
 // are request/response (nothing substrate-shaped is on the operator feed);
 // the console polls nothing here — reads happen on navigation and on demand.
@@ -1074,46 +1062,6 @@ async fn op_knowledge_entities(
         .clone()
         .knowledge_entities(query.unwrap_or_default(), limit.unwrap_or(50))
         .await
-}
-
-#[tauri::command(rename_all = "snake_case")]
-async fn op_list_alerts(transport: State<'_, Transport>) -> Result<Vec<crate::records::Alert>, String> {
-    transport.inner().clone().list_alerts().await
-}
-
-#[tauri::command(rename_all = "snake_case")]
-async fn op_get_drift_stats(
-    transport: State<'_, Transport>,
-) -> Result<crate::records::DriftStats, String> {
-    transport.inner().clone().drift_stats().await
-}
-
-#[tauri::command(rename_all = "snake_case")]
-async fn op_list_refusals(
-    transport: State<'_, Transport>,
-) -> Result<Vec<crate::records::Refusal>, String> {
-    transport.inner().clone().list_refusals().await
-}
-
-#[tauri::command(rename_all = "snake_case")]
-async fn op_list_retention_runs(
-    transport: State<'_, Transport>,
-) -> Result<Vec<crate::records::RetentionRun>, String> {
-    transport.inner().clone().list_retention_runs().await
-}
-
-#[tauri::command(rename_all = "snake_case")]
-async fn op_get_coverage(
-    transport: State<'_, Transport>,
-) -> Result<Vec<crate::records::SourceCoverage>, String> {
-    transport.inner().clone().coverage().await
-}
-
-#[tauri::command(rename_all = "snake_case")]
-async fn op_get_push_status(
-    transport: State<'_, Transport>,
-) -> Result<Vec<crate::records::KindPushStatus>, String> {
-    transport.inner().clone().push_status().await
 }
 
 // ── Ingress Studio (ADR-0112 §13) ──
@@ -1988,12 +1936,6 @@ pub fn run() {
             op_knowledge_query,
             op_knowledge_overview,
             op_knowledge_entities,
-            op_list_alerts,
-            op_get_drift_stats,
-            op_list_refusals,
-            op_list_retention_runs,
-            op_get_coverage,
-            op_get_push_status,
             op_telegram_list_bots,
             op_telegram_add_bot,
             op_telegram_remove_bot,
