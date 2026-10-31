@@ -1,5 +1,11 @@
 # Webview (`src`) — Development Rules
 
+## Knowledge system (MANDATORY)
+- **Query the knowledge graph first** (`search_graph`, `query_graph` via codebase-memory-mcp)
+  before assuming anything about ADR status or architecture. All ADRs live in
+  `cambrian-knowledge/adrs/`. Record new measurements/observations in the relevant ADR's
+  frontmatter. Full rules: root [`../../AGENTS.md` §0](../../AGENTS.md).
+
 ## Bootstrap
 Read, in order: project root `../CONTEXT.md`, this directory's `CONTEXT.md`, and the product spec `../docs/web-ui-prd.md`. You do **not** need the proto here (the webview never speaks gRPC) — but you may consult `../src-tauri/CONTEXT.md` to know what projection events/intents the core exposes.
 

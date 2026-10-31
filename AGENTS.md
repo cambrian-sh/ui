@@ -10,6 +10,15 @@
 > one file and an agent reading the other derived opposite rules. The content below
 > is the correct, current version.
 
+## Knowledge system (MANDATORY)
+- **All ADRs, measurements, and decisions live in `cambrian-knowledge/adrs/`.** Query the
+  graph (`search_graph`, `query_graph`) before assuming anything about ADR status, design
+  decisions, or contract history. Never write new ADRs to `docs/adr/`.
+- **Record what you find.** New measurements → the ADR's `measurements:` array. Gotchas →
+  `observations:` array. New ADRs → `cambrian-knowledge/adrs/NNNN-slug.md` per
+  `cambrian-knowledge/meta/SCHEMA.md`.
+- Full rules: root [`../AGENTS.md` §0](../AGENTS.md).
+
 ## Session Bootstrap (REQUIRED)
 
 Every new session MUST start by reading, in full:

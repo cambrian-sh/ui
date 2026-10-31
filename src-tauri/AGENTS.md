@@ -1,5 +1,11 @@
 # Rust Core (`src-tauri`) — Development Rules
 
+## Knowledge system (MANDATORY)
+- **Query the knowledge graph first** (`search_graph`, `query_graph` via codebase-memory-mcp)
+  before assuming anything about ADR status, contract history, or architecture. All ADRs live
+  in `cambrian-knowledge/adrs/`. Record new measurements/observations in the relevant ADR's
+  frontmatter. Full rules: root [`../../AGENTS.md` §0](../../AGENTS.md).
+
 ## Bootstrap
 Read, in order: project root `../CONTEXT.md`, this directory's `CONTEXT.md` (the full transport contract + recovery rules), and the vendored `../proto/operator.proto`. The product spec is `../docs/web-ui-prd.md`.
 
