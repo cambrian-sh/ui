@@ -12,6 +12,19 @@ For agent rules see `AGENTS.md`. For per-ADR status see `cambrian-knowledge/adrs
 
 ---
 
+## Knowledge & work tracking
+
+This file is the *current shape* of the operator UI. It is not where decisions or work live:
+
+- **Why it is this shape** — ADRs and decisions in `../cambrian-knowledge/`. Query the
+  graph (`search_graph`, `query_graph`) rather than citing from memory; check an ADR's
+  freshness before building on it.
+- **What is being done, and what is broken** — tickets: `list_tickets` (`repo: "ui"`), or the
+  knowledge-board Tickets view. Every change is ticketed, claimed, and closed with a
+  resolution — the protocol is root [`AGENTS.md`](../AGENTS.md) §0.
+- **Every gap listed in this file should have a ticket.** Put its id next to the gap
+  (`— T-20261031-…`); when the ticket closes, update or remove the gap here in the same change.
+
 ## Build & Run
 
 ```bash
