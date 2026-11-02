@@ -35,6 +35,9 @@ const KERNEL_ADVERTISES = [
   'session-lifecycle',
   // OSS base: the identity plane's review lane (contract 0098)
   'links',
+  // OSS base: contract 0099
+  'logout',
+  'memory-event-time',
   // conditional
   'llm-exchange',
   'memory-answer',

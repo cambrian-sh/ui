@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { ConfigFileFacts } from '@/screens/settings/ConfigFileFacts';
 import { Button, Input } from '@/design-system/components';
 import { ErrorState } from '@/design-system/components/cambrian/error-state';
 import { ipc } from '@/ipc';
@@ -314,6 +315,7 @@ export function MCPServerEditor({
           value and outranks the store.
         </p>
       )}
+      {written && !save.error && <ConfigFileFacts outcome={written} />}
 
       <div className="flex flex-wrap items-center gap-2">
         <Button onClick={() => void save.mutate()} disabled={saveDisabled}>

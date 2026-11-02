@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { ConfigFileFacts } from './ConfigFileFacts';
 import {
   Button,
   Card,
@@ -374,6 +375,11 @@ function RoleMap({
           <p className="mt-2 text-[12px] text-[var(--fg-secondary)]">
             Stored. It takes effect the next time the kernel starts.
           </p>
+        )}
+        {written && !assign.error && (
+          <div className="mt-2">
+            <ConfigFileFacts outcome={written} />
+          </div>
         )}
       </CardContent>
     </Card>

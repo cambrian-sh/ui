@@ -5,6 +5,7 @@ import { useStore } from '@/store/useStore';
 import { ErrorState } from '@/design-system/components/cambrian/error-state';
 import { errorMessage } from '@/lib/errorMessage';
 import { autoConnectOnce } from '@/lib/autoConnect';
+import { signOut, takeSignOutNote } from '@/lib/signOut';
 import { describeCapabilities, missingCapabilities } from '@/lib/capabilities';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/design-system/components';
 import { cn } from '@/design-system/lib/utils';
@@ -189,6 +190,24 @@ export function ConnectionSettings() {
     }
   };
 
+  // Contract 0099: a kernel that can revoke tokens gets a real sign-out.
+  const canSignOut = (state?.capabilities ?? []).includes('logout');
+  // Shown once after a sign-out whose token the kernel did NOT revoke (an older
+  // kernel, or one that was unreachable): the token stays valid there until it
+  // expires, and the operator should know that rather than assume it is dead.
+  const [signOutNote, setSignOutNote] = useState<string | null>(() => takeSignOutNote());
+
+  const onSignOut = async () => {
+    setError(null);
+    setBusy(true);
+    try {
+      const outcome = await signOut();
+      setSignOutNote(takeSignOutNote() ?? (outcome.revoked ? null : outcome.note));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const onDisconnect = async () => {
     setError(null);
     setBusy(true);
@@ -278,6 +297,24 @@ export function ConnectionSettings() {
             </div>
           )}
 
+          {isConnected && canSignOut && (
+            <div className="flex flex-col gap-1">
+              <button
+                type="button"
+                onClick={onSignOut}
+                disabled={busy}
+                className="self-start rounded-sm bg-[var(--button-primary-bg)] px-3 py-1 text-xs font-medium text-[var(--button-primary-fg)] hover:bg-[var(--button-primary-bg-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {busy ? 'Signing out…' : 'Sign out'}
+              </button>
+              <p className="text-[11px] text-[var(--fg-muted)]">
+                Revokes this console&rsquo;s token on the kernel and forgets the saved
+                credentials. Disconnect only forgets them here; the token stays valid on the
+                kernel until it expires.
+              </p>
+            </div>
+          )}
+
           {isConnected && (
             <button
               type="button"
@@ -290,6 +327,19 @@ export function ConnectionSettings() {
           )}
         </CardContent>
       </Card>
+
+      {!isConnected && signOutNote && (
+        <div
+          role="status"
+          className="flex flex-col gap-1 rounded-md p-2.5 tint-wash tint-ring"
+          style={{ '--tint': 'var(--status-warn)' } as React.CSSProperties}
+        >
+          <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-[var(--status-warn)]">
+            SIGNED OUT HERE ONLY
+          </span>
+          <span className="text-[12px] leading-[1.55] text-[var(--fg-primary)]">{signOutNote}</span>
+        </div>
+      )}
 
       {!isConnected && (
         <Card>

@@ -1796,6 +1796,19 @@ pub struct ConfigWriteOutcome {
     /// effect == "shadowed". "Something pins this" leaves an operator hunting.
     pub shadowed_by: String,
     pub error: String,
+    /// ADR-0101 D8 (contract 0099): the config file the value was written INTO
+    /// (write-through; the store override for the key was removed). Empty
+    /// otherwise. `serde(default)` because an older kernel never sends it.
+    #[serde(default)]
+    pub written_to: String,
+    /// The file layer the STORED value now overrides (the file sets the key but
+    /// is not writable), and that file's value. The console marks the key
+    /// "overrides <file>" and offers "revert to file" (DeleteConfig). The
+    /// opposite direction to `shadowed_by`, so never rendered with its copy.
+    #[serde(default)]
+    pub overrides_file: String,
+    #[serde(default)]
+    pub overrides_value: String,
 }
 
 /// A durable config write, per key.

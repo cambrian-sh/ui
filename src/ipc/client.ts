@@ -35,6 +35,13 @@ export const ipc = {
   /** Stop the feed, forget the token, reset to Down. Reconnect = a fresh login. */
   disconnect: (): Promise<void> => invoke<void>('op_disconnect'),
 
+  /**
+   * Sign out (contract 0099): revoke the token on the kernel, then everything
+   * `disconnect` does. Offer it only when the kernel advertises `logout`. Call it
+   * through `signOut()` (src/lib/signOut.ts), which also drops webview caches.
+   */
+  logout: (): Promise<t.LogoutOutcome> => invoke<t.LogoutOutcome>('op_logout'),
+
   getState: (): Promise<t.StateOfRecord> =>
     invoke<t.StateOfRecord>('op_get_state'),
 
@@ -90,6 +97,15 @@ export const ipc = {
 
   getConfigSchema: (): Promise<t.ConfigSchema> =>
     invoke<t.ConfigSchema>('op_get_config_schema'),
+
+  /**
+   * Remove stored config overrides (DeleteConfig) — "revert to file" (ADR-0101
+   * D8). The layers beneath the store (a file, else the default) supply the key
+   * again. Writing the file's value back would NOT do this: it leaves the key
+   * pinned by the store. Reason is mandatory.
+   */
+  deleteConfig: (keys: string[], reason: string): Promise<t.ConfigWriteResult> =>
+    invoke<t.ConfigWriteResult>('op_delete_config', { keys, reason }),
 
   /**
    * Hot-apply numeric runtime tunables without a kernel restart (ADR-0054).

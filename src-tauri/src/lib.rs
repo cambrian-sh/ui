@@ -108,6 +108,19 @@ async fn op_login_saved(
     Ok(LoginResponse { role })
 }
 
+/// Sign out (contract 0099 `Logout`, ADR-0130 D5): revoke the token on the
+/// kernel, then tear down exactly as `op_disconnect` does. The local teardown
+/// always happens; the outcome says whether the kernel also killed the token.
+/// The webview offers this only when the kernel advertises `logout`.
+#[tauri::command(rename_all = "snake_case")]
+async fn op_logout(
+    app: AppHandle,
+    transport: State<'_, Transport>,
+) -> Result<transport::LogoutOutcome, String> {
+    let t = transport.inner().clone();
+    t.logout(&app).await
+}
+
 /// Tear down the operator session (stop the feed, forget the token). The webview
 /// calls this from the connection panel; reconnecting means a fresh `op_login`.
 #[tauri::command(rename_all = "snake_case")]
@@ -320,6 +333,8 @@ async fn op_ingest_memory(
     source: String,
     session_id: String,
     reason: String,
+    occurred_at_unix_ms: Option<i64>,
+    time_precision: Option<String>,
 ) -> Result<(String, bool), String> {
     transport
         .inner()
@@ -335,6 +350,8 @@ async fn op_ingest_memory(
             source,
             session_id,
             reason,
+            occurred_at_unix_ms,
+            time_precision,
         )
         .await
 }
@@ -412,6 +429,8 @@ async fn op_ingest_file(
     tags: Vec<String>,
     importance: f64,
     reason: String,
+    occurred_at_unix_ms: Option<i64>,
+    time_precision: Option<String>,
 ) -> Result<(String, bool), String> {
     let content = std::fs::read(&path).map_err(|e| format!("read {path}: {e}"))?;
     let filename = std::path::Path::new(&path)
@@ -433,6 +452,8 @@ async fn op_ingest_file(
             String::new(),
             String::new(),
             reason,
+            occurred_at_unix_ms,
+            time_precision,
         )
         .await
 }
@@ -1737,6 +1758,18 @@ async fn op_clear_generator_key(
     transport.inner().clone().clear_generator_key(id, reason).await
 }
 
+/// Remove stored config overrides (DeleteConfig) -- the console's "revert to
+/// file" (ADR-0101 D8). Mutating: command_id generated in the transport, reason
+/// mandatory, Operator-only kernel-side.
+#[tauri::command(rename_all = "snake_case")]
+async fn op_delete_config(
+    transport: State<'_, Transport>,
+    keys: Vec<String>,
+    reason: String,
+) -> Result<ConfigWriteResult, String> {
+    transport.inner().clone().delete_config(keys, reason).await
+}
+
 /// The read half of the runtime-config surface.
 ///
 /// `value_source` is what it exists for: it names the layer supplying each key,
@@ -1854,6 +1887,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             op_login,
             op_login_saved,
+            op_logout,
             op_saved_connection,
             op_disconnect,
             op_get_state,
@@ -1900,6 +1934,7 @@ pub fn run() {
             op_complete_session,
             op_blast_radius_preview,
             op_get_config_schema,
+            op_delete_config,
             op_list_generators,
             op_list_role_assignments,
             op_set_role_assignment,

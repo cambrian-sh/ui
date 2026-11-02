@@ -10,6 +10,7 @@ import type { StateOfRecord } from '@/ipc/types';
 vi.mock('@/ipc', () => ({
   ipc: {
     setToolGrant: vi.fn(),
+    listDocuments: vi.fn(),
     getBlastRadiusPreview: vi.fn().mockResolvedValue({
       affected_agents: [],
       affected_plans: [],
@@ -94,6 +95,42 @@ describe('MemoryDetail', () => {
     expect(screen.getByText('mem-123')).toBeInTheDocument();
     expect(screen.getByText(/no scope/i)).toBeInTheDocument();
     expect(screen.getByText('FACT')).toBeInTheDocument();
+  });
+
+  // T-20261101-ui-memory-detail-labels-a-ui-side-receipt-clock: `created_at` on a
+  // session doc is the console's receipt clock and must never be shown as a time.
+  it('never shows the UI-side receipt clock; the ingest time comes from the kernel listing', async () => {
+    const doc = makeDoc();
+    doc.created_at = '2001-02-03T04:05:06.000Z';
+    projectionStore
+      .getState()
+      .hydrate({ ...makeState('operator'), capabilities: ['document-listing'] });
+    vi.mocked(ipc.listDocuments).mockResolvedValue({
+      documents: [
+        {
+          id: 'mem-123',
+          title: '',
+          source_type: '',
+          tags: [],
+          chunk_count: 1,
+          created_at_unix_ms: Date.UTC(2026, 6, 13, 10, 0, 0),
+        },
+      ],
+      next_cursor: '',
+      total_matching: 1,
+    });
+    render(<MemoryDetail doc={doc} />);
+    expect(screen.queryByText(/created/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/2001/)).not.toBeInTheDocument();
+    expect(await screen.findByText(/2026/)).toBeInTheDocument();
+    expect(ipc.listDocuments).toHaveBeenCalledWith({ id_prefix: 'mem-123', limit: 5 });
+  });
+
+  it('says the ingest time is not reported without document-listing', () => {
+    projectionStore.getState().hydrate(makeState('operator'));
+    render(<MemoryDetail doc={makeDoc()} />);
+    expect(screen.getByText(/does not advertise document-listing/)).toBeInTheDocument();
+    expect(ipc.listDocuments).not.toHaveBeenCalled();
   });
 
   it('calls setToolGrant with tag mutation when confirming tag via dialog', async () => {

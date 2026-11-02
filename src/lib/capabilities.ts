@@ -87,6 +87,18 @@ const KNOWN: Record<string, Omit<CapabilitySurface, 'capability'>> = {
     consequence: 'grounded, cited answers; plain retrieval still works',
     gatesSurface: true,
   },
+  'memory-event-time': {
+    surface: 'Memory › Ingest, Ask',
+    consequence:
+      'event time (contract 0099) — the "when did this happen" ingest input; hits and citations show no event time',
+    gatesSurface: true,
+  },
+  logout: {
+    surface: 'Header › Sign out, Settings › Connection',
+    consequence:
+      'sign-out — only Disconnect remains, which forgets the token here while it stays valid on the kernel until it expires',
+    gatesSurface: true,
+  },
   'document-listing': {
     surface: 'Scope › Labels, Scope › Overview',
     consequence:

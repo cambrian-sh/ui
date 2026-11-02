@@ -30,6 +30,8 @@ class MockIPC {
         'memory-ingest',
         'memory-ingest-binary',
         'memory-answer',
+        'memory-event-time',
+        'logout',
       ],
       contract_skew: 0,
       plugins: [],
@@ -113,6 +115,12 @@ class MockIPC {
       },
     };
     this.emitState();
+  }
+
+  /** Mirrors the core: revoke (always succeeds here), then a disconnect. */
+  async logout(): Promise<t.LogoutOutcome> {
+    await this.disconnect();
+    return { revoked: true, note: '' };
   }
 
   async getState(): Promise<t.StateOfRecord> {
@@ -344,6 +352,10 @@ class MockIPC {
         score: h.score,
         importance: h.importance,
         tags: h.tags,
+        event_time_unix_ms: h.event_time_unix_ms,
+        event_time_end_unix_ms: h.event_time_end_unix_ms,
+        time_source: h.time_source,
+        time_precision: h.time_precision,
       })),
     };
   }
@@ -360,6 +372,11 @@ class MockIPC {
         source: '2026-W29-ops-review.pdf',
         importance: 0.6,
         tags: ['ops', 'incidents'],
+        // ADR-0134: a dated week, stated by the uploader.
+        event_time_unix_ms: Date.UTC(2026, 6, 13),
+        event_time_end_unix_ms: Date.UTC(2026, 6, 17),
+        time_source: 'explicit',
+        time_precision: 'day',
       },
       {
         doc_id: 'mock-doc-1',
@@ -370,6 +387,11 @@ class MockIPC {
         source: 'Q3-budget-draft.pdf',
         importance: 0.8,
         tags: ['finance', 'budget'],
+        // Nothing known: the ingest clock, labelled as such.
+        event_time_unix_ms: Date.UTC(2026, 7, 2, 9, 30),
+        event_time_end_unix_ms: null,
+        time_source: 'ingest_default',
+        time_precision: 'second',
       },
       {
         doc_id: 'mock-doc-2',
@@ -380,6 +402,10 @@ class MockIPC {
         source: 'platform-standup-notes.md',
         importance: 0.3,
         tags: ['platform'],
+        event_time_unix_ms: Date.UTC(2026, 6, 18, 9, 15),
+        event_time_end_unix_ms: null,
+        time_source: 'source_metadata',
+        time_precision: 'minute',
       },
     ];
   }
@@ -393,6 +419,24 @@ class MockIPC {
       kernel_only_keys: [],
       current_values: {},
       value_source: {},
+    };
+  }
+
+  /** Revert to file (ADR-0101 D8): every key comes back from the file layer. */
+  async deleteConfig(keys: string[]): Promise<t.ConfigWriteResult> {
+    return {
+      command_id: `mock-cmd-${Date.now()}`,
+      deduped: false,
+      outcomes: keys.map((key) => ({
+        key,
+        stored: false,
+        effect: 'restart_required',
+        shadowed_by: '',
+        error: '',
+        written_to: '',
+        overrides_file: '',
+        overrides_value: '',
+      })),
     };
   }
 

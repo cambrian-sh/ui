@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { MemoryHit } from '@/ipc/types';
 import { cn } from '@/design-system/lib/utils';
+import { EventTimeLabel } from './EventTimeLabel';
 
 export interface SourceCardProps {
   hit: MemoryHit;
@@ -77,6 +78,7 @@ export function SourceCard({ hit, index, className }: SourceCardProps) {
         ))}
         {hit.tags.length > 0 && <span aria-hidden="true">·</span>}
         <span className="font-mono">importance {hit.importance.toFixed(1)}</span>
+        <EventTimeLabel time={hit} />
       </div>
     </div>
   );

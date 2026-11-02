@@ -12,6 +12,7 @@ import { useStore } from '@/store/useStore';
 import { projectionStore } from '@/store/projection';
 import { formatDuration } from '@/lib/format';
 import { cn } from '@/design-system/lib/utils';
+import { StoredOverrides } from './ConfigFileFacts';
 import {
   coherenceProblems,
   DISPATCH_FIELDS,
@@ -100,6 +101,13 @@ export function DispatchSettings({ canMutate }: DispatchSettingsProps) {
           what it costs.
         </p>
         <SourceNote schemaMissing={Boolean(schema.error)} />
+        {/* ADR-0101 D8: keys the store pins over the files, each with its way back. */}
+        {schema.data && (
+          <StoredOverrides
+            valueSource={schema.data.value_source}
+            currentValues={schema.data.current_values}
+          />
+        )}
       </div>
 
       {/* ── How a step finds an agent ─────────────────────────────────── */}

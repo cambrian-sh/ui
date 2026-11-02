@@ -9,6 +9,7 @@ import type { IngestRow } from './useIngestQueue';
 import { TagPicker } from '@/screens/scope/TagPicker';
 import type { Vocabulary } from '@/screens/scope/useVocabulary';
 import { cn } from '@/design-system/lib/utils';
+import { localTimeZoneName, occurredAtFromInput } from '@/lib/eventTime';
 
 const DEFAULT_REASON = 'operator upload';
 
@@ -50,6 +51,12 @@ export interface IngestPaneProps {
   vocabulary: Vocabulary;
   disabled: boolean;
   disabledReason?: string;
+  /**
+   * True when the kernel advertises `memory-event-time` (contract 0099). An older
+   * kernel would silently drop `occurred_at`, so the input is hidden there rather
+   * than accepted and ignored.
+   */
+  canDateEvents?: boolean;
 }
 
 export function IngestPane({
@@ -60,6 +67,7 @@ export function IngestPane({
   vocabulary,
   disabled,
   disabledReason,
+  canDateEvents = false,
 }: IngestPaneProps) {
   const [pasteMode, setPasteMode] = useState(!canUploadFiles);
   const [pasteText, setPasteText] = useState('');
@@ -70,6 +78,14 @@ export function IngestPane({
   const [reason, setReason] = useState(DEFAULT_REASON);
   const [staged, setStaged] = useState<StagedFile[]>([]);
   const [pickError, setPickError] = useState<string | null>(null);
+
+  // ADR-0134: when the content happened. Optional — "unknown" sends nothing and the
+  // kernel dates the document by its ingest clock, labelled `ingest_default`.
+  const [whenMode, setWhenMode] = useState<'unknown' | 'date' | 'datetime'>('unknown');
+  const [whenValue, setWhenValue] = useState('');
+  const when = whenMode === 'unknown' ? null : occurredAtFromInput(whenMode, whenValue);
+  const whenInvalid = whenMode !== 'unknown' && whenValue.trim() !== '' && when === null;
+  const whenFields = when ?? {};
 
   const effectiveTags = restricted ? tags : [];
 
@@ -109,6 +125,7 @@ export function IngestPane({
         tags: effectiveTags,
         importance,
         reason: reason.trim() || DEFAULT_REASON,
+        ...whenFields,
       });
     }
     setStaged([]);
@@ -128,6 +145,7 @@ export function IngestPane({
       source: '',
       session_id: '',
       reason: reason.trim() || DEFAULT_REASON,
+      ...whenFields,
     });
     setPasteText('');
   };
@@ -190,7 +208,7 @@ export function IngestPane({
           <button
             type="button"
             onClick={submitText}
-            disabled={disabled || !pasteText.trim()}
+            disabled={disabled || !pasteText.trim() || whenInvalid}
             title={disabled ? disabledReason : undefined}
             className="self-end rounded-sm bg-[var(--button-primary-bg)] px-3 py-1 text-[11px] font-medium text-[var(--button-primary-fg)] hover:bg-[var(--button-primary-bg-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)] disabled:cursor-not-allowed disabled:opacity-50"
           >
@@ -294,6 +312,52 @@ export function IngestPane({
         </p>
       </div>
 
+      {canDateEvents && (
+        <fieldset className="flex flex-col gap-1">
+          <legend className="text-[11px] font-medium text-[var(--fg-secondary)]">
+            When did this happen?
+          </legend>
+          <div className="flex flex-wrap items-center gap-2">
+            <select
+              aria-label="Event time kind"
+              value={whenMode}
+              onChange={(e) => {
+                setWhenMode(e.target.value as 'unknown' | 'date' | 'datetime');
+                setWhenValue('');
+              }}
+              disabled={disabled}
+              className="rounded-sm border border-[var(--input-border)] bg-[var(--input-bg)] px-2 py-1 text-[11px] text-[var(--input-fg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)]"
+            >
+              <option value="unknown">Unknown — use the ingest time</option>
+              <option value="date">On a date</option>
+              <option value="datetime">At a date and time</option>
+            </select>
+            {whenMode !== 'unknown' && (
+              <input
+                type={whenMode === 'date' ? 'date' : 'datetime-local'}
+                aria-label={whenMode === 'date' ? 'Event date' : 'Event date and time'}
+                value={whenValue}
+                onChange={(e) => setWhenValue(e.target.value)}
+                disabled={disabled}
+                className="rounded-sm border border-[var(--input-border)] bg-[var(--input-bg)] px-2 py-1 text-[11px] text-[var(--input-fg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)]"
+              />
+            )}
+          </div>
+          <p className="text-[10px] text-[var(--fg-muted)]">
+            {whenMode === 'unknown' &&
+              'The kernel dates it by when it was ingested, and labels it so — never as when it happened.'}
+            {whenMode === 'date' && 'Sent as a date (day precision); no time of day is invented.'}
+            {whenMode === 'datetime' &&
+              `Read in your time zone (${localTimeZoneName()}) and sent as an absolute instant, minute precision.`}
+          </p>
+          {whenInvalid && (
+            <p role="alert" className="text-[11px] text-[var(--status-err)]">
+              That is not a complete {whenMode === 'date' ? 'date' : 'date and time'}.
+            </p>
+          )}
+        </fieldset>
+      )}
+
       <fieldset className="flex flex-col gap-1">
         <legend className="text-[11px] font-medium text-[var(--fg-secondary)]">Scope</legend>
         <label className="flex items-center gap-2 text-[11px] text-[var(--fg-primary)]">
@@ -395,7 +459,7 @@ export function IngestPane({
           <button
             type="button"
             onClick={ingestStaged}
-            disabled={disabled}
+            disabled={disabled || whenInvalid}
             title={disabled ? disabledReason : undefined}
             className="rounded-sm bg-[var(--button-primary-bg)] px-3 py-1.5 text-[11px] font-medium text-[var(--button-primary-fg)] hover:bg-[var(--button-primary-bg-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)] disabled:cursor-not-allowed disabled:opacity-50"
           >

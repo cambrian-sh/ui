@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import type { AnswerMemory, Citation } from '@/ipc/types';
+import { EventTimeLabel } from './EventTimeLabel';
 import { cn } from '@/design-system/lib/utils';
 
 /**
@@ -188,6 +189,7 @@ function CitationCard({ cite }: { cite: Citation }) {
           {crumbs.join(' › ')}
         </nav>
       )}
+      <EventTimeLabel time={cite} />
       <p className="border-l border-[var(--border-strong)] pl-2 text-[11px] leading-relaxed text-[var(--fg-secondary)]">
         {cite.text}
       </p>

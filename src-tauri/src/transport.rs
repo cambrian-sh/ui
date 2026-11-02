@@ -138,6 +138,76 @@ pub struct MemoryHit {
     pub source: String,
     pub importance: f64,
     pub tags: Vec<String>,
+    #[serde(flatten)]
+    pub time: EventTime,
+}
+
+/// When a hit or citation's content HAPPENED (ADR-0134, contract 0099).
+///
+/// Flattened into `MemoryHit` and `Citation` so the webview reads one shape for
+/// both. `event_time_unix_ms` is None when the kernel sent no time at all (a
+/// pre-0099 kernel): that is "unknown", and must never be rendered as a date.
+/// `time_source` and `time_precision` pass through verbatim -- the console picks
+/// its copy from the word ("ingest_default" is the ingest time, not when the
+/// content happened), so flattening them would lose the half that matters.
+#[derive(Clone, serde::Serialize, Default, Debug, PartialEq)]
+pub struct EventTime {
+    pub event_time_unix_ms: Option<i64>,
+    /// Span end for a chunk covering several timed parts. None for an instant.
+    pub event_time_end_unix_ms: Option<i64>,
+    /// explicit | source_metadata | inferred | ingest_default | clamped_future
+    pub time_source: String,
+    /// year | month | day | hour | minute | second
+    pub time_precision: String,
+}
+
+impl EventTime {
+    fn from_wire(
+        start: Option<prost_types::Timestamp>,
+        end: Option<prost_types::Timestamp>,
+        time_source: String,
+        time_precision: String,
+    ) -> Self {
+        let ms = |t: &Option<prost_types::Timestamp>| t.as_ref().map(|_| crate::state::ts_millis(t));
+        Self {
+            event_time_unix_ms: ms(&start),
+            event_time_end_unix_ms: ms(&end),
+            time_source,
+            time_precision,
+        }
+    }
+}
+
+/// The precisions the kernel accepts on ingest (domain/event_time.go). Checked
+/// here so a typo is refused at the console, not discovered as INVALID_ARGUMENT.
+const TIME_PRECISIONS: &[&str] = &["year", "month", "day", "hour", "minute", "second"];
+
+/// The ingest-side event time: an absolute instant (milliseconds since the epoch,
+/// so the zone was resolved by the webview, which knows the operator's zone) and
+/// the precision the operator stated. Both absent = the kernel dates the document
+/// by its ingest clock and labels it `ingest_default`.
+pub(crate) fn ingest_event_time(
+    occurred_at_unix_ms: Option<i64>,
+    time_precision: Option<String>,
+) -> Result<(Option<prost_types::Timestamp>, String), String> {
+    let precision = time_precision.unwrap_or_default();
+    let Some(ms) = occurred_at_unix_ms else {
+        if !precision.is_empty() {
+            return Err("time_precision without occurred_at: say when it happened, or neither".into());
+        }
+        return Ok((None, String::new()));
+    };
+    if !precision.is_empty() && !TIME_PRECISIONS.contains(&precision.as_str()) {
+        return Err(format!(
+            "unknown time_precision {precision:?}; one of {}",
+            TIME_PRECISIONS.join(", ")
+        ));
+    }
+    let ts = prost_types::Timestamp {
+        seconds: ms.div_euclid(1000),
+        nanos: (ms.rem_euclid(1000) * 1_000_000) as i32,
+    };
+    Ok((Some(ts), precision))
 }
 
 /// One row of the document listing (contract 0070).
@@ -188,6 +258,8 @@ pub struct Citation {
     pub score: f64,
     pub importance: f64,
     pub tags: Vec<String>,
+    #[serde(flatten)]
+    pub time: EventTime,
 }
 
 impl From<pb::MemoryCitation> for Citation {
@@ -201,6 +273,12 @@ impl From<pb::MemoryCitation> for Citation {
             score: c.score,
             importance: c.importance,
             tags: c.tags,
+            time: EventTime::from_wire(
+                c.event_time,
+                c.event_time_end,
+                c.time_source,
+                c.time_precision,
+            ),
         }
     }
 }
@@ -227,6 +305,12 @@ impl From<pb::MemoryOp> for MemoryHit {
             source: m.source,
             importance: m.importance,
             tags: m.tags,
+            time: EventTime::from_wire(
+                m.event_time,
+                m.event_time_end,
+                m.time_source,
+                m.time_precision,
+            ),
         }
     }
 }
@@ -645,6 +729,44 @@ impl Transport {
         }
         self.set_connection(app, ConnectionStatus::Down).await;
         Ok(())
+    }
+
+    /// Sign out: revoke this console's bearer token on the kernel (ADR-0130 D5,
+    /// contract 0099 `Logout`), then tear the session down locally exactly as
+    /// `disconnect` does -- token, keychain copy, saved credentials, folded state.
+    ///
+    /// The local teardown happens WHATEVER the kernel answered. An operator who
+    /// asked to sign out must end up signed out of this console; what the outcome
+    /// reports is whether the token is also dead on the kernel, because a token
+    /// that was only forgotten locally stays valid there until its TTL runs out,
+    /// and that difference is the reason Logout exists.
+    pub async fn logout(&self, app: &AppHandle) -> Result<LogoutOutcome, String> {
+        let outcome = logout_outcome(self.revoke_remote().await);
+        if !outcome.revoked {
+            tracing::warn!(note = %outcome.note, "logout: token not revoked on the kernel");
+        }
+        self.disconnect(app).await?;
+        Ok(outcome)
+    }
+
+    /// The Logout RPC alone. Separate from `logout` so the verdict can be tested
+    /// without an AppHandle or the OS keychain.
+    async fn revoke_remote(&self) -> Result<(), Status> {
+        if self.token.lock().unwrap().is_none() {
+            // Nothing to revoke: never signed in, or already torn down.
+            return Err(Status::unauthenticated("no session token"));
+        }
+        let mut client = self.client().await.map_err(Status::unavailable)?;
+        // Bounded: sign-out must not hang on a kernel that has gone away.
+        match tokio::time::timeout(
+            Duration::from_secs(5),
+            client.logout(Request::new(pb::LogoutRequest {})),
+        )
+        .await
+        {
+            Ok(r) => r.map(|_| ()),
+            Err(_) => Err(Status::deadline_exceeded("the kernel did not answer within 5s")),
+        }
     }
 
     // ---- Reads -----------------------------------------------------------
@@ -1719,7 +1841,12 @@ impl Transport {
         source: String,
         session_id: String,
         reason: String,
+        occurred_at_unix_ms: Option<i64>,
+        time_precision: Option<String>,
     ) -> Result<(String, bool), String> {
+        // Validated before dialling: a bad precision is the operator's to fix,
+        // and the kernel would only refuse it with INVALID_ARGUMENT anyway.
+        let (occurred_at, time_precision) = ingest_event_time(occurred_at_unix_ms, time_precision)?;
         let mut client = self.client().await?;
         let resp = client
             .ingest_memory(Request::new(pb::IngestMemoryOpRequest {
@@ -1734,6 +1861,13 @@ impl Transport {
                 filename,
                 content_type,
                 context,
+                // ADR-0134 (contract 0099): when the operator said the content
+                // happened. Unset = the kernel dates it by its ingest clock and labels
+                // it `ingest_default`. `parts` (per-message times) has no console
+                // input; a transcript is ingested by an agent, not pasted here.
+                occurred_at,
+                time_precision,
+                ..Default::default()
             }))
             .await
             .map_err(map_status)?
@@ -1760,6 +1894,8 @@ impl Transport {
                 source,
                 session,
                 min_importance,
+                // Contract 0099: reference_time / event window (ADR-0134) unset.
+                ..Default::default()
             }))
             .await
             .map_err(map_status)?
@@ -1794,6 +1930,8 @@ impl Transport {
                 source,
                 session,
                 min_importance,
+                // Contract 0099: reference_time / event window (ADR-0134) unset.
+                ..Default::default()
             }))
             .await
             .map_err(map_status)?
@@ -2028,8 +2166,50 @@ fn config_write_result(resp: pb::SetConfigOpResponse) -> ConfigWriteResult {
                 effect: o.effect,
                 shadowed_by: o.shadowed_by,
                 error: o.error,
+                written_to: o.written_to,
+                overrides_file: o.overrides_file,
+                overrides_value: o.overrides_value,
             })
             .collect(),
+    }
+}
+
+/// What a sign-out achieved on the kernel. The local session is always gone.
+#[derive(Clone, serde::Serialize, Debug, PartialEq)]
+pub struct LogoutOutcome {
+    /// True when the token can no longer be used against the kernel.
+    pub revoked: bool,
+    /// Empty on a clean revoke; otherwise what the operator should know.
+    pub note: String,
+}
+
+/// Turn the Logout RPC's answer into what the console tells the operator.
+pub(crate) fn logout_outcome(r: Result<(), Status>) -> LogoutOutcome {
+    match r {
+        Ok(()) => LogoutOutcome {
+            revoked: true,
+            note: String::new(),
+        },
+        // The kernel refused the token at its auth gate: it was already revoked or
+        // expired (or a kernel restart dropped it). Dead either way.
+        Err(e) if e.code() == tonic::Code::Unauthenticated => LogoutOutcome {
+            revoked: true,
+            note: "the kernel had already ended this session".into(),
+        },
+        Err(e) if e.code() == tonic::Code::Unimplemented => LogoutOutcome {
+            revoked: false,
+            note: "this kernel predates Logout (contract 0099): the token was forgotten here \
+                   but stays valid on the kernel until it expires"
+                .into(),
+        },
+        Err(e) => LogoutOutcome {
+            revoked: false,
+            note: format!(
+                "could not revoke the token on the kernel ({}): it was forgotten here but \
+                 stays valid there until it expires",
+                e.message()
+            ),
+        },
     }
 }
 
@@ -2429,6 +2609,33 @@ impl Transport {
         })
     }
 
+    /// DeleteConfig: remove stored overrides so the layers beneath the store
+    /// (a config file, else the default) supply the key again.
+    ///
+    /// This is the console's "revert to file" (ADR-0101 D8). Writing the file's
+    /// value back over the top is NOT the same thing: it leaves the key pinned by
+    /// the store, so a later edit of that file would still be ignored.
+    pub async fn delete_config(
+        &self,
+        keys: Vec<String>,
+        reason: String,
+    ) -> Result<ConfigWriteResult, String> {
+        if keys.is_empty() {
+            return Err("delete_config: no keys".into());
+        }
+        let mut client = self.client().await?;
+        let resp = client
+            .delete_config(Request::new(pb::DeleteConfigOpRequest {
+                command_id: new_command_id(),
+                reason,
+                keys,
+            }))
+            .await
+            .map_err(map_status)?
+            .into_inner();
+        Ok(config_write_result(resp))
+    }
+
     pub async fn get_config_schema(&self) -> Result<ConfigSchema, String> {
         let mut client = self.client().await?;
         let resp = client
@@ -2642,5 +2849,131 @@ fn pipeline_summary_from(p: pb::PipelineOp) -> PipelineSummary {
         dry_run: p.dry_run,
         approved: p.approved,
         entry_live: p.entry_live,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn ts(seconds: i64, nanos: i32) -> Option<prost_types::Timestamp> {
+        Some(prost_types::Timestamp { seconds, nanos })
+    }
+
+    // ADR-0134: the event time reaches the webview verbatim, and "absent" stays
+    // absent -- a pre-0099 kernel sends no time, which must not become 1970.
+    #[test]
+    fn memory_hit_carries_event_time_and_its_labels() {
+        let hit = MemoryHit::from(pb::MemoryOp {
+            doc_id: "d1".into(),
+            event_time: ts(1_700_000_000, 500_000_000),
+            event_time_end: ts(1_700_003_600, 0),
+            time_source: "source_metadata".into(),
+            time_precision: "minute".into(),
+            ..Default::default()
+        });
+        assert_eq!(hit.time.event_time_unix_ms, Some(1_700_000_000_500));
+        assert_eq!(hit.time.event_time_end_unix_ms, Some(1_700_003_600_000));
+        assert_eq!(hit.time.time_source, "source_metadata");
+        assert_eq!(hit.time.time_precision, "minute");
+
+        let old = MemoryHit::from(pb::MemoryOp::default());
+        assert_eq!(old.time, EventTime::default());
+        assert_eq!(old.time.event_time_unix_ms, None);
+    }
+
+    // The webview reads the flattened names; a nested `time` object would type-check
+    // in TS and render nothing.
+    #[test]
+    fn citation_event_time_is_flattened_on_the_wire_to_the_webview() {
+        let c = Citation::from(pb::MemoryCitation {
+            marker: 1,
+            event_time: ts(86_400, 0),
+            time_source: "ingest_default".into(),
+            time_precision: "second".into(),
+            ..Default::default()
+        });
+        let v = serde_json::to_value(&c).unwrap();
+        assert_eq!(v["event_time_unix_ms"], 86_400_000);
+        assert!(v["event_time_end_unix_ms"].is_null());
+        assert_eq!(v["time_source"], "ingest_default");
+        assert_eq!(v["time_precision"], "second");
+        assert!(v.get("time").is_none());
+    }
+
+    #[test]
+    fn ingest_event_time_converts_and_validates() {
+        // Nothing stated: the kernel dates it by its ingest clock.
+        assert_eq!(ingest_event_time(None, None).unwrap(), (None, String::new()));
+        // A day-precision date at UTC midnight.
+        let (t, p) = ingest_event_time(Some(1_704_067_200_000), Some("day".into())).unwrap();
+        assert_eq!(t.unwrap().seconds, 1_704_067_200);
+        assert_eq!(p, "day");
+        // Sub-second and pre-epoch instants survive the split.
+        let (t, _) = ingest_event_time(Some(-1), None).unwrap();
+        let t = t.unwrap();
+        assert_eq!((t.seconds, t.nanos), (-1, 999_000_000));
+        // Refused before the kernel has to.
+        assert!(ingest_event_time(Some(0), Some("week".into())).is_err());
+        assert!(ingest_event_time(None, Some("day".into())).is_err());
+    }
+
+    // ADR-0101 D8: the file facts reach the webview, separate from shadowed_by.
+    #[test]
+    fn config_write_result_carries_d8_file_facts() {
+        let r = config_write_result(pb::SetConfigOpResponse {
+            command_id: "c".into(),
+            deduped: false,
+            outcomes: vec![
+                pb::ConfigWriteOutcomeOp {
+                    key: "a".into(),
+                    stored: true,
+                    effect: "restart_required".into(),
+                    written_to: "configs/tuning.local.json".into(),
+                    ..Default::default()
+                },
+                pb::ConfigWriteOutcomeOp {
+                    key: "b".into(),
+                    stored: true,
+                    effect: "restart_required".into(),
+                    overrides_file: "configs/providers.json".into(),
+                    overrides_value: "0.4".into(),
+                    ..Default::default()
+                },
+            ],
+        });
+        assert_eq!(r.outcomes[0].written_to, "configs/tuning.local.json");
+        assert_eq!(r.outcomes[0].overrides_file, "");
+        assert_eq!(r.outcomes[1].overrides_file, "configs/providers.json");
+        assert_eq!(r.outcomes[1].overrides_value, "0.4");
+        assert_eq!(r.outcomes[1].shadowed_by, "");
+    }
+
+    // ADR-0130 D5: sign-out reports whether the token is dead ON THE KERNEL.
+    #[test]
+    fn logout_outcome_distinguishes_revoked_from_only_forgotten() {
+        assert_eq!(
+            logout_outcome(Ok(())),
+            LogoutOutcome { revoked: true, note: String::new() }
+        );
+        let already = logout_outcome(Err(Status::unauthenticated("revoked")));
+        assert!(already.revoked);
+        assert!(!already.note.is_empty());
+
+        let old_kernel = logout_outcome(Err(Status::unimplemented("no Logout")));
+        assert!(!old_kernel.revoked);
+        assert!(old_kernel.note.contains("stays valid"));
+
+        let down = logout_outcome(Err(Status::unavailable("connect refused")));
+        assert!(!down.revoked);
+        assert!(down.note.contains("connect refused"));
+    }
+
+    // No token = nothing to revoke, and no dial is attempted.
+    #[tokio::test]
+    async fn revoke_without_a_token_does_not_dial() {
+        let t = Transport::default();
+        let err = t.revoke_remote().await.unwrap_err();
+        assert_eq!(err.code(), tonic::Code::Unauthenticated);
     }
 }

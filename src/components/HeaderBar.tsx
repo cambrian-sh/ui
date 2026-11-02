@@ -71,6 +71,11 @@ export interface HeaderBarProps {
   degradedBreakers: number;
   role: Role | null;
   compact?: boolean;
+  /**
+   * Sign out of the kernel (contract 0099 `Logout`). Absent = no sign-out
+   * control: the Shell passes it only when the kernel advertises `logout`.
+   */
+  onSignOut?: () => void;
 }
 
 export function HeaderBar({
@@ -84,6 +89,7 @@ export function HeaderBar({
   degradedBreakers,
   role,
   compact,
+  onSignOut,
 }: HeaderBarProps) {
   const count = badgeCount(needsYouCount);
 
@@ -164,6 +170,16 @@ export function HeaderBar({
           <span className="rounded-sm px-1.5 py-0.5 font-mono text-[10px] text-[var(--fg-muted)] shadow-[inset_0_0_0_1px_var(--border-subtle)]">
             {role}
           </span>
+        )}
+
+        {role && onSignOut && (
+          <button
+            type="button"
+            onClick={onSignOut}
+            className="rounded-sm px-1.5 py-0.5 text-[11px] text-[var(--fg-muted)] hover:text-[var(--fg-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)]"
+          >
+            Sign out
+          </button>
         )}
       </div>
     </header>

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
-import { Outlet } from "@tanstack/react-router";
+import { Outlet, useNavigate } from "@tanstack/react-router";
+import { signOut } from "@/lib/signOut";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { HeaderBar } from "@/components/HeaderBar";
 import { MobileTabBar } from "@/components/MobileTabBar";
@@ -92,6 +93,14 @@ export function Shell() {
   const role = state?.role ?? null;
   const isHydrating = projection.isHydrating;
 
+  // Contract 0099: sign-out is offered only when the kernel can revoke the
+  // token. It ends on the login screen (Settings opens on Connection).
+  const navigate = useNavigate();
+  const canSignOut = (state?.capabilities ?? []).includes("logout");
+  const onSignOut = () => {
+    void signOut().then(() => navigate({ to: "/settings" }));
+  };
+
   const plans = state?.plans ?? [];
   const needsYouCount = state?.pending_hitl.length ?? 0;
   const runningPlans = useMemo(
@@ -154,6 +163,7 @@ export function Shell() {
         degradedBreakers={degradedBreakers}
         role={role}
         compact={isMobile}
+        onSignOut={canSignOut ? onSignOut : undefined}
       />
 
       <div className="flex min-h-0 flex-1">

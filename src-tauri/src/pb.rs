@@ -178,7 +178,22 @@ pub const RETENTION_FEED_CAPABILITY: &str = "retention-feed";
 ///   for a consumer) — which is why the vendored
 ///   `proto/substrate/substrate.proto` changed in the same step, and why that
 ///   copy is finally listed in core's `scripts/sync-protos.sh`.
-pub const PINNED_CONTRACT_VERSION: &str = "0098";
+/// - **0099** the bundled bump (owner decision 2026-11-01). Operator plane,
+///   all additive: `Logout` revokes the caller's own bearer token (ADR-0130
+///   D5; capability `logout`); ADR-0134 event time (capability
+///   `memory-event-time`) — `occurred_at` / `parts` (`MemoryPartOp`) /
+///   `time_precision` on `IngestMemoryOpRequest`, `reference_time` +
+///   `event_after` / `event_before` on `QueryMemoryRequest` and
+///   `AnswerMemoryRequest` (a window this kernel cannot apply yet answers
+///   Unimplemented), and `event_time` / `event_time_end` / `time_source` /
+///   `time_precision` on `MemoryOp` and `MemoryCitation`; the ADR-0101 D8 file
+///   facts `written_to` / `overrides_file` / `overrides_value` on
+///   `ConfigWriteOutcomeOp`. Agent plane (not vendored here): the retired
+///   Orchestrator watch-CRUD RPCs are deleted. The console renders all three:
+///   sign-out (`op_logout`), the D8 file facts + "revert to file"
+///   (`op_delete_config`), and event time on hits, citations and the ingest
+///   form. The event WINDOW is not sent: the kernel refuses it until ADR-0134 P2.
+pub const PINNED_CONTRACT_VERSION: &str = "0099";
 
 /// The plugin versions this console was BUILT against, by plugin id (ADR-0089).
 ///

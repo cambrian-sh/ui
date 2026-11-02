@@ -28,6 +28,19 @@ export interface LoginResponse {
   role: Role;
 }
 
+/**
+ * What a sign-out achieved ON THE KERNEL (contract 0099 `Logout`, ADR-0130 D5).
+ *
+ * The local session is gone whatever this says. `revoked: false` means the token
+ * was only forgotten here and stays valid on the kernel until its TTL runs out,
+ * which is the case worth telling the operator about.
+ */
+export interface LogoutOutcome {
+  revoked: boolean;
+  /** Empty on a clean revoke. */
+  note: string;
+}
+
 export interface CreateSessionResponse {
   session_id: string;
 }
@@ -954,7 +967,30 @@ export interface TokenChunk {
 // ============================================================================
 
 /** One retrieval hit. */
-export interface MemoryHit {
+/**
+ * When a hit's content HAPPENED (ADR-0134, contract 0099; capability
+ * `memory-event-time`).
+ *
+ * Optional because a pre-0099 kernel sends none of it. A null/absent
+ * `event_time_unix_ms` is UNKNOWN and is never rendered as a date. Format with
+ * `formatEventTime` (src/lib/eventTime.ts), which honours the precision: a
+ * `day`-precision time is a date and never shows a clock time.
+ */
+export interface EventTimeFields {
+  event_time_unix_ms?: number | null;
+  /** Span end for a chunk covering several timed parts. Null for an instant. */
+  event_time_end_unix_ms?: number | null;
+  /**
+   * `explicit` | `source_metadata` | `inferred` | `ingest_default` |
+   * `clamped_future`. `ingest_default` is the INGEST time, never "when it
+   * happened" — the kernel knew nothing better.
+   */
+  time_source?: string;
+  /** `year` | `month` | `day` | `hour` | `minute` | `second`. */
+  time_precision?: string;
+}
+
+export interface MemoryHit extends EventTimeFields {
   doc_id: string;
   /** <=200-char preview. NOT quotable — use `text` for a citation. */
   summary: string;
@@ -990,6 +1026,10 @@ export interface IngestMemoryParams {
   source: string;
   session_id: string;
   reason: string;
+  /** When the content happened (ADR-0134). Absent = dated by the kernel's ingest clock. */
+  occurred_at_unix_ms?: number | null;
+  /** Precision of `occurred_at_unix_ms`; required with it in this console. */
+  time_precision?: string;
 }
 
 /** `[doc_id, deduped]`. `deduped` = replayed command_id, NOT a content duplicate. */
@@ -1002,6 +1042,9 @@ export interface IngestFileParams {
   tags: string[];
   importance: number;
   reason: string;
+  /** See `IngestMemoryParams.occurred_at_unix_ms`. */
+  occurred_at_unix_ms?: number | null;
+  time_precision?: string;
 }
 
 /** Name + size of a picked file (bytes not read). */
@@ -1019,7 +1062,7 @@ export interface QueryMemoryParams {
 }
 
 /** One citation the answer's [n] markers resolve to (ADR-0081). */
-export interface Citation {
+export interface Citation extends EventTimeFields {
   /** The [n] used inline in `answer`. */
   marker: number;
   doc_id: string;
@@ -1773,6 +1816,20 @@ export interface ConfigWriteOutcome {
   /** Names the layer winning over the store ("env:CAMBRIAN_…"). */
   shadowed_by: string;
   error: string;
+  /**
+   * ADR-0101 D8 (contract 0099). The config file the value was written INTO
+   * (write-through: the file set the key and was writable, so it is now the
+   * value's one durable home). Empty otherwise; absent from an older kernel.
+   */
+  written_to?: string;
+  /**
+   * The file layer the STORED value now overrides (the file sets the key but is
+   * not writable), and that file's value. A later edit of that file is ignored
+   * while the stored value exists; "revert to file" is `deleteConfig([key])`.
+   * The opposite direction to `shadowed_by` — never reuse its copy.
+   */
+  overrides_file?: string;
+  overrides_value?: string;
 }
 
 export interface ConfigWriteResult {

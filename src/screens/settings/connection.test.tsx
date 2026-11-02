@@ -12,6 +12,7 @@ vi.mock('@/ipc', () => ({
     loginSaved: vi.fn().mockResolvedValue({ role: 'operator' }),
     savedConnection: vi.fn().mockResolvedValue(null),
     disconnect: vi.fn().mockResolvedValue(undefined),
+    logout: vi.fn().mockResolvedValue({ revoked: true, note: '' }),
   },
 }));
 
@@ -81,6 +82,34 @@ describe('ConnectionSettings', () => {
     vi.mocked(ipc.disconnect).mockResolvedValue(undefined);
     localStorage.clear();
     projectionStore.getState().reset();
+  });
+
+  // Contract 0099 Logout (ADR-0130 D5): capability-gated, never probed.
+  it('hides Sign out when the kernel does not advertise logout', () => {
+    projectionStore.getState().hydrate(makeState());
+    render(<ConnectionSettings />);
+    expect(screen.queryByRole('button', { name: 'Sign out' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Disconnect' })).toBeInTheDocument();
+  });
+
+  it('signs out through Logout when the kernel advertises it', async () => {
+    projectionStore.getState().hydrate(makeState({ capabilities: ['feed', 'logout'] }));
+    render(<ConnectionSettings />);
+    fireEvent.click(screen.getByRole('button', { name: 'Sign out' }));
+    await waitFor(() => expect(ipc.logout).toHaveBeenCalledTimes(1));
+    expect(ipc.disconnect).not.toHaveBeenCalled();
+  });
+
+  it('says so when the kernel did not revoke the token', async () => {
+    vi.mocked(ipc.logout).mockImplementationOnce(async () => {
+      projectionStore.getState().hydrate(disconnectedState());
+      return { revoked: false, note: 'this kernel predates Logout' };
+    });
+    projectionStore.getState().hydrate(makeState({ capabilities: ['logout'] }));
+    render(<ConnectionSettings />);
+    fireEvent.click(screen.getByRole('button', { name: 'Sign out' }));
+    expect(await screen.findByText('this kernel predates Logout')).toBeInTheDocument();
+    expect(screen.getByText('SIGNED OUT HERE ONLY')).toBeInTheDocument();
   });
 
   it('shows the connect form when disconnected', () => {

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { ConfigFileFacts } from './ConfigFileFacts';
 import { Button, Input } from '@/design-system/components';
 import { ErrorState } from '@/design-system/components/cambrian/error-state';
 import { ipc } from '@/ipc';
@@ -254,6 +255,7 @@ export function GeneratorEditor({ generator, canMutate, onClose }: GeneratorEdit
 
       {save.error && <ErrorState reason={save.error} />}
       {written && !save.error && <WriteOutcomeNote outcome={written} />}
+      {written && !save.error && <ConfigFileFacts outcome={written} />}
 
       <div className="flex flex-wrap items-center gap-2">
         <Button

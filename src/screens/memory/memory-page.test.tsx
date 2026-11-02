@@ -511,3 +511,139 @@ describe('MemoryPage — a11y', () => {
     expect(results).toHaveNoViolations();
   });
 });
+
+// ADR-0134 (contract 0099): event time on hits and citations, and on ingest.
+describe('MemoryPage — event time', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(ipc.ingestMemory).mockResolvedValue(['doc-1', false]);
+    vi.mocked(ipc.queryMemory).mockResolvedValue({ hits: [], policy_note: '' });
+    projectionStore.getState().reset();
+  });
+
+  it('shows a day-precision span as dates, never a clock time', () => {
+    render(
+      <SourceCard
+        hit={makeHit({
+          event_time_unix_ms: Date.UTC(2026, 6, 13),
+          event_time_end_unix_ms: Date.UTC(2026, 6, 17),
+          time_source: 'explicit',
+          time_precision: 'day',
+        })}
+        index={1}
+      />,
+    );
+    const t = document.querySelector('time')!;
+    expect(t.textContent).toContain('–');
+    expect(t.textContent).not.toMatch(/\d{2}:\d{2}/);
+    expect(screen.queryByText(/date unknown/)).not.toBeInTheDocument();
+  });
+
+  it('labels an ingest-clock time as the ingest time', () => {
+    render(
+      <SourceCard
+        hit={makeHit({
+          event_time_unix_ms: Date.UTC(2026, 7, 2, 9, 30),
+          time_source: 'ingest_default',
+          time_precision: 'second',
+        })}
+        index={1}
+      />,
+    );
+    expect(document.querySelector('time')!.textContent).toMatch(/^ingested /);
+    expect(screen.getByText(/date unknown/)).toBeInTheDocument();
+  });
+
+  it('labels a clamped future date', () => {
+    render(
+      <SourceCard
+        hit={makeHit({
+          event_time_unix_ms: Date.UTC(2026, 7, 2),
+          time_source: 'clamped_future',
+          time_precision: 'day',
+        })}
+        index={1}
+      />,
+    );
+    expect(screen.getByText(/claimed future date clamped/)).toBeInTheDocument();
+  });
+
+  it('shows no time at all when the kernel sent none', () => {
+    render(<SourceCard hit={makeHit()} index={1} />);
+    expect(document.querySelector('time')).toBeNull();
+  });
+
+  it('shows the event time on an AnswerMemory citation', async () => {
+    vi.mocked(ipc.answerMemory).mockResolvedValue({
+      status: 'answer',
+      answer: 'It happened in July [1].',
+      citations: [
+        {
+          marker: 1,
+          doc_id: 'd1',
+          text: 'the July incident',
+          section_path: '',
+          source: 'ops.pdf',
+          score: 0.9,
+          importance: 0.5,
+          tags: [],
+          event_time_unix_ms: Date.UTC(2026, 6, 13),
+          time_source: 'source_metadata',
+          time_precision: 'month',
+        },
+      ],
+    });
+    projectionStore.getState().hydrate(makeState());
+    render(<MemoryPage />);
+    const input = screen.getByPlaceholderText('Ask a question about the corpus…');
+    fireEvent.change(input, { target: { value: 'when?' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    fireEvent.click(await screen.findByRole('button', { name: /Cited passage; sources 1/ }));
+    expect(await screen.findByText(/from source metadata/)).toBeInTheDocument();
+    // Month precision: a month and year (locale-dependent words), no day, no clock.
+    const shown = document.querySelector('time')!.textContent!;
+    expect(shown).toMatch(/2026/);
+    expect(shown).not.toMatch(/13|\d{2}:\d{2}/);
+  });
+
+  it('hides the "when did this happen" input without memory-event-time', () => {
+    projectionStore.getState().hydrate(makeState());
+    render(<MemoryPage />);
+    expect(screen.queryByLabelText('Event time kind')).not.toBeInTheDocument();
+  });
+
+  it('sends a stated date as occurred_at at day precision', async () => {
+    projectionStore.getState().hydrate(
+      makeState({ capabilities: ['memory-ingest-binary', 'memory-event-time'] }),
+    );
+    render(<MemoryPage />);
+    fireEvent.click(screen.getByRole('button', { name: 'Paste text' }));
+    fireEvent.change(screen.getByLabelText('Text'), { target: { value: 'the minutes' } });
+    fireEvent.change(screen.getByLabelText('Event time kind'), { target: { value: 'date' } });
+    fireEvent.change(screen.getByLabelText('Event date'), { target: { value: '2024-01-12' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Ingest text' }));
+    await waitFor(() =>
+      expect(ipc.ingestMemory).toHaveBeenCalledWith(
+        expect.objectContaining({
+          text: 'the minutes',
+          occurred_at_unix_ms: Date.UTC(2024, 0, 12),
+          time_precision: 'day',
+        }),
+      ),
+    );
+  });
+
+  it('sends no event time when the operator leaves it unknown', async () => {
+    projectionStore.getState().hydrate(
+      makeState({ capabilities: ['memory-ingest-binary', 'memory-event-time'] }),
+    );
+    render(<MemoryPage />);
+    fireEvent.click(screen.getByRole('button', { name: 'Paste text' }));
+    fireEvent.change(screen.getByLabelText('Text'), { target: { value: 'undated' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Ingest text' }));
+    await waitFor(() => expect(ipc.ingestMemory).toHaveBeenCalled());
+    const sent = vi.mocked(ipc.ingestMemory).mock.calls[0][0];
+    expect(sent.occurred_at_unix_ms).toBeUndefined();
+    expect(sent.time_precision).toBeUndefined();
+  });
+});
