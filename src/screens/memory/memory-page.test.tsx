@@ -15,6 +15,7 @@ vi.mock('@/ipc', () => ({
     ingestMemory: vi.fn().mockResolvedValue(['doc-1', false]),
     ingestFile: vi.fn().mockResolvedValue(['doc-1', false]),
     statFile: vi.fn().mockResolvedValue({ name: 'murat.pdf', size: 5_202_359 }),
+    matchUpload: vi.fn().mockResolvedValue(null),
     queryMemory: vi.fn().mockResolvedValue({ hits: [], policy_note: '' }),
     listTags: vi.fn().mockResolvedValue([
       { tag: 'finance', closed: false },
@@ -645,5 +646,77 @@ describe('MemoryPage — event time', () => {
     const sent = vi.mocked(ipc.ingestMemory).mock.calls[0][0];
     expect(sent.occurred_at_unix_ms).toBeUndefined();
     expect(sent.time_precision).toBeUndefined();
+  });
+});
+
+// ADR-0138 Amendment B1.3 (contract 0100): Replace (default) / Keep both.
+describe('upload replace prompt', () => {
+  const stored = {
+    id: 'operator_ingest://murat.pdf#w=1',
+    title: 'murat.pdf',
+    source_type: 'pdf',
+    tags: [],
+    chunk_count: 4,
+    created_at_unix_ms: Date.UTC(2026, 10, 1, 9, 0),
+    updated_at_unix_ms: Date.UTC(2026, 10, 3, 9, 0),
+    version: 1,
+  };
+
+  beforeEach(() => {
+    vi.mocked(open).mockResolvedValue('C:/Users/afsin/Downloads/murat.pdf');
+    vi.mocked(ipc.ingestFile).mockClear();
+    vi.mocked(ipc.matchUpload).mockReset();
+  });
+
+  async function stageAndIngest(capabilities: string[]) {
+    projectionStore
+      .getState()
+      .hydrate(makeState({ capabilities: ['memory-ingest-binary', ...capabilities] }));
+    render(<MemoryPage />);
+    fireEvent.click(screen.getByRole('button', { name: 'Choose files to ingest' }));
+    await screen.findByText('Ready to ingest (1)');
+    fireEvent.click(screen.getByRole('button', { name: /Ingest 1 file with this context/ }));
+  }
+
+  it('asks before replacing, with Replace focused, and Replace sends the original name', async () => {
+    vi.mocked(ipc.matchUpload).mockResolvedValue(stored);
+    await stageAndIngest(['upload-replace']);
+    const dialog = await screen.findByRole('dialog');
+    expect(dialog).toHaveTextContent(/Replace murat\.pdf \(uploaded/);
+    const replace = screen.getByRole('button', { name: 'Replace' });
+    expect(replace).toHaveFocus();
+    expect(ipc.ingestFile).not.toHaveBeenCalled();
+    fireEvent.click(replace);
+    await waitFor(() => expect(ipc.ingestFile).toHaveBeenCalledTimes(1));
+    const sent = vi.mocked(ipc.ingestFile).mock.calls[0][0];
+    expect(sent.filename).toBeUndefined();
+    expect(ipc.matchUpload).toHaveBeenCalledWith('murat.pdf', []);
+  });
+
+  it('Keep both sends the next free "(n)" name the kernel reports free', async () => {
+    vi.mocked(ipc.matchUpload).mockImplementation(async (name: string) =>
+      name === 'murat.pdf' || name === 'murat (2).pdf' ? stored : null,
+    );
+    await stageAndIngest(['upload-replace']);
+    fireEvent.click(await screen.findByRole('button', { name: 'Keep both' }));
+    await waitFor(() =>
+      expect(ipc.ingestFile).toHaveBeenCalledWith(expect.objectContaining({ filename: 'murat (3).pdf' })),
+    );
+  });
+
+  it('never asks, and never looks up, without the capability', async () => {
+    await stageAndIngest([]);
+    await waitFor(() => expect(ipc.ingestFile).toHaveBeenCalledTimes(1));
+    expect(ipc.matchUpload).not.toHaveBeenCalled();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('shows an exact duplicate as "duplicate of <id>"', async () => {
+    vi.mocked(ipc.matchUpload).mockResolvedValue(null);
+    vi.mocked(ipc.ingestFile).mockResolvedValueOnce([stored.id, false, stored.id, 1]);
+    await stageAndIngest(['upload-replace']);
+    expect(
+      await screen.findByText(`duplicate of ${stored.id} · nothing written`),
+    ).toBeInTheDocument();
   });
 });

@@ -331,6 +331,15 @@ export const ipc = {
     invoke<t.DocumentPage>('op_list_documents', { ...params }),
 
   /**
+   * The operator's own stored upload that uploading `upload_name` with `upload_tags`
+   * would REPLACE, or null for a new document (contract 0100, ADR-0138 B1.3). The
+   * kernel answers with its own identity rule; the console never re-derives it.
+   * Requires the `upload-replace` capability.
+   */
+  matchUpload: (upload_name: string, upload_tags: string[]): Promise<t.DocumentSummary | null> =>
+    invoke<t.DocumentSummary | null>('op_match_upload', { upload_name, upload_tags }),
+
+  /**
    * ADR-0081: a grounded, [n]-cited answer + the evidence each marker resolves to.
    * Requires the kernel `memory-answer` capability; an older kernel rejects it.
    */

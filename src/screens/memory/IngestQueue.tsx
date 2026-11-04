@@ -22,6 +22,9 @@ function detail(row: IngestRow): string {
     case 'parsing':
       return 'parsing…';
     case 'indexed':
+      // ADR-0138 B1.1: an exact duplicate wrote nothing — say so, and name the copy.
+      if (row.duplicate_of) return `duplicate of ${row.duplicate_of} · nothing written`;
+      if (row.version !== null && row.version > 1) return `indexed · replaced the earlier version (v${row.version})`;
       return row.chunks === null
         ? 'indexed'
         : `indexed · ${row.chunks} chunk${row.chunks === 1 ? '' : 's'}`;

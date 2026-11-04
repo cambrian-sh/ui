@@ -222,6 +222,10 @@ pub struct DocumentSummary {
     pub tags: Vec<String>,
     pub chunk_count: i32,
     pub created_at_unix_ms: i64,
+    /// Contract 0100 (ADR-0138 D3): when the stored version was written, and the
+    /// document's version. Set on the upload-name lookup; 0 when not reported.
+    pub updated_at_unix_ms: i64,
+    pub version: i32,
 }
 
 /// One page of the document listing, plus the size of the whole matching set.
@@ -880,6 +884,7 @@ impl Transport {
                 cursor,
                 unlabelled_only,
                 id_prefix,
+                ..Default::default()
             }))
             .await
             .map_err(map_status)?
@@ -895,11 +900,46 @@ impl Transport {
                     tags: d.tags,
                     chunk_count: d.chunk_count,
                     created_at_unix_ms: d.created_at_unix_ms,
+                    updated_at_unix_ms: d.updated_at_unix_ms,
+                    version: d.version,
                 })
                 .collect(),
             next_cursor: resp.next_cursor,
             total_matching: resp.total_matching,
         })
+    }
+
+    /// The replace-by-name lookup (contract 0100, ADR-0138 Amendment B1.3): the
+    /// caller's own stored upload that ingesting a file named `upload_name` with
+    /// `upload_tags` would REPLACE, or `None` for a new document. The kernel answers
+    /// with the ingest's own identity rule (normalised name + classification scope +
+    /// the authenticated operator), so this never re-implements the match here.
+    /// Requires the `upload-replace` capability.
+    pub async fn match_upload(
+        &self,
+        upload_name: String,
+        upload_tags: Vec<String>,
+    ) -> Result<Option<DocumentSummary>, String> {
+        let mut client = self.client().await?;
+        let resp = client
+            .list_documents(Request::new(pb::ListDocumentsOpRequest {
+                upload_name,
+                upload_tags,
+                ..Default::default()
+            }))
+            .await
+            .map_err(map_status)?
+            .into_inner();
+        Ok(resp.documents.into_iter().next().map(|d| DocumentSummary {
+            id: d.id,
+            title: d.title,
+            source_type: d.source_type,
+            tags: d.tags,
+            chunk_count: d.chunk_count,
+            created_at_unix_ms: d.created_at_unix_ms,
+            updated_at_unix_ms: d.updated_at_unix_ms,
+            version: d.version,
+        }))
     }
 
     pub async fn tag_memory(
@@ -1826,8 +1866,11 @@ impl Transport {
     /// `context` is the operator's note; the kernel folds it into the body so it is
     /// chunked and embedded with the document rather than stranded in metadata.
     ///
-    /// Returns (doc_id, deduped). `deduped` = a replayed command_id, not a content
-    /// duplicate.
+    /// Returns (doc_id, deduped, duplicate_of, version). `deduped` = a replayed
+    /// command_id, not a content duplicate. `duplicate_of` (contract 0100, ADR-0138
+    /// B1.1) is set when the kernel found this exact file already stored by this
+    /// operator and wrote nothing; `version` > 1 means the upload replaced an earlier
+    /// version of the same-named document (B1.2).
     #[allow(clippy::too_many_arguments)]
     pub async fn ingest_memory(
         &self,
@@ -1843,7 +1886,7 @@ impl Transport {
         reason: String,
         occurred_at_unix_ms: Option<i64>,
         time_precision: Option<String>,
-    ) -> Result<(String, bool), String> {
+    ) -> Result<(String, bool, String, i32), String> {
         // Validated before dialling: a bad precision is the operator's to fix,
         // and the kernel would only refuse it with INVALID_ARGUMENT anyway.
         let (occurred_at, time_precision) = ingest_event_time(occurred_at_unix_ms, time_precision)?;
@@ -1872,7 +1915,7 @@ impl Transport {
             .await
             .map_err(map_status)?
             .into_inner();
-        Ok((resp.doc_id, resp.deduped))
+        Ok((resp.doc_id, resp.deduped, resp.duplicate_of, resp.version))
     }
 
     /// AnswerMemory (ADR-0081): a grounded, [n]-cited answer + the evidence each

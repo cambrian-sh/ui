@@ -312,8 +312,13 @@ class MockIPC {
     return [id, deduped];
   }
 
+  /** No stored uploads in the mock: every upload is a new document. */
+  async matchUpload(_name: string, _tags: string[]): Promise<t.DocumentSummary | null> {
+    return null;
+  }
+
   async ingestFile(params: t.IngestFileParams): Promise<t.IngestMemoryResponse> {
-    const name = params.path.split(/[\\/]/).pop() || params.path;
+    const name = params.filename || params.path.split(/[\\/]/).pop() || params.path;
     return this.ingestMemory({
       text: '',
       content: [1, 2, 3],

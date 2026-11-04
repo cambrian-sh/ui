@@ -29,7 +29,7 @@ use state::{
     PlanProposalResponse, RoleAssignment, SkillSummary,
     PipelineSummary, StateOfRecord, SubmitPlanResult, ToolSummary, WatchConfigSummary,
 };
-use transport::{DocumentPage, MemoryQueryResult, Transport};
+use transport::{DocumentPage, DocumentSummary, MemoryQueryResult, Transport};
 
 // ---- Command response DTOs ----------------------------------------------
 //
@@ -335,7 +335,7 @@ async fn op_ingest_memory(
     reason: String,
     occurred_at_unix_ms: Option<i64>,
     time_precision: Option<String>,
-) -> Result<(String, bool), String> {
+) -> Result<(String, bool, String, i32), String> {
     transport
         .inner()
         .clone()
@@ -414,6 +414,11 @@ async fn op_stat_file(path: String) -> Result<FileStat, String> {
 
 /// Ingest a document the Rust core reads FROM A LOCAL PATH.
 ///
+/// `filename` overrides the name taken from the path. It is how the operator's
+/// "Keep both" reaches the kernel (ADR-0138 Amendment B1.3): the kernel keys an
+/// upload by its name, so "report (2).pdf" is a second document and "report.pdf"
+/// would replace the first. Absent or empty = the file's own name.
+///
 /// This is the file lane: the webview picks a file via the OS dialog and hands the
 /// core a path, never the bytes. The core reads the file here (`fs::read`) and
 /// sends the bytes to the kernel. The kernel still receives bytes, never a path —
@@ -431,12 +436,16 @@ async fn op_ingest_file(
     reason: String,
     occurred_at_unix_ms: Option<i64>,
     time_precision: Option<String>,
-) -> Result<(String, bool), String> {
+    filename: Option<String>,
+) -> Result<(String, bool, String, i32), String> {
     let content = std::fs::read(&path).map_err(|e| format!("read {path}: {e}"))?;
-    let filename = std::path::Path::new(&path)
-        .file_name()
-        .map(|s| s.to_string_lossy().into_owned())
-        .ok_or_else(|| format!("no filename in path: {path}"))?;
+    let filename = match filename.filter(|f| !f.trim().is_empty()) {
+        Some(f) => f,
+        None => std::path::Path::new(&path)
+            .file_name()
+            .map(|s| s.to_string_lossy().into_owned())
+            .ok_or_else(|| format!("no filename in path: {path}"))?,
+    };
     let content_type = mime_from_ext(&filename);
     transport
         .inner()
@@ -915,6 +924,24 @@ async fn op_list_documents(
             unlabelled_only.unwrap_or(false),
             id_prefix.unwrap_or_default(),
         )
+        .await
+}
+
+/// Which of the operator's stored uploads an upload named `upload_name` with
+/// `upload_tags` would REPLACE (contract 0100, ADR-0138 Amendment B1.3). `None` =
+/// a new document. Gated in the webview on the `upload-replace` capability. The
+/// kernel enforces replace-by-name whether or not this is asked: it is the UX that
+/// lets the operator choose "Keep both" first, not the rule.
+#[tauri::command(rename_all = "snake_case")]
+async fn op_match_upload(
+    transport: State<'_, Transport>,
+    upload_name: String,
+    upload_tags: Vec<String>,
+) -> Result<Option<DocumentSummary>, String> {
+    transport
+        .inner()
+        .clone()
+        .match_upload(upload_name, upload_tags)
         .await
 }
 
@@ -1957,6 +1984,7 @@ pub fn run() {
             op_list_groups,
             op_list_tags,
             op_list_documents,
+            op_match_upload,
             op_tag_memory,
             op_propose_policy,
             op_list_ingresses,

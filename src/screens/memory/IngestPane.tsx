@@ -1,8 +1,17 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Upload } from 'lucide-react';
 import { open } from '@tauri-apps/plugin-dialog';
 import { ipc } from '@/ipc';
-import type { IngestFileParams, IngestMemoryParams } from '@/ipc/types';
+import type { DocumentSummary, IngestFileParams, IngestMemoryParams } from '@/ipc/types';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/design-system/components/ui/dialog';
+import { nextFreeUploadName } from './uploadNames';
 import { errorMessage } from '@/lib/errorMessage';
 import { IngestQueue } from './IngestQueue';
 import type { IngestRow } from './useIngestQueue';
@@ -12,6 +21,14 @@ import { cn } from '@/design-system/lib/utils';
 import { localTimeZoneName, occurredAtFromInput } from '@/lib/eventTime';
 
 const DEFAULT_REASON = 'operator upload';
+
+type ReplaceChoice = 'replace' | 'keep-both' | 'skip';
+
+/** "uploaded 4 Nov 2026, 09:30" — the stored version's time, else the first upload's. */
+function uploadedAt(match: DocumentSummary): string {
+  const ms = match.updated_at_unix_ms || match.created_at_unix_ms;
+  return ms ? new Date(ms).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) : 'earlier';
+}
 
 interface StagedFile {
   path: string;
@@ -57,6 +74,12 @@ export interface IngestPaneProps {
    * than accepted and ignored.
    */
   canDateEvents?: boolean;
+  /**
+   * True when the kernel advertises `upload-replace` (contract 0100, ADR-0138 B1):
+   * uploads are keyed by name, so a same-named upload in the same scope replaces the
+   * stored one, and the pane asks first (Replace / Keep both).
+   */
+  canReplaceUploads?: boolean;
 }
 
 export function IngestPane({
@@ -68,6 +91,7 @@ export function IngestPane({
   disabled,
   disabledReason,
   canDateEvents = false,
+  canReplaceUploads = false,
 }: IngestPaneProps) {
   const [pasteMode, setPasteMode] = useState(!canUploadFiles);
   const [pasteText, setPasteText] = useState('');
@@ -117,18 +141,65 @@ export function IngestPane({
     }
   };
 
-  const ingestStaged = () => {
-    for (const file of staged) {
-      onIngestFile(file.name, {
+  // ADR-0138 Amendment B1.3: before an upload whose name this operator already
+  // stores in the same scope, ask "Replace <name>?" (the default) or "Keep both".
+  // The kernel replaces a same-named upload whether or not we ask — the prompt is
+  // what lets the operator keep a second copy, which reaches the kernel only as a
+  // different name ("report (2).pdf"). Closing the dialog skips that file.
+  const [conflict, setConflict] = useState<{
+    name: string;
+    match: DocumentSummary;
+    resolve: (choice: ReplaceChoice) => void;
+  } | null>(null);
+  const replaceRef = useRef<HTMLButtonElement>(null);
+
+  const askReplace = (name: string, match: DocumentSummary) =>
+    new Promise<ReplaceChoice>((resolve) => setConflict({ name, match, resolve }));
+
+  const answerConflict = (choice: ReplaceChoice) => {
+    conflict?.resolve(choice);
+    setConflict(null);
+  };
+
+  const ingestStaged = async () => {
+    const files = staged;
+    setStaged([]);
+    const tagsNow = effectiveTags;
+    const base = {
+      context,
+      tags: tagsNow,
+      importance,
+      reason: reason.trim() || DEFAULT_REASON,
+      ...whenFields,
+    };
+    for (const file of files) {
+      let filename = file.name;
+      if (canReplaceUploads) {
+        try {
+          const match = await ipc.matchUpload(file.name, tagsNow);
+          if (match) {
+            const choice = await askReplace(file.name, match);
+            if (choice === 'skip') continue;
+            if (choice === 'keep-both') {
+              filename = await nextFreeUploadName(file.name, async (candidate) =>
+                (await ipc.matchUpload(candidate, tagsNow)) !== null,
+              );
+            }
+          }
+        } catch (err) {
+          // Not sent: uploading anyway would let the kernel replace a document the
+          // operator was never asked about.
+          setPickError(`${file.name} was not ingested: could not check for an existing copy (${errorMessage(err)})`);
+          setStaged((prev) => [...prev, file]);
+          continue;
+        }
+      }
+      onIngestFile(filename, {
         path: file.path,
-        context,
-        tags: effectiveTags,
-        importance,
-        reason: reason.trim() || DEFAULT_REASON,
-        ...whenFields,
+        ...base,
+        ...(filename !== file.name ? { filename } : {}),
       });
     }
-    setStaged([]);
   };
 
   const submitText = () => {
@@ -476,6 +547,51 @@ export function IngestPane({
         <h2 className="text-[11px] font-medium text-[var(--fg-secondary)]">Queue</h2>
         <IngestQueue rows={rows} />
       </div>
+
+      <Dialog
+        open={conflict !== null}
+        onOpenChange={(isOpen) => {
+          if (!isOpen) answerConflict('skip');
+        }}
+      >
+        {conflict && (
+          <DialogContent
+            onOpenAutoFocus={(e) => {
+              // Replace is the default: Enter takes it.
+              e.preventDefault();
+              replaceRef.current?.focus();
+            }}
+          >
+            <DialogHeader>
+              <DialogTitle>
+                Replace {conflict.match.title || conflict.name} (uploaded {uploadedAt(conflict.match)})?
+              </DialogTitle>
+              <DialogDescription>
+                You already uploaded a document named {conflict.name} with this scope. Replace
+                retires the stored version and everything derived from it, and indexes this file in
+                its place. Keep both stores this file as a separate document under a new name.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <button
+                type="button"
+                onClick={() => answerConflict('keep-both')}
+                className="rounded-sm border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-3 py-1.5 text-[11px] text-[var(--fg-primary)] hover:bg-[var(--bg-surface)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)]"
+              >
+                Keep both
+              </button>
+              <button
+                ref={replaceRef}
+                type="button"
+                onClick={() => answerConflict('replace')}
+                className="rounded-sm bg-[var(--button-primary-bg)] px-3 py-1.5 text-[11px] font-medium text-[var(--button-primary-fg)] hover:bg-[var(--button-primary-bg-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)]"
+              >
+                Replace
+              </button>
+            </DialogFooter>
+          </DialogContent>
+        )}
+      </Dialog>
     </div>
   );
 }

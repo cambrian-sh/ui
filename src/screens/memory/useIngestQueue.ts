@@ -1,7 +1,12 @@
 import { useCallback, useMemo, useState } from 'react';
 import { ipc } from '@/ipc';
 import { errorMessage } from '@/lib/errorMessage';
-import type { IngestFileParams, IngestMemoryParams, MemoryWrittenEvent } from '@/ipc/types';
+import type {
+  IngestFileParams,
+  IngestMemoryParams,
+  IngestMemoryResponse,
+  MemoryWrittenEvent,
+} from '@/ipc/types';
 
 export type IngestStatus = 'queued' | 'parsing' | 'indexed' | 'failed';
 
@@ -12,6 +17,10 @@ export interface IngestRow {
   status: IngestStatus;
   doc_id: string | null;
   deduped: boolean;
+  /** ADR-0138 B1.1: the stored document this exact file duplicates; nothing was written. */
+  duplicate_of: string | null;
+  /** ADR-0138 D3/B1.2: the version the document became (>1 = replaced an earlier one). */
+  version: number | null;
   error: string | null;
   /** Chunks reported for this doc, or null when the kernel gives no matchable count. */
   chunks: number | null;
@@ -32,6 +41,31 @@ export interface IngestRow {
  * `MemoryWrittenOp`; until then a resolved row is honestly `indexed` with no
  * fabricated number.
  */
+function pendingRow(local_id: string, label: string): IngestRow {
+  return {
+    local_id,
+    label,
+    status: 'parsing',
+    doc_id: null,
+    deduped: false,
+    duplicate_of: null,
+    version: null,
+    error: null,
+    chunks: null,
+  };
+}
+
+/** The row fields an `IngestMemoryResponse` settles (contract 0100 fields optional). */
+function settled([doc_id, deduped, duplicate_of, version]: IngestMemoryResponse) {
+  return {
+    status: 'indexed' as const,
+    doc_id,
+    deduped,
+    duplicate_of: duplicate_of ? duplicate_of : null,
+    version: version ? version : null,
+  };
+}
+
 export function useIngestQueue(memoryWritten: MemoryWrittenEvent[]) {
   const [rows, setRows] = useState<IngestRow[]>([]);
 
@@ -45,18 +79,12 @@ export function useIngestQueue(memoryWritten: MemoryWrittenEvent[]) {
 
   const enqueue = useCallback(async (label: string, params: IngestMemoryParams) => {
     const local_id = `row-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    setRows((prev) => [
-      ...prev,
-      { local_id, label, status: 'parsing', doc_id: null, deduped: false, error: null, chunks: null },
-    ]);
+    setRows((prev) => [...prev, pendingRow(local_id, label)]);
 
     try {
-      const [doc_id, deduped] = await ipc.ingestMemory(params);
-      setRows((prev) =>
-        prev.map((r) =>
-          r.local_id === local_id ? { ...r, status: 'indexed', doc_id, deduped } : r,
-        ),
-      );
+      const resp = await ipc.ingestMemory(params);
+      setRows((prev) => prev.map((r) => (r.local_id === local_id ? { ...r, ...settled(resp) } : r)));
+      const [doc_id] = resp;
       return doc_id;
     } catch (err) {
       const message = errorMessage(err);
@@ -74,17 +102,11 @@ export function useIngestQueue(memoryWritten: MemoryWrittenEvent[]) {
    */
   const enqueueFile = useCallback(async (label: string, params: IngestFileParams) => {
     const local_id = `row-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    setRows((prev) => [
-      ...prev,
-      { local_id, label, status: 'parsing', doc_id: null, deduped: false, error: null, chunks: null },
-    ]);
+    setRows((prev) => [...prev, pendingRow(local_id, label)]);
     try {
-      const [doc_id, deduped] = await ipc.ingestFile(params);
-      setRows((prev) =>
-        prev.map((r) =>
-          r.local_id === local_id ? { ...r, status: 'indexed', doc_id, deduped } : r,
-        ),
-      );
+      const resp = await ipc.ingestFile(params);
+      setRows((prev) => prev.map((r) => (r.local_id === local_id ? { ...r, ...settled(resp) } : r)));
+      const [doc_id] = resp;
       return doc_id;
     } catch (err) {
       const message = errorMessage(err);

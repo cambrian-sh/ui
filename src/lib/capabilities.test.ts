@@ -38,6 +38,8 @@ const KERNEL_ADVERTISES = [
   // OSS base: contract 0099
   'logout',
   'memory-event-time',
+  // conditional: contract 0100
+  'upload-replace',
   // conditional
   'llm-exchange',
   'memory-answer',

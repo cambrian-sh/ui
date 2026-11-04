@@ -99,6 +99,12 @@ const KNOWN: Record<string, Omit<CapabilitySurface, 'capability'>> = {
       'sign-out — only Disconnect remains, which forgets the token here while it stays valid on the kernel until it expires',
     gatesSurface: true,
   },
+  'upload-replace': {
+    surface: 'Memory › Ingest',
+    consequence:
+      'the "Replace <name>?" / "Keep both" prompt (contract 0100) — the kernel may still replace a same-named upload, but the console cannot ask first',
+    gatesSurface: true,
+  },
   'document-listing': {
     surface: 'Scope › Labels, Scope › Overview',
     consequence:

@@ -43,8 +43,18 @@ cargo tauri dev              # full Tauri dev (Rust + webview)
 
 ## Architecture
 
-- **Contract pinned to `0099`** (`src-tauri/src/pb.rs` `PINNED_CONTRACT_VERSION`, history
-  there). The Rust core handshakes and shows a skew banner on mismatch. 0099 added `Logout`,
+- **Contract pinned to `0100`** (`src-tauri/src/pb.rs` `PINNED_CONTRACT_VERSION`, history
+  there). The Rust core handshakes and shows a skew banner on mismatch. 0100 (ADR-0138
+  Amendment B1, T-20261104-operator-upload-cannot-replace-a-document-a-re) is additive:
+  the kernel keys an operator upload by (operator, classification scope, normalised file
+  name). With capability `upload-replace` the ingest pane calls `op_match_upload`
+  (`ListDocuments` `upload_name`/`upload_tags`) for each staged file. A match opens
+  "Replace <name> (uploaded <date>)?" with **Replace** focused as the default; **Keep both**
+  sends `<base> (n).<ext>` (the next n the kernel reports free, `src/screens/memory/uploadNames.ts`)
+  through `op_ingest_file`'s `filename` override, and closing the dialog skips the file. The
+  ingest response tuple gains `duplicate_of` / `version`: the queue row reads "duplicate of
+  <id> · nothing written" or "replaced the earlier version (vN)". The kernel replaces a
+  same-named upload even without the prompt; the prompt is UX. 0099 added `Logout`,
   the ADR-0134 event-time fields on memory ingest/query/hits and the ADR-0101 D8 file facts
   on config-write outcomes. The console uses all three
   (T-20261101-ui-for-contract-0099-logout-config-override):

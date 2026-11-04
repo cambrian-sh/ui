@@ -193,7 +193,14 @@ pub const RETENTION_FEED_CAPABILITY: &str = "retention-feed";
 ///   sign-out (`op_logout`), the D8 file facts + "revert to file"
 ///   (`op_delete_config`), and event time on hits, citations and the ingest
 ///   form. The event WINDOW is not sent: the kernel refuses it until ADR-0134 P2.
-pub const PINNED_CONTRACT_VERSION: &str = "0099";
+/// - **0100** ADR-0138 Amendment B1 (upload deduplication and replace-by-name),
+///   additive: `IngestMemoryOpResponse.duplicate_of` / `version`,
+///   `ListDocumentsOpRequest.upload_name` / `upload_tags` (the "Replace?" lookup,
+///   `op_match_upload`) and `DocumentSummaryOp.updated_at_unix_ms` / `version`.
+///   Capability `upload-replace`: the ingest pane asks "Replace <name>?" (default)
+///   or "Keep both" (sent as "<base> (n).<ext>") before an upload whose name the
+///   operator already stores in the same scope.
+pub const PINNED_CONTRACT_VERSION: &str = "0100";
 
 /// The plugin versions this console was BUILT against, by plugin id (ADR-0089).
 ///

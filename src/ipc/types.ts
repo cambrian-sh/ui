@@ -1032,8 +1032,19 @@ export interface IngestMemoryParams {
   time_precision?: string;
 }
 
-/** `[doc_id, deduped]`. `deduped` = replayed command_id, NOT a content duplicate. */
-export type IngestMemoryResponse = [string, boolean];
+/**
+ * `[doc_id, deduped, duplicate_of, version]`. `deduped` = replayed command_id, NOT a
+ * content duplicate. Contract 0100 (ADR-0138 Amendment B1): `duplicate_of` is set
+ * when the kernel already stored this exact file for this operator and wrote nothing;
+ * `version` > 1 means the upload replaced an earlier version of the same-named
+ * document. Both absent from a pre-0100 kernel.
+ */
+export type IngestMemoryResponse = [
+  doc_id: string,
+  deduped: boolean,
+  duplicate_of?: string,
+  version?: number,
+];
 
 /** File lane: the core reads bytes from this local `path`; no bytes cross IPC. */
 export interface IngestFileParams {
@@ -1045,6 +1056,11 @@ export interface IngestFileParams {
   /** See `IngestMemoryParams.occurred_at_unix_ms`. */
   occurred_at_unix_ms?: number | null;
   time_precision?: string;
+  /**
+   * The name to upload under, overriding the file's own (ADR-0138 B1.3). The kernel
+   * keys an upload by its name, so "Keep both" is sent as "report (2).pdf".
+   */
+  filename?: string;
 }
 
 /** Name + size of a picked file (bytes not read). */
@@ -1102,6 +1118,10 @@ export interface DocumentSummary {
   tags: string[];
   chunk_count: number;
   created_at_unix_ms: number;
+  /** Contract 0100: when the stored version was written; 0/absent when not reported. */
+  updated_at_unix_ms?: number;
+  /** Contract 0100 (ADR-0138 D3): the document's version; 0/absent when not reported. */
+  version?: number;
 }
 
 export interface ListDocumentsParams {

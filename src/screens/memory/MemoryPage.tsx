@@ -53,6 +53,8 @@ export function MemoryPage() {
   const canUploadFiles = capabilities.includes('memory-ingest-binary');
   const canAnswer = capabilities.includes('memory-answer');
   const canDateEvents = capabilities.includes('memory-event-time');
+  // Contract 0100 (ADR-0138 B1): the kernel keys uploads by name; ask before replacing.
+  const canReplaceUploads = capabilities.includes('upload-replace');
   // The vocabulary lives behind the access-policy plugin — it is the same list the
   // scope console selects from, because a label applied at ingest and a label applied
   // afterwards must be the same term or the rule written about it reaches only half
@@ -150,6 +152,7 @@ export function MemoryPage() {
                 onIngestFile={enqueueFile}
                 canUploadFiles={canUploadFiles}
                 canDateEvents={canDateEvents}
+                canReplaceUploads={canReplaceUploads}
                 vocabulary={vocabulary}
                 disabled={mutationsDisabled}
                 disabledReason={mutationsDisabledReason}
