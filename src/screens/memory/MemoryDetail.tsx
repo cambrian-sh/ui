@@ -81,7 +81,7 @@ export function MemoryDetail({ doc }: { doc: MemoryDocument }) {
             </p>
           </div>
           <div>
-            <div className="text-[10px] uppercase tracking-wide text-[var(--fg-muted)]">SCENE</div>
+            <div className="text-[10px] uppercase tracking-wide text-[var(--fg-muted)]">SESSION &amp; TIMES</div>
             <p className="font-mono text-[11px] text-[var(--fg-secondary)]">
               Session {doc.session_id ?? '—'}
             </p>

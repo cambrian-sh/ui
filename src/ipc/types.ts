@@ -598,7 +598,7 @@ export interface AgentSummary {
   runtime?: string;
   exec_path?: string;
   manifest_version?: string;
-  /** Capability claims not yet verified by an interview. Routing differs. */
+  /** Registered, profile not seeded yet: routed on the neutral prior, skips the semantic gate. */
   provisional?: boolean;
   system?: boolean;
   classification_tags?: string[];
@@ -1959,14 +1959,16 @@ export interface MCPServerTestResult {
   error: string;
 }
 
-/** The roles a generator can be pointed at. */
-export type GeneratorRole = 'planner' | 'verifier' | 'router' | 'interview' | 'memory';
+/**
+ * The roles a generator can be pointed at. `interview` was retired 2026-11-05 with
+ * the LLM agent interview; the kernel no longer lists or accepts it.
+ */
+export type GeneratorRole = 'planner' | 'verifier' | 'router' | 'memory';
 
 export const GENERATOR_ROLES: GeneratorRole[] = [
   'planner',
   'verifier',
   'router',
-  'interview',
   'memory',
 ];
 

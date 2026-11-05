@@ -76,7 +76,6 @@ const ROLE_NOTE: Record<GeneratorRole, string> = {
     'Emits every step’s capability contract, so routing quality is capped here (ADR-0100 D3).',
   verifier: 'Scores completed work. Its labels are what per-capability merit is built from.',
   router: 'Resolves a capability contract to an eligible agent.',
-  interview: 'Asks the clarifying questions before a plan forms.',
   memory: 'Answers grounded questions over the corpus.',
 };
 

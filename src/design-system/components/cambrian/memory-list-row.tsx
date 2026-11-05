@@ -3,7 +3,6 @@ import { cn } from "@/design-system/lib/utils";
 
 export type MemoryDocType =
   | "mnemonic_fact"
-  | "mnemonic_scene"
   | "episodic_memory"
   | "procedural_template"
   | "agent_profile"
@@ -33,7 +32,6 @@ export interface MemoryListRowProps {
 
 const DOC_TYPE_LABEL: Record<MemoryDocType, string> = {
   mnemonic_fact: "FACT",
-  mnemonic_scene: "SCENE",
   episodic_memory: "EPISODIC",
   procedural_template: "TEMPLATE",
   agent_profile: "AGENT",

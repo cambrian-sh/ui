@@ -8,6 +8,8 @@
 **Story coverage:** Story 22 (memory list + filters), Story 23 (memory document detail: FACT, SCENE, graph, provenance), Story 24 (compare two memory documents side-by-side), Story 30 (tag a memory with a scope / evaluation tag, with blast-radius preview), Story 38 (bulk-tag or bulk-supersede).
 **Companion ADRs (all Frozen):** [UI-012](../adr/UI-012-memory-graph-viz.md) Memory Graph (React Flow) · [UI-013](../adr/UI-013-blast-radius-computation.md) Blast-Radius Computation (kernel-driven via Tauri command).
 
+> **Amendment 2026-11-05 — scenes removed.** The kernel no longer has scenes: `MnemonicScene`, the SCENE body, the SCENE+FACT pairing and the scene edges (`discussed_in`, `engaged`) were removed by owner decision (`cambrian-knowledge/decisions/scenes-cancelled.md`; ADR-0016, ADR-0049). Every SCENE mention below is history. A memory document's body is its FACT (or chunk) text; nothing else in this PRD changes.
+
 ---
 
 ## 1. Scope
@@ -102,6 +104,7 @@ Clicking a row opens the detail in the right inspector (PRD-02 §4.4 "resource c
 
 - **Header** — id, DocType, scope tags, activation_strength bar, age, session.
 - **Body** — the **FACT** and **SCENE** (kernel ADR-0016). The FACT is the structured result/output; the SCENE is the snapshot of the `masterContext` at step-completion. The two are paired; both are surfaced.
+  > **Removed 2026-11-05:** scenes (`DocTypeMnemonicScene`) no longer exist in the kernel; owner decision `cambrian-knowledge/decisions/scenes-cancelled.md`. The body is the FACT only.
 - **Graph** — the `document_edges` neighbours (PRD-05 §8, the inline graph view).
 - **Provenance** — source_agent, source_hash, SourceHash (kernel ADR terminology), audit history of who read / wrote / mutated this document.
 - **Mutating actions** (operator-only):
@@ -120,7 +123,7 @@ The Memory explorer supports comparing **two selected documents** side-by-side (
 
 - Both documents' headers (id, DocType, scope, activation_strength, age, session).
 - **Similarity score** — the cosine similarity between the two embeddings. (The kernel exposes this; the UI renders.)
-- Both documents' bodies (FACT, SCENE) side by side.
+- Both documents' bodies (FACT, SCENE) side by side. *(SCENE removed 2026-11-05; bodies are FACT only.)*
 - Both documents' provenance side by side.
 - Both documents' `document_edges` neighbours (the union of the two graphs; a Venn visualisation).
 
@@ -257,7 +260,7 @@ Definitions of new vocabulary this PRD introduces. For shared terms (Substrate, 
 
 - **Memory document** — A row in the `documents` table (kernel ADR-0015). Carries a `DocType`, a `summary` (per kernel ADR-0048), an `activation_strength`, scope tags, an optional `content_cid`, and provenance.
 - **FACT** — `DocTypeMnemonicFact`. The structured result / output ("what happened"). One half of the SCENE+FACT pairing (kernel ADR-0016).
-- **SCENE** — `DocTypeMnemonicScene`. The snapshot of the `masterContext` at step-completion ("the situation it happened in"). The other half.
+- **SCENE** — `DocTypeMnemonicScene`. The snapshot of the `masterContext` at step-completion ("the situation it happened in"). The other half. *(Removed from the kernel 2026-11-05, `cambrian-knowledge/decisions/scenes-cancelled.md`.)*
 - **Document edges** — The `closes` / `specifies` / `contradicts` / `discussed_in` graph (kernel ADR-0017). The memory explorer's inline graph view renders this graph.
 - **Activation strength** — `[0,1]` lifecycle metric per Document (kernel ADR-0015). The effective relevance at read = `cosine × (α + (1−α)·activation) × e^(−λ·age)`. Replaced `ImportanceScore`.
 - **Blast radius** — The set of agents / plans whose `EffectiveScope` is affected by a proposed mutation. Rendered in the blast-radius panel above the confirm-with-consequence bar.

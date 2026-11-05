@@ -9,7 +9,6 @@ import { MemoryDetail } from './MemoryDetail';
 
 const KNOWN_DOCTYPES: MemoryDocType[] = [
   'mnemonic_fact',
-  'mnemonic_scene',
   'episodic_memory',
   'procedural_template',
   'agent_profile',

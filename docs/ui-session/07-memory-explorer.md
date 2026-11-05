@@ -12,7 +12,7 @@ runtime's long-term memory (`pgvector`) and procedural templates
 - **Filter bar at the top** (compact; "more filters" popover for the long tail).
 - **List in the centre** of the screen (or the centre column, depending on density).
 - **Selection details in the right inspector** (resource-context shape — see `04-shell-and-layout.md`).
-- **Graph view inline next to the open document** — a smaller pane, collapsible. Shows the open document's neighbourhood in the memory graph (FACT, SCENE, related plans).
+- **Graph view inline next to the open document** — a smaller pane, collapsible. Shows the open document's neighbourhood in the memory graph (FACT, SCENE, related plans). *(SCENE removed 2026-11-05.)*
 
 ## Filter bar
 
@@ -44,7 +44,7 @@ Inline next to the open document. Smaller pane; collapsible. Shows the
 open document's neighbourhood in the memory graph:
 
 - **FACT nodes** — atomic facts, clustered by semantic proximity.
-- **SCENE nodes** — composite episodic context.
+- **SCENE nodes** — composite episodic context. *(Removed 2026-11-05: the kernel no longer has scenes, `cambrian-knowledge/decisions/scenes-cancelled.md`.)*
 - **Edges** — semantic similarity (cosine), temporal co-occurrence, plan reference.
 
 The graph is **read-only** in V1. Editing happens through the document
