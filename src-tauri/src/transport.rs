@@ -1320,6 +1320,9 @@ impl Transport {
                 page: 0,
                 page_size: 0,
                 query: String::new(),
+                // ADR-0139 D13 lifecycle filters: defaults (active + stale, every
+                // source) keep this the listing it was before the fields existed.
+                ..Default::default()
             }))
             .await
             .map_err(map_status)?
@@ -2117,6 +2120,13 @@ impl Transport {
                                     session_id: t.session_id.clone(),
                                     step_index: t.step_index,
                                     text: t.text.clone(),
+                                    lease_id: t.lease_id.clone(),
+                                    task_session_id: t.task_session_id.clone(),
+                                    agent_id: t.agent_id.clone(),
+                                    kind: t.kind.clone(),
+                                    chunk_seq: t.chunk_seq,
+                                    is_final: t.r#final,
+                                    source: t.source.clone(),
                                 },
                             );
                         }
@@ -2184,6 +2194,16 @@ struct TokenChunk {
     session_id: String,
     step_index: i32,
     text: String,
+    // ADR-0139 amendment 2026-11-06: the live step-output stream (TokenChunkOp
+    // fields 4-10, capability "step-output-stream"). Empty/zero from an older kernel.
+    lease_id: String,
+    task_session_id: String,
+    agent_id: String,
+    kind: String,
+    chunk_seq: u64,
+    #[serde(rename = "final")]
+    is_final: bool,
+    source: String,
 }
 
 pub(crate) fn new_command_id() -> String {

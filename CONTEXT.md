@@ -43,8 +43,10 @@ cargo tauri dev              # full Tauri dev (Rust + webview)
 
 ## Architecture
 
-- **Contract pinned to `0100`** (`src-tauri/src/pb.rs` `PINNED_CONTRACT_VERSION`, history
-  there). The Rust core handshakes and shows a skew banner on mismatch. 0100 (ADR-0138
+- **Contract pinned to `0101`** (`src-tauri/src/pb.rs` `PINNED_CONTRACT_VERSION`, history
+  there). The Rust core handshakes and shows a skew banner on mismatch. 0101 (ADR-0139
+  phase 2/3, additive: memory-notes and skills-lifecycle operator RPCs) has no console
+  surface yet; the proto was already vendored with it. 0100 (ADR-0138
   Amendment B1, T-20261104-operator-upload-cannot-replace-a-document-a-re) is additive:
   the kernel keys an operator upload by (operator, classification scope, normalised file
   name). With capability `upload-replace` the ingest pane calls `op_match_upload`
@@ -76,6 +78,12 @@ cargo tauri dev              # full Tauri dev (Rust + webview)
     ingest time (document listing), never the UI-side receipt clock. Not sent: the event
     window (`event_after`/`event_before`) — the kernel refuses it until ADR-0134 P2 — and
     `reference_time`, `parts`.
+- **Live step output** (ADR-0139 amendment 2026-11-06, additive within 0101, capability
+  `step-output-stream`): `TokenChunkOp` gained fields 4-10 (`lease_id`, `task_session_id`,
+  `agent_id`, `kind` text|progress|status, `chunk_seq`, `final`, `source` gateway|agent) and now
+  carries every step's live output, native tool turns included. `transport.rs` forwards them all
+  on `kernel://token` (`TokenChunk` in Rust and `src/ipc/types.ts`); `proto/operator.proto` is
+  synced. No screen renders it yet — `T-20261106-console-renders-no-live-step-output-although`.
 - **Premium planes**: AccessPolicyAdmin, TelegramAdmin,
   IngressStudioAdmin, SubstrateLane, Telemetry, Links (on the OSS contract).
   Each rides the same gRPC channel + bearer token; gated by capability strings.

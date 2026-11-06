@@ -200,7 +200,15 @@ pub const RETENTION_FEED_CAPABILITY: &str = "retention-feed";
 ///   Capability `upload-replace`: the ingest pane asks "Replace <name>?" (default)
 ///   or "Keep both" (sent as "<base> (n).<ext>") before an upload whose name the
 ///   operator already stores in the same scope.
-pub const PINNED_CONTRACT_VERSION: &str = "0100";
+/// - **0101** ADR-0139 phase 2/3 (one additive proto pass for D12/D13/D14):
+///   operator plane `ListMemoryNotes` / `GetMemoryNotes` / `SetMemoryNotes` /
+///   `DeleteMemoryNotes` / `SetMemoryNotesBudget` (capability `memory-notes`) and
+///   the D13 skill-lifecycle RPCs plus the lifecycle fields on `SkillOp` /
+///   `ListSkillsOpRequest` (capability `skills-lifecycle`); agent plane (not
+///   vendored here) `SpawnSubagent`, `GetMemoryNotes`, `ProposeMemoryNote`,
+///   `ProposeSkill`. The console renders no notes or lifecycle surface yet; the
+///   bump only keeps it off the skew banner against a 0101 kernel.
+pub const PINNED_CONTRACT_VERSION: &str = "0101";
 
 /// The plugin versions this console was BUILT against, by plugin id (ADR-0089).
 ///

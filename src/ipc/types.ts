@@ -960,6 +960,15 @@ export interface TokenChunk {
   session_id: string;
   step_index: number;
   text: string;
+  // ADR-0139 amendment 2026-11-06: the live step-output stream (capability
+  // "step-output-stream"). Absent or empty from an older kernel or the mock.
+  lease_id?: string;
+  task_session_id?: string;
+  agent_id?: string;
+  kind?: 'text' | 'progress' | 'status' | string;
+  chunk_seq?: number;
+  final?: boolean;
+  source?: 'gateway' | 'agent' | string;
 }
 
 // ============================================================================
