@@ -20,6 +20,7 @@ describe('autoConnectOnce', () => {
     vi.mocked(ipc.savedConnection).mockResolvedValue({
       endpoint: 'http://saved:50051',
       username: 'ops',
+      method: 'password',
     });
     vi.mocked(ipc.loginSaved).mockResolvedValue({ role: 'operator' });
 
@@ -29,7 +30,7 @@ describe('autoConnectOnce', () => {
     // The password lives in the OS keychain and must never cross the IPC bridge.
     expect(vi.mocked(ipc.loginSaved).mock.calls[0]).toEqual([]);
     expect(result).toEqual({
-      saved: { endpoint: 'http://saved:50051', username: 'ops' },
+      saved: { endpoint: 'http://saved:50051', username: 'ops', method: 'password' },
       attempted: true,
       error: null,
     });
@@ -51,6 +52,7 @@ describe('autoConnectOnce', () => {
     vi.mocked(ipc.savedConnection).mockResolvedValue({
       endpoint: 'http://saved:50051',
       username: 'ops',
+      method: 'password',
     });
     vi.mocked(ipc.loginSaved).mockResolvedValue({ role: 'operator' });
 
@@ -69,6 +71,7 @@ describe('autoConnectOnce', () => {
     vi.mocked(ipc.savedConnection).mockResolvedValue({
       endpoint: 'http://saved:50051',
       username: 'ops',
+      method: 'password',
     });
     vi.mocked(ipc.loginSaved).mockRejectedValue(new Error('token expired'));
 

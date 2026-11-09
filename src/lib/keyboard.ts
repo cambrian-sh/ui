@@ -42,19 +42,17 @@ export const SHORTCUTS: Shortcut[] = [
 // every rail label, and are looked up here, in the palette and the shortcut
 // sheet instead.
 export const NAV_SHORTCUTS: Array<{ keys: string; label: string; path: string }> = [
-  { keys: 'g n', label: 'Go to Now', path: '/' },
+  { keys: 'g c', label: 'Go to Chat', path: '/chat' },
   { keys: 'g i', label: 'Go to Inbox', path: '/inbox' },
+  { keys: 'g k', label: 'Go to Skills', path: '/skills' },
+  { keys: 'g n', label: 'Go to Integrations', path: '/integrations' },
   { keys: 'g s', label: 'Go to Tasks', path: '/tasks' },
-  { keys: 'g p', label: 'Go to Plans', path: '/plans' },
   { keys: 'g a', label: 'Go to Runtime — Agents', path: '/agents' },
   { keys: 'g t', label: 'Go to Runtime — Tools & Skills', path: '/tools' },
   { keys: 'g m', label: 'Go to Runtime — MCP', path: '/mcp' },
   { keys: 'g y', label: 'Go to Memory', path: '/memory' },
   { keys: 'g o', label: 'Go to Scope', path: '/scope' },
   { keys: 'g w', label: 'Go to Watch', path: '/watch' },
-  { keys: 'g l', label: 'Go to Lifecycle', path: '/lifecycle' },
-  { keys: 'g v', label: 'Go to Verifier', path: '/verifier' },
-  { keys: 'g c', label: 'Go to Cost', path: '/cost' },
   { keys: 'g u', label: 'Go to Audit', path: '/audit' },
   { keys: 'g x', label: 'Go to Settings', path: '/settings' },
 ];

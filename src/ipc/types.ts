@@ -4,7 +4,65 @@
 // Connection + role (the projection's outer shape).
 // ============================================================================
 
-export type Role = 'operator' | 'viewer';
+/**
+ * The operator-plane role. `member` (ADR-0142) is a signed-in person with no
+ * console role: the kernel lets them reach only their own surfaces (chat, their
+ * approvals, their accounts, Logout) and refuses Snapshot/StreamEvents.
+ */
+export type Role = 'operator' | 'viewer' | 'member';
+
+/**
+ * Who is signed in (ADR-0142 D1) — display data only, never a token. Tokens
+ * live in the Rust core.
+ */
+export interface Identity {
+  method: 'password' | 'oidc';
+  /** The registry person ("user:<id>") when the kernel reported it; '' otherwise. */
+  principal: string;
+  display_name: string;
+  username: string;
+  email: string;
+  /** OIDC subject and issuer; '' for a password session. */
+  subject: string;
+  issuer: string;
+  /** The full role SET when the kernel reported it (password login); [] otherwise. */
+  roles: string[];
+  /**
+   * 'kernel' when the kernel said which role this is; 'probe' when the console
+   * inferred it (the operator plane has no WhoAmI yet,
+   * T-20261106-operator-plane-has-no-whoami-an-oidc-signed-in).
+   */
+  role_source: 'kernel' | 'probe';
+  /** When the access token expires (OIDC; 0 for a password session). */
+  expires_at_unix_ms: number;
+}
+
+/** What a kernel offers for sign-in (its unauthenticated DescribeAuth). */
+export interface AuthMethods {
+  password_login: boolean;
+  oidc_issuer: string;
+  oidc_client_id: string;
+  /** False when the kernel predates DescribeAuth: password is all it takes. */
+  describe_supported: boolean;
+}
+
+/**
+ * An approval that ended unanswered because nobody could be addressed
+ * (ADR-0142 D11): `needs_hierarchy` — a supervisor rule found no manager —
+ * or `unroutable` — no eligible approver is reachable.
+ */
+export interface UnroutedApproval {
+  intervention_id: string;
+  outcome: 'needs_hierarchy' | 'unroutable' | string;
+  kind: string;
+  agent_id: string;
+  session_id: string;
+  summary: string;
+  rule: string;
+  beneficiary: string;
+  detail: string;
+  resolved_at: string;
+}
 export type ConnectionStatus = 'live' | 'reconnecting' | 'down';
 
 export interface ConnectionState {
@@ -21,7 +79,9 @@ export interface ConnectionState {
 /** The endpoint + username saved in the OS keychain. Password is never returned. */
 export interface SavedConnection {
   endpoint: string;
+  /** '' for a remembered single-sign-on session. */
   username: string;
+  method: 'password' | 'oidc';
 }
 
 export interface LoginResponse {
@@ -39,6 +99,8 @@ export interface LogoutOutcome {
   revoked: boolean;
   /** Empty on a clean revoke. */
   note: string;
+  /** OIDC only: what happened at the identity provider ('' when all went well). */
+  idp_note?: string;
 }
 
 export interface CreateSessionResponse {
@@ -351,6 +413,8 @@ export interface SessionSummary {
   plan_count: number;
   agent_mix: string[];
   cost: number;
+  /** SessionStateOp.parent_id — the session this one was spawned under. */
+  parent_id?: string;
 }
 
 export interface HITLIntervention {
@@ -363,6 +427,59 @@ export interface HITLIntervention {
   intended_action: Record<string, unknown> | null;
   reason: string;
   raised_at: string;
+  /** The task session the raise was published under; empty for a tool approval. */
+  session_id?: string;
+  /** '' = tool / step approval; 'skill_access' = an agent asks for a skill;
+   *  'schedule' = an assistant proposes a recurring task for the person it serves.
+   *  ADR-0142 D11 adds 'machine_consent', 'choose_machine', 'account_confirm', 'publish'. */
+  kind?: string;
+  /** ADR-0142 D11: who may answer, e.g. 'self | operator', 'role:compliance'.
+   *  Empty from a kernel without capability 'addressed-approvals'. */
+  rule?: string;
+  /** The logged-in person satisfies the rule; false = visible (audit), not theirs to answer. */
+  answerable?: boolean;
+  /** The person the action is for ('user:alice'; '' = none). */
+  beneficiary?: string;
+  /** An approver may answer with a standing approval. */
+  allow_standing?: boolean;
+  /** RFC 3339 expiry of the approval window ('' = unknown). */
+  expires_at?: string;
+}
+
+/** ADR-0142 D11: AnswerApproval (capability 'addressed-approvals'). */
+export interface AnswerApprovalParams {
+  id: string;
+  approve: boolean;
+  /** Also pre-approve this action class + resource + scope until revoked or expired. */
+  standing: boolean;
+  /** 0 = the policy maximum. */
+  standing_ttl_seconds: number;
+  reason: string;
+}
+
+export interface AnswerApprovalResult {
+  ok: boolean;
+  deduped: boolean;
+  state: string;
+  /** Why ok=false: not an addressee, already resolved, standing not allowed… */
+  refusal: string;
+  standing_id: string;
+}
+
+/** ADR-0142: a standing approval (approve once, pre-approved until revoked or expired). */
+export interface StandingApproval {
+  id: string;
+  action_class: string;
+  resource: string;
+  scope: string;
+  beneficiary: string;
+  granted_by: string;
+  granted_at_unix_ms: number;
+  /** 0 = until revoked. */
+  expires_at_unix_ms: number;
+  revoked_at_unix_ms: number;
+  use_count: number;
+  active: boolean;
 }
 
 export interface AuditEntry {
@@ -415,6 +532,8 @@ export interface PluginState {
 export interface StateOfRecord {
   connection: ConnectionState;
   role: Role | null;
+  /** ADR-0142 D1: who is signed in. Optional: an older core omits it. */
+  identity?: Identity | null;
   kernel_version: string;
   contract_version: string;
   capabilities: string[];
@@ -425,6 +544,8 @@ export interface StateOfRecord {
   sessions: SessionSummary[];
   audit_tail: AuditEntry[];
   pending_hitl: HITLIntervention[];
+  /** ADR-0142 D11: approvals that ended unanswered because nobody could be addressed. */
+  unrouted_approvals?: UnroutedApproval[];
   // UI-IMPL-21a: subsystem entity caches (projected from snapshots/events)
   agents: AgentSummary[];
   tools: ToolSummary[];
@@ -456,6 +577,8 @@ export interface StateOfRecord {
    * in flight for that conversation.
    */
   conversation_progress?: Record<string, ConversationProgress>;
+  /** Live MCP integration health by server id (capability "integrations"). */
+  integration_health?: Record<string, import('./types-adr0139').IntegrationHealth>;
   /**
    * Retention/compaction passes seen on the feed (`RetentionRunOp`, contract
    * 0084), oldest first. Gated on the `retention-feed` capability.
@@ -2845,3 +2968,6 @@ export interface LinkConfirmation {
   deduped: boolean;
   link: Link | null;
 }
+
+export * from './types-adr0139';
+export * from './types-accounts';

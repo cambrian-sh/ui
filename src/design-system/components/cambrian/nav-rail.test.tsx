@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import type { ReactNode } from 'react';
 
-const routerState = { location: { pathname: '/sessions' } };
+const routerState = { location: { pathname: '/chat' } };
 
 vi.mock('@tanstack/react-router', () => ({
   useRouterState: () => routerState,
@@ -13,63 +13,62 @@ vi.mock('@tanstack/react-router', () => ({
   ),
 }));
 
-import { NavRail } from './nav-rail';
+import { NavRail, entryAvailable } from './nav-rail';
 
 function renderRail(props: Partial<React.ComponentProps<typeof NavRail>> = {}) {
-  return render(
-    <NavRail
-      collapsed={false}
-      onToggle={() => {}}
-      needsYouCount={0}
-      onOpenPalette={() => {}}
-      {...props}
-    />,
-  );
+  return render(<NavRail collapsed={false} onToggle={() => {}} onOpenPalette={() => {}} {...props} />);
 }
 
 describe('NavRail', () => {
-  it('renders nothing at all for "Needs you" when the count is zero', () => {
-    // Not a greyed row, not a zero — absent. A permanent "Needs you: 0" trains
-    // the operator to skip the one row that must never be skipped.
-    renderRail({ needsYouCount: 0 });
-    expect(screen.queryByText('Needs you')).not.toBeInTheDocument();
+  it('groups destinations by the question they answer', () => {
+    renderRail();
+    for (const g of ['Work', 'Knowledge', 'Automate', 'Admin']) {
+      expect(screen.getByText(g)).toBeInTheDocument();
+    }
   });
 
-  it('pins "Needs you" above everything with its count once something is waiting', () => {
-    renderRail({ needsYouCount: 3 });
-    expect(screen.getByText('Needs you')).toBeInTheDocument();
+  it('badges the inbox with the pending count, and never draws a zero', () => {
+    const { rerender } = renderRail({ counts: { inbox: 0 } });
+    expect(screen.queryByText('0')).not.toBeInTheDocument();
+    rerender(<NavRail collapsed={false} onToggle={() => {}} onOpenPalette={() => {}} counts={{ inbox: 3 }} />);
     expect(screen.getByText('3')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Inbox, 3 waiting' })).toBeInTheDocument();
   });
 
-  it('groups navigation instead of listing fourteen flat entries', () => {
-    renderRail();
-    expect(screen.getByText('Work')).toBeInTheDocument();
-    expect(screen.getByText('Execution')).toBeInTheDocument();
-    expect(screen.getByText('Governance')).toBeInTheDocument();
+  it('hides capability-gated destinations the kernel does not advertise', () => {
+    renderRail({ capabilities: [] });
+    expect(screen.queryByText('Pipelines')).not.toBeInTheDocument();
+    expect(screen.queryByText('Access policy')).not.toBeInTheDocument();
+    expect(screen.queryByText('Skills')).not.toBeInTheDocument();
   });
 
-  it('does not draw keyboard hints next to every label', () => {
-    // The bindings still exist in lib/keyboard.ts — they are looked up in the
-    // palette and the shortcut sheet, not rendered at 10px on every row.
-    renderRail();
-    expect(screen.queryByText('g s')).not.toBeInTheDocument();
-    expect(screen.queryByText('g p')).not.toBeInTheDocument();
+  it('shows them once advertised (requiresAny included)', () => {
+    renderRail({ capabilities: ['watches-read', 'access-policy', 'skills-lifecycle'] });
+    expect(screen.getByText('Pipelines')).toBeInTheDocument();
+    expect(screen.getByText('Access policy')).toBeInTheDocument();
+    expect(screen.getByText('Skills')).toBeInTheDocument();
   });
 
-  it('marks the active destination, including when a sibling tab is open', () => {
+  it('keeps Runtime lit when a sibling tab is open', () => {
     routerState.location.pathname = '/mcp';
     renderRail();
-    // Agents / Tools & Skills / MCP are one destination now, so MCP keeps the
-    // single Runtime row lit rather than lighting nothing.
-    const runtime = screen.getByText('Runtime');
-    expect(runtime.closest('a')).toHaveAttribute('aria-current', 'page');
-    routerState.location.pathname = '/sessions';
+    expect(screen.getByText('Runtime').closest('a')).toHaveAttribute('aria-current', 'page');
+    routerState.location.pathname = '/chat';
   });
 
-  it('omits a row count when there is nothing to count', () => {
-    renderRail({ counts: { sessions: 0, plans: 2 } });
-    expect(screen.getByText('2')).toBeInTheDocument();
-    // sessions is 0 — no badge, same rule as the inbox.
-    expect(screen.queryByText('0')).not.toBeInTheDocument();
+  it('no longer lists the deleted dead screens', () => {
+    renderRail({ capabilities: ['audit'] });
+    for (const gone of ['Verifier Pool', 'Lifecycle', 'Cost & Energy', 'Plans in flight']) {
+      expect(screen.queryByText(gone)).not.toBeInTheDocument();
+    }
+  });
+});
+
+describe('entryAvailable', () => {
+  it('combines requires and requiresAny', () => {
+    expect(entryAvailable({}, [])).toBe(true);
+    expect(entryAvailable({ requires: 'a' }, ['a'])).toBe(true);
+    expect(entryAvailable({ requiresAny: ['x', 'y'] }, ['y'])).toBe(true);
+    expect(entryAvailable({ requiresAny: ['x'] }, [])).toBe(false);
   });
 });

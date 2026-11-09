@@ -10,38 +10,33 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as WatchRouteImport } from './routes/watch'
-import { Route as VerifierRouteImport } from './routes/verifier'
 import { Route as ToolsRouteImport } from './routes/tools'
 import { Route as TelegramRouteImport } from './routes/telegram'
+import { Route as SkillsRouteImport } from './routes/skills'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as ScopeRouteImport } from './routes/scope'
 import { Route as PluginsRouteImport } from './routes/plugins'
-import { Route as PlansRouteImport } from './routes/plans'
 import { Route as PlanBuilderRouteImport } from './routes/plan-builder'
+import { Route as OrganisationRouteImport } from './routes/organisation'
 import { Route as MemoryRouteImport } from './routes/memory'
 import { Route as McpRouteImport } from './routes/mcp'
 import { Route as LogsRouteImport } from './routes/logs'
 import { Route as LinksRouteImport } from './routes/links'
-import { Route as LifecycleRouteImport } from './routes/lifecycle'
 import { Route as KnowledgeRouteImport } from './routes/knowledge'
 import { Route as IngressStudioRouteImport } from './routes/ingress-studio'
 import { Route as InboxRouteImport } from './routes/inbox'
-import { Route as CostRouteImport } from './routes/cost'
 import { Route as ChatRouteImport } from './routes/chat'
 import { Route as AuditRouteImport } from './routes/audit'
 import { Route as AgentsRouteImport } from './routes/agents'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as TasksIndexRouteImport } from './routes/tasks/index'
+import { Route as IntegrationsIndexRouteImport } from './routes/integrations/index'
 import { Route as TasksTaskIdRouteImport } from './routes/tasks/$taskId'
+import { Route as IntegrationsSystemIdRouteImport } from './routes/integrations/$systemId'
 
 const WatchRoute = WatchRouteImport.update({
   id: '/watch',
   path: '/watch',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const VerifierRoute = VerifierRouteImport.update({
-  id: '/verifier',
-  path: '/verifier',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ToolsRoute = ToolsRouteImport.update({
@@ -52,6 +47,11 @@ const ToolsRoute = ToolsRouteImport.update({
 const TelegramRoute = TelegramRouteImport.update({
   id: '/telegram',
   path: '/telegram',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SkillsRoute = SkillsRouteImport.update({
+  id: '/skills',
+  path: '/skills',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SettingsRoute = SettingsRouteImport.update({
@@ -69,14 +69,14 @@ const PluginsRoute = PluginsRouteImport.update({
   path: '/plugins',
   getParentRoute: () => rootRouteImport,
 } as any)
-const PlansRoute = PlansRouteImport.update({
-  id: '/plans',
-  path: '/plans',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const PlanBuilderRoute = PlanBuilderRouteImport.update({
   id: '/plan-builder',
   path: '/plan-builder',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const OrganisationRoute = OrganisationRouteImport.update({
+  id: '/organisation',
+  path: '/organisation',
   getParentRoute: () => rootRouteImport,
 } as any)
 const MemoryRoute = MemoryRouteImport.update({
@@ -99,11 +99,6 @@ const LinksRoute = LinksRouteImport.update({
   path: '/links',
   getParentRoute: () => rootRouteImport,
 } as any)
-const LifecycleRoute = LifecycleRouteImport.update({
-  id: '/lifecycle',
-  path: '/lifecycle',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const KnowledgeRoute = KnowledgeRouteImport.update({
   id: '/knowledge',
   path: '/knowledge',
@@ -117,11 +112,6 @@ const IngressStudioRoute = IngressStudioRouteImport.update({
 const InboxRoute = InboxRouteImport.update({
   id: '/inbox',
   path: '/inbox',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const CostRoute = CostRouteImport.update({
-  id: '/cost',
-  path: '/cost',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ChatRoute = ChatRouteImport.update({
@@ -149,9 +139,19 @@ const TasksIndexRoute = TasksIndexRouteImport.update({
   path: '/tasks/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const IntegrationsIndexRoute = IntegrationsIndexRouteImport.update({
+  id: '/integrations/',
+  path: '/integrations/',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const TasksTaskIdRoute = TasksTaskIdRouteImport.update({
   id: '/tasks/$taskId',
   path: '/tasks/$taskId',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const IntegrationsSystemIdRoute = IntegrationsSystemIdRouteImport.update({
+  id: '/integrations/$systemId',
+  path: '/integrations/$systemId',
   getParentRoute: () => rootRouteImport,
 } as any)
 
@@ -160,25 +160,25 @@ export interface FileRoutesByFullPath {
   '/agents': typeof AgentsRoute
   '/audit': typeof AuditRoute
   '/chat': typeof ChatRoute
-  '/cost': typeof CostRoute
   '/inbox': typeof InboxRoute
   '/ingress-studio': typeof IngressStudioRoute
   '/knowledge': typeof KnowledgeRoute
-  '/lifecycle': typeof LifecycleRoute
   '/links': typeof LinksRoute
   '/logs': typeof LogsRoute
   '/mcp': typeof McpRoute
   '/memory': typeof MemoryRoute
+  '/organisation': typeof OrganisationRoute
   '/plan-builder': typeof PlanBuilderRoute
-  '/plans': typeof PlansRoute
   '/plugins': typeof PluginsRoute
   '/scope': typeof ScopeRoute
   '/settings': typeof SettingsRoute
+  '/skills': typeof SkillsRoute
   '/telegram': typeof TelegramRoute
   '/tools': typeof ToolsRoute
-  '/verifier': typeof VerifierRoute
   '/watch': typeof WatchRoute
+  '/integrations/$systemId': typeof IntegrationsSystemIdRoute
   '/tasks/$taskId': typeof TasksTaskIdRoute
+  '/integrations/': typeof IntegrationsIndexRoute
   '/tasks/': typeof TasksIndexRoute
 }
 export interface FileRoutesByTo {
@@ -186,25 +186,25 @@ export interface FileRoutesByTo {
   '/agents': typeof AgentsRoute
   '/audit': typeof AuditRoute
   '/chat': typeof ChatRoute
-  '/cost': typeof CostRoute
   '/inbox': typeof InboxRoute
   '/ingress-studio': typeof IngressStudioRoute
   '/knowledge': typeof KnowledgeRoute
-  '/lifecycle': typeof LifecycleRoute
   '/links': typeof LinksRoute
   '/logs': typeof LogsRoute
   '/mcp': typeof McpRoute
   '/memory': typeof MemoryRoute
+  '/organisation': typeof OrganisationRoute
   '/plan-builder': typeof PlanBuilderRoute
-  '/plans': typeof PlansRoute
   '/plugins': typeof PluginsRoute
   '/scope': typeof ScopeRoute
   '/settings': typeof SettingsRoute
+  '/skills': typeof SkillsRoute
   '/telegram': typeof TelegramRoute
   '/tools': typeof ToolsRoute
-  '/verifier': typeof VerifierRoute
   '/watch': typeof WatchRoute
+  '/integrations/$systemId': typeof IntegrationsSystemIdRoute
   '/tasks/$taskId': typeof TasksTaskIdRoute
+  '/integrations': typeof IntegrationsIndexRoute
   '/tasks': typeof TasksIndexRoute
 }
 export interface FileRoutesById {
@@ -213,25 +213,25 @@ export interface FileRoutesById {
   '/agents': typeof AgentsRoute
   '/audit': typeof AuditRoute
   '/chat': typeof ChatRoute
-  '/cost': typeof CostRoute
   '/inbox': typeof InboxRoute
   '/ingress-studio': typeof IngressStudioRoute
   '/knowledge': typeof KnowledgeRoute
-  '/lifecycle': typeof LifecycleRoute
   '/links': typeof LinksRoute
   '/logs': typeof LogsRoute
   '/mcp': typeof McpRoute
   '/memory': typeof MemoryRoute
+  '/organisation': typeof OrganisationRoute
   '/plan-builder': typeof PlanBuilderRoute
-  '/plans': typeof PlansRoute
   '/plugins': typeof PluginsRoute
   '/scope': typeof ScopeRoute
   '/settings': typeof SettingsRoute
+  '/skills': typeof SkillsRoute
   '/telegram': typeof TelegramRoute
   '/tools': typeof ToolsRoute
-  '/verifier': typeof VerifierRoute
   '/watch': typeof WatchRoute
+  '/integrations/$systemId': typeof IntegrationsSystemIdRoute
   '/tasks/$taskId': typeof TasksTaskIdRoute
+  '/integrations/': typeof IntegrationsIndexRoute
   '/tasks/': typeof TasksIndexRoute
 }
 export interface FileRouteTypes {
@@ -241,25 +241,25 @@ export interface FileRouteTypes {
     | '/agents'
     | '/audit'
     | '/chat'
-    | '/cost'
     | '/inbox'
     | '/ingress-studio'
     | '/knowledge'
-    | '/lifecycle'
     | '/links'
     | '/logs'
     | '/mcp'
     | '/memory'
+    | '/organisation'
     | '/plan-builder'
-    | '/plans'
     | '/plugins'
     | '/scope'
     | '/settings'
+    | '/skills'
     | '/telegram'
     | '/tools'
-    | '/verifier'
     | '/watch'
+    | '/integrations/$systemId'
     | '/tasks/$taskId'
+    | '/integrations/'
     | '/tasks/'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -267,25 +267,25 @@ export interface FileRouteTypes {
     | '/agents'
     | '/audit'
     | '/chat'
-    | '/cost'
     | '/inbox'
     | '/ingress-studio'
     | '/knowledge'
-    | '/lifecycle'
     | '/links'
     | '/logs'
     | '/mcp'
     | '/memory'
+    | '/organisation'
     | '/plan-builder'
-    | '/plans'
     | '/plugins'
     | '/scope'
     | '/settings'
+    | '/skills'
     | '/telegram'
     | '/tools'
-    | '/verifier'
     | '/watch'
+    | '/integrations/$systemId'
     | '/tasks/$taskId'
+    | '/integrations'
     | '/tasks'
   id:
     | '__root__'
@@ -293,25 +293,25 @@ export interface FileRouteTypes {
     | '/agents'
     | '/audit'
     | '/chat'
-    | '/cost'
     | '/inbox'
     | '/ingress-studio'
     | '/knowledge'
-    | '/lifecycle'
     | '/links'
     | '/logs'
     | '/mcp'
     | '/memory'
+    | '/organisation'
     | '/plan-builder'
-    | '/plans'
     | '/plugins'
     | '/scope'
     | '/settings'
+    | '/skills'
     | '/telegram'
     | '/tools'
-    | '/verifier'
     | '/watch'
+    | '/integrations/$systemId'
     | '/tasks/$taskId'
+    | '/integrations/'
     | '/tasks/'
   fileRoutesById: FileRoutesById
 }
@@ -320,25 +320,25 @@ export interface RootRouteChildren {
   AgentsRoute: typeof AgentsRoute
   AuditRoute: typeof AuditRoute
   ChatRoute: typeof ChatRoute
-  CostRoute: typeof CostRoute
   InboxRoute: typeof InboxRoute
   IngressStudioRoute: typeof IngressStudioRoute
   KnowledgeRoute: typeof KnowledgeRoute
-  LifecycleRoute: typeof LifecycleRoute
   LinksRoute: typeof LinksRoute
   LogsRoute: typeof LogsRoute
   McpRoute: typeof McpRoute
   MemoryRoute: typeof MemoryRoute
+  OrganisationRoute: typeof OrganisationRoute
   PlanBuilderRoute: typeof PlanBuilderRoute
-  PlansRoute: typeof PlansRoute
   PluginsRoute: typeof PluginsRoute
   ScopeRoute: typeof ScopeRoute
   SettingsRoute: typeof SettingsRoute
+  SkillsRoute: typeof SkillsRoute
   TelegramRoute: typeof TelegramRoute
   ToolsRoute: typeof ToolsRoute
-  VerifierRoute: typeof VerifierRoute
   WatchRoute: typeof WatchRoute
+  IntegrationsSystemIdRoute: typeof IntegrationsSystemIdRoute
   TasksTaskIdRoute: typeof TasksTaskIdRoute
+  IntegrationsIndexRoute: typeof IntegrationsIndexRoute
   TasksIndexRoute: typeof TasksIndexRoute
 }
 
@@ -349,13 +349,6 @@ declare module '@tanstack/react-router' {
       path: '/watch'
       fullPath: '/watch'
       preLoaderRoute: typeof WatchRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/verifier': {
-      id: '/verifier'
-      path: '/verifier'
-      fullPath: '/verifier'
-      preLoaderRoute: typeof VerifierRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/tools': {
@@ -370,6 +363,13 @@ declare module '@tanstack/react-router' {
       path: '/telegram'
       fullPath: '/telegram'
       preLoaderRoute: typeof TelegramRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/skills': {
+      id: '/skills'
+      path: '/skills'
+      fullPath: '/skills'
+      preLoaderRoute: typeof SkillsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/settings': {
@@ -393,18 +393,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PluginsRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/plans': {
-      id: '/plans'
-      path: '/plans'
-      fullPath: '/plans'
-      preLoaderRoute: typeof PlansRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/plan-builder': {
       id: '/plan-builder'
       path: '/plan-builder'
       fullPath: '/plan-builder'
       preLoaderRoute: typeof PlanBuilderRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/organisation': {
+      id: '/organisation'
+      path: '/organisation'
+      fullPath: '/organisation'
+      preLoaderRoute: typeof OrganisationRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/memory': {
@@ -435,13 +435,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LinksRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/lifecycle': {
-      id: '/lifecycle'
-      path: '/lifecycle'
-      fullPath: '/lifecycle'
-      preLoaderRoute: typeof LifecycleRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/knowledge': {
       id: '/knowledge'
       path: '/knowledge'
@@ -461,13 +454,6 @@ declare module '@tanstack/react-router' {
       path: '/inbox'
       fullPath: '/inbox'
       preLoaderRoute: typeof InboxRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/cost': {
-      id: '/cost'
-      path: '/cost'
-      fullPath: '/cost'
-      preLoaderRoute: typeof CostRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/chat': {
@@ -505,11 +491,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof TasksIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/integrations/': {
+      id: '/integrations/'
+      path: '/integrations'
+      fullPath: '/integrations/'
+      preLoaderRoute: typeof IntegrationsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/tasks/$taskId': {
       id: '/tasks/$taskId'
       path: '/tasks/$taskId'
       fullPath: '/tasks/$taskId'
       preLoaderRoute: typeof TasksTaskIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/integrations/$systemId': {
+      id: '/integrations/$systemId'
+      path: '/integrations/$systemId'
+      fullPath: '/integrations/$systemId'
+      preLoaderRoute: typeof IntegrationsSystemIdRouteImport
       parentRoute: typeof rootRouteImport
     }
   }
@@ -520,25 +520,25 @@ const rootRouteChildren: RootRouteChildren = {
   AgentsRoute: AgentsRoute,
   AuditRoute: AuditRoute,
   ChatRoute: ChatRoute,
-  CostRoute: CostRoute,
   InboxRoute: InboxRoute,
   IngressStudioRoute: IngressStudioRoute,
   KnowledgeRoute: KnowledgeRoute,
-  LifecycleRoute: LifecycleRoute,
   LinksRoute: LinksRoute,
   LogsRoute: LogsRoute,
   McpRoute: McpRoute,
   MemoryRoute: MemoryRoute,
+  OrganisationRoute: OrganisationRoute,
   PlanBuilderRoute: PlanBuilderRoute,
-  PlansRoute: PlansRoute,
   PluginsRoute: PluginsRoute,
   ScopeRoute: ScopeRoute,
   SettingsRoute: SettingsRoute,
+  SkillsRoute: SkillsRoute,
   TelegramRoute: TelegramRoute,
   ToolsRoute: ToolsRoute,
-  VerifierRoute: VerifierRoute,
   WatchRoute: WatchRoute,
+  IntegrationsSystemIdRoute: IntegrationsSystemIdRoute,
   TasksTaskIdRoute: TasksTaskIdRoute,
+  IntegrationsIndexRoute: IntegrationsIndexRoute,
   TasksIndexRoute: TasksIndexRoute,
 }
 export const routeTree = rootRouteImport

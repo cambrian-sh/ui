@@ -1,7 +1,7 @@
 import { Link } from '@tanstack/react-router';
 import { Inbox } from 'lucide-react';
 import { cn } from '@/design-system/lib/utils';
-import { badgeCount, formatTokenRate } from '@/lib/format';
+import { badgeCount } from '@/lib/format';
 import type { ConnectionStatus, Role } from '@/ipc/types';
 
 /**
@@ -11,8 +11,8 @@ import type { ConnectionStatus, Role } from '@/ipc/types';
  * spend and backlog as eight dots of the same size and shape, so "everything is
  * fine" and "something is burning" were the same picture. Its contents moved to
  * where each one is actually read: connection and cursor here, plans onto the
- * rail, spend into this bar, breaker into Cost & Energy — and back up here only
- * when it stops being `ok`.
+ * rail. (Spend and breaker readouts were removed 2026-11-06: they read a
+ * `cost_dashboard` the Rust fold never populates, so they always said 0.)
  */
 function ConnectionPill({
   status,
@@ -63,13 +63,12 @@ export interface HeaderBarProps {
   contractVersion: string;
   /** 0 = aligned. Non-zero means commands may be rejected; say so. */
   contractSkew: number;
-  /** Tokens per hour. Not money — see `formatTokenRate`. */
-  spendRateTokens: number;
   /** `pending_hitl.length`. Drives the badge, which is absent at zero. */
   needsYouCount: number;
   /** Named only when it is NOT ok — otherwise this bar stays quiet. */
-  degradedBreakers: number;
   role: Role | null;
+  /** ADR-0142 D1: the signed-in person's name (display only). */
+  identityName?: string | null;
   compact?: boolean;
   /**
    * Sign out of the kernel (contract 0099 `Logout`). Absent = no sign-out
@@ -84,10 +83,9 @@ export function HeaderBar({
   kernelVersion,
   contractVersion,
   contractSkew,
-  spendRateTokens,
   needsYouCount,
-  degradedBreakers,
   role,
+  identityName = null,
   compact,
   onSignOut,
 }: HeaderBarProps) {
@@ -129,23 +127,8 @@ export function HeaderBar({
         </Link>
       )}
 
-      {degradedBreakers > 0 && (
-        <Link
-          to="/cost"
-          className="rounded-sm px-1.5 py-0.5 font-mono text-[10px] tint-fill tint-ring"
-          style={{ '--tint': 'var(--status-warn)' } as React.CSSProperties}
-        >
-          <span className="text-[var(--status-warn)]">
-            {degradedBreakers} breaker{degradedBreakers === 1 ? '' : 's'} tripping
-          </span>
-        </Link>
-      )}
 
       <div className="ml-auto flex flex-none items-center gap-3">
-        <span className="font-mono text-[11px] text-[var(--fg-muted)]">
-          {formatTokenRate(spendRateTokens)}
-        </span>
-
         <Link
           to="/inbox"
           className={cn(
@@ -166,8 +149,16 @@ export function HeaderBar({
           )}
         </Link>
 
+        {identityName && !compact && (
+          <span className="max-w-[16ch] truncate text-[11.5px] text-[var(--fg-secondary)]" title={`Signed in as ${identityName}`}>
+            <span className="sr-only">Signed in as </span>
+            {identityName}
+          </span>
+        )}
+
         {role && (
           <span className="rounded-sm px-1.5 py-0.5 font-mono text-[10px] text-[var(--fg-muted)] shadow-[inset_0_0_0_1px_var(--border-subtle)]">
+            <span className="sr-only">Role: </span>
             {role}
           </span>
         )}

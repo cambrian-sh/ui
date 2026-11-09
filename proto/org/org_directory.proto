@@ -1,0 +1,406 @@
+syntax = "proto3";
+
+package cambrian.premium.org;
+
+option go_package = "github.com/cambrian-sh/cambrian-premium/api/proto/org;orgpb";
+
+// OrgDirectoryAdmin is the PREMIUM organisation-hierarchy plane (ADR-0142 stage 2,
+// D5/D6/D11), mounted on the kernel gRPC server through the OSS
+// app.Registry.AddGRPCService seam (ADR-0073), behind the same operator auth
+// interceptors, connection and token as OperatorConsole (ADR-0088).
+// Capability: "org-directory".
+//
+// ONE model, whatever feeds it: a SCIM 2.0 push (Entra, Okta, …), the Keycloak
+// Admin-API reconcile, OIDC login claims (JIT), or the built-in editor below.
+// Every row records its SOURCE; a row owned by a directory is read-only here
+// (editable=false), so two masters never fight (ADR-0142 D6).
+//
+// Who may call what is decided by the kernel's operator interceptor before a
+// handler runs: reads (List*/Get*) are open to Operator and Viewer, every other
+// RPC is Operator-only, GetMyOrgChain is open to every signed-in person
+// (including the member role), and the SCIM/reconcile reads are Operator-only.
+// Every mutation takes command_id (idempotency key) and reason, is deduped and
+// written to the operator audit store with the caller.
+service OrgDirectoryAdmin {
+  // ── hierarchy: units (departments / teams, a tree) ──
+  rpc ListOrgUnits(ListOrgUnitsRequest) returns (ListOrgUnitsResponse);
+  rpc SaveOrgUnit(SaveOrgUnitRequest) returns (SaveOrgUnitResponse);
+  rpc DeleteOrgUnit(DeleteOrgUnitRequest) returns (OrgAck);
+
+  // ── hierarchy: people (registry persons + their directory record) ──
+  rpc ListOrgPeople(ListOrgPeopleRequest) returns (ListOrgPeopleResponse);
+  rpc GetOrgPerson(GetOrgPersonRequest) returns (OrgPerson);
+  // SaveOrgPerson creates or edits an EDITOR-sourced person (unit, manager,
+  // title, attributes). A directory-sourced person is refused
+  // (FAILED_PRECONDITION: edit it at the directory).
+  rpc SaveOrgPerson(SaveOrgPersonRequest) returns (SaveOrgPersonResponse);
+  // SetOrgPersonActive suspends (active=false) or reactivates an
+  // editor-sourced person. Suspension never deletes data; it revokes access
+  // and withdraws the person's pending approvals.
+  rpc SetOrgPersonActive(SetOrgPersonActiveRequest) returns (OrgPerson);
+
+  // ── directory groups (the SOURCE groups mapping rules match on) ──
+  rpc ListDirectoryGroups(ListDirectoryGroupsRequest) returns (ListDirectoryGroupsResponse);
+  rpc SaveDirectoryGroup(SaveDirectoryGroupRequest) returns (DirectoryGroup);
+  rpc DeleteDirectoryGroup(DeleteDirectoryGroupRequest) returns (OrgAck);
+
+  // ── reporting chain ──
+  // GetMyOrgChain is the caller's own unit path and manager chain (any role).
+  rpc GetMyOrgChain(GetMyOrgChainRequest) returns (OrgChain);
+  rpc GetOrgChain(GetOrgChainRequest) returns (OrgChain);
+
+  // ── mapping rules (audited, previewable policy data) ──
+  rpc ListMappingRules(ListMappingRulesRequest) returns (ListMappingRulesResponse);
+  // SaveMappingRule validates, stores and APPLIES the rule set; the report is
+  // what changed. A rule that assigns a privileged role (operator, admin)
+  // must say privileged=true, or it is refused.
+  rpc SaveMappingRule(SaveMappingRuleRequest) returns (SaveMappingRuleResponse);
+  rpc DeleteMappingRule(DeleteMappingRuleRequest) returns (MappingReport);
+  // PreviewMappingRules is the dry run: what WOULD change for every person if
+  // `upsert` were saved and/or `delete_id` deleted. Writes nothing.
+  rpc PreviewMappingRules(PreviewMappingRulesRequest) returns (MappingReport);
+  // ApplyMappingRules re-evaluates every person against the stored rules.
+  rpc ApplyMappingRules(ApplyMappingRulesRequest) returns (MappingReport);
+
+  // ── approval escalation settings (limits themselves come from rules) ──
+  rpc GetApprovalSettings(GetApprovalSettingsRequest) returns (ApprovalSettings);
+  rpc SaveApprovalSettings(SaveApprovalSettingsRequest) returns (ApprovalSettings);
+
+  // ── SCIM 2.0 connections (one bearer per directory; Operator) ──
+  rpc ListScimConnections(ListScimConnectionsRequest) returns (ListScimConnectionsResponse);
+  // CreateScimConnection returns the bearer token ONCE; the kernel keeps it
+  // only in the ADR-0101 secret store and never returns it again.
+  rpc CreateScimConnection(CreateScimConnectionRequest) returns (ScimConnectionSecret);
+  rpc RotateScimToken(RotateScimTokenRequest) returns (ScimConnectionSecret);
+  rpc RevokeScimConnection(RevokeScimConnectionRequest) returns (ScimConnection);
+
+  // ── Keycloak reconcile (Operator) ──
+  rpc GetReconcileStatus(GetReconcileStatusRequest) returns (ReconcileStatus);
+  rpc RunReconcileNow(RunReconcileNowRequest) returns (ReconcileStatus);
+}
+
+message OrgAck {
+  bool ok = 1;
+  // deduped: this command_id was already applied; nothing ran again.
+  bool deduped = 2;
+}
+
+// ── units ──
+
+message OrgUnit {
+  string id = 1;
+  string name = 2;
+  string parent_id = 3;  // "" = a root unit
+  string head_id = 4;    // registry person id of the unit head ("" = none)
+  // source: editor | scim | directory | oidc (who owns this row).
+  string source = 5;
+  string connection_id = 6;
+  string external_id = 7;
+  int32 member_count = 8;
+  // editable: false when a directory owns the row (edit it there).
+  bool editable = 9;
+}
+
+message ListOrgUnitsRequest {}
+message ListOrgUnitsResponse { repeated OrgUnit units = 1; }
+
+message SaveOrgUnitRequest {
+  string command_id = 1;
+  string reason = 2;
+  // unit.id "" creates a new editor unit (id derived from the name).
+  OrgUnit unit = 3;
+}
+message SaveOrgUnitResponse { OrgUnit unit = 1; }
+
+message DeleteOrgUnitRequest {
+  string command_id = 1;
+  string reason = 2;
+  string id = 3;
+}
+
+// ── people ──
+
+message ApprovalLimit {
+  // class: the approval action class ("payment", "tool", "*" = any).
+  string class = 1;
+  // measure: what is measured ("amount", "recipients", …; see ApprovalMeasure).
+  string measure = 2;
+  // max: requests whose measure is ABOVE max escalate.
+  double max = 3;
+  // escalate_to: approver rules (any-of) above the limit, e.g.
+  // "relationship:supervisor", "role:finance". Default relationship:supervisor.
+  repeated string escalate_to = 4;
+  // rule_id: the mapping rule that set it.
+  string rule_id = 5;
+}
+
+message OrgPerson {
+  string principal_id = 1;  // registry id; the person acts as user:<principal_id>
+  string display_name = 2;
+  string email = 3;
+  string status = 4;  // active | suspended | deprovisioned
+  string source = 5;  // who owns the directory record (editor | scim | directory | oidc)
+  string connection_id = 6;
+  string external_id = 7;
+  string user_name = 8;
+  string unit_id = 9;
+  string title = 10;
+  string manager_id = 11;
+  string department = 12;
+  repeated string directory_groups = 13;  // display names of source groups
+  map<string, string> attributes = 14;
+  // roles: the person's current registry role set (manual ∪ rule-derived).
+  repeated string roles = 15;
+  // rule_*: what mapping rules currently grant (add-only; manual grants are
+  // never removed by a rule).
+  repeated string rule_roles = 16;
+  repeated string rule_groups = 17;
+  repeated string rule_policy_links = 18;
+  repeated ApprovalLimit approval_limits = 19;
+  bool editable = 20;
+  int64 updated_at_unix_ms = 21;
+}
+
+message ListOrgPeopleRequest {
+  string unit_id = 1;  // "" = everyone
+  string query = 2;    // substring on id / name / email / user name
+  bool include_inactive = 3;
+}
+message ListOrgPeopleResponse { repeated OrgPerson people = 1; }
+
+message GetOrgPersonRequest { string principal_id = 1; }
+
+message SaveOrgPersonRequest {
+  string command_id = 1;
+  string reason = 2;
+  // person.principal_id "" creates an editor person (id derived from the
+  // email or display name). Writable fields: display_name, email, unit_id,
+  // title, manager_id, attributes.
+  OrgPerson person = 3;
+}
+message SaveOrgPersonResponse { OrgPerson person = 1; }
+
+message SetOrgPersonActiveRequest {
+  string command_id = 1;
+  string reason = 2;
+  string principal_id = 3;
+  bool active = 4;
+}
+
+// ── directory groups ──
+
+message DirectoryGroup {
+  string id = 1;
+  string display_name = 2;
+  string source = 3;
+  string connection_id = 4;
+  string external_id = 5;
+  repeated string members = 6;  // registry person ids
+  bool editable = 7;
+}
+message ListDirectoryGroupsRequest {}
+message ListDirectoryGroupsResponse { repeated DirectoryGroup groups = 1; }
+message SaveDirectoryGroupRequest {
+  string command_id = 1;
+  string reason = 2;
+  DirectoryGroup group = 3;
+}
+message DeleteDirectoryGroupRequest {
+  string command_id = 1;
+  string reason = 2;
+  string id = 3;
+}
+
+// ── chain ──
+
+message OrgChain {
+  OrgPerson person = 1;
+  // unit_path: root first, the person's own unit last.
+  repeated OrgUnit unit_path = 2;
+  // managers: nearest first (manager, skip-level, …), cycle-safe, bounded.
+  repeated OrgPerson managers = 3;
+  // unit_head: the head of the person's unit (the parent unit's head when the
+  // person heads it); unset when none.
+  OrgPerson unit_head = 4;
+}
+message GetMyOrgChainRequest {}
+message GetOrgChainRequest { string principal_id = 1; }
+
+// ── mapping rules ──
+
+message RuleMatch {
+  // Every NON-EMPTY condition must hold (AND); within one, any value matches
+  // (OR). Comparison is case-insensitive. An empty match matches nobody
+  // unless match_all is set.
+  repeated string groups = 1;       // source group display name or external id
+  repeated string departments = 2;
+  repeated string titles = 3;
+  repeated string units = 4;        // unit id; matches the unit and its descendants
+  map<string, string> attributes = 5;  // custom attribute / login claim equality
+  repeated string connections = 6;  // limit to a source connection id
+  bool match_all = 7;
+}
+
+message RuleAssign {
+  repeated string roles = 1;         // plane / approval roles (operator needs privileged)
+  repeated string groups = 2;        // ADR-0087 policy group ids (membership added)
+  repeated string policy_links = 3;  // policy ids linked to the person (scope floors)
+  repeated ApprovalLimit approval_limits = 4;
+}
+
+message MappingRule {
+  string id = 1;
+  string name = 2;
+  // priority: higher wins a conflict (two rules setting a limit for the same
+  // class+measure); ties break on id. Memberships are a union.
+  int32 priority = 3;
+  bool enabled = 4;
+  // privileged must be true for a rule that assigns operator or admin.
+  bool privileged = 5;
+  RuleMatch match = 6;
+  RuleAssign assign = 7;
+  int32 version = 8;
+  string updated_by = 9;
+  int64 updated_at_unix_ms = 10;
+}
+
+message ListMappingRulesRequest {}
+message ListMappingRulesResponse { repeated MappingRule rules = 1; }
+
+message SaveMappingRuleRequest {
+  string command_id = 1;
+  string reason = 2;
+  MappingRule rule = 3;  // id "" creates (id derived from the name)
+}
+message SaveMappingRuleResponse {
+  MappingRule rule = 1;
+  MappingReport report = 2;
+}
+message DeleteMappingRuleRequest {
+  string command_id = 1;
+  string reason = 2;
+  string id = 3;
+}
+message PreviewMappingRulesRequest {
+  MappingRule upsert = 1;  // optional
+  string delete_id = 2;    // optional
+}
+message ApplyMappingRulesRequest {
+  string command_id = 1;
+  string reason = 2;
+}
+
+message PersonChange {
+  string principal_id = 1;
+  string display_name = 2;
+  repeated string add_roles = 3;
+  repeated string remove_roles = 4;
+  repeated string add_groups = 5;
+  repeated string remove_groups = 6;
+  repeated string add_policy_links = 7;
+  repeated string remove_policy_links = 8;
+  repeated ApprovalLimit limits_before = 9;
+  repeated ApprovalLimit limits_after = 10;
+}
+
+message MappingReport {
+  repeated PersonChange changes = 1;
+  // conflicts: limits two rules set differently, and which rule won.
+  repeated string conflicts = 2;
+  // errors: grants that could not be applied (a missing group/policy, …).
+  repeated string errors = 3;
+  int32 people_evaluated = 4;
+  bool dry_run = 5;
+}
+
+// ── approval settings ──
+
+message ApprovalMeasure {
+  string tool = 1;     // tool name (exact) whose call carries the measure
+  string measure = 2;  // e.g. "amount", "recipients"
+  string arg = 3;      // top-level argument name (dotted path allowed)
+  // count: measure the LENGTH of a list argument (recipients) instead of its value.
+  bool count = 4;
+}
+
+message ApprovalSettings {
+  repeated ApprovalMeasure measures = 1;
+  // relationship_fallbacks: relation → approver rule used ONLY when the
+  // relation resolves to nobody (e.g. "supervisor" → "role:finance"). Absent ⇒
+  // the approval fails closed (needs_hierarchy).
+  map<string, string> relationship_fallbacks = 2;
+}
+message GetApprovalSettingsRequest {}
+message SaveApprovalSettingsRequest {
+  string command_id = 1;
+  string reason = 2;
+  ApprovalSettings settings = 3;
+}
+
+// ── SCIM connections ──
+
+message ScimConnection {
+  string id = 1;
+  string name = 2;
+  // oidc_issuer: when set, a SCIM user's externalId is also linked as the
+  // subject of this OIDC issuer, so the person who signs in IS the person the
+  // directory provisioned.
+  string oidc_issuer = 3;
+  // base_url: the SCIM base the directory is configured with ("" when the
+  // listener is off).
+  string base_url = 4;
+  string token_last4 = 5;
+  int64 created_at_unix_ms = 6;
+  bool revoked = 7;
+  int64 last_used_at_unix_ms = 8;
+  int32 users = 9;
+  int32 groups = 10;
+}
+message ScimConnectionSecret {
+  ScimConnection connection = 1;
+  // token: the bearer, returned ONCE. Never logged, never stored in plaintext
+  // outside the ADR-0101 secret store.
+  string token = 2;
+}
+message ListScimConnectionsRequest {}
+message ListScimConnectionsResponse { repeated ScimConnection connections = 1; }
+message CreateScimConnectionRequest {
+  string command_id = 1;
+  string reason = 2;
+  string name = 3;
+  string oidc_issuer = 4;
+}
+message RotateScimTokenRequest {
+  string command_id = 1;
+  string reason = 2;
+  string id = 3;
+}
+message RevokeScimConnectionRequest {
+  string command_id = 1;
+  string reason = 2;
+  string id = 3;
+}
+
+// ── reconcile ──
+
+message ReconcileStatus {
+  bool enabled = 1;
+  string provider = 2;  // "keycloak"
+  string base_url = 3;
+  string realm = 4;
+  bool running = 5;
+  int64 last_run_at_unix_ms = 6;
+  int64 last_ok_at_unix_ms = 7;
+  int64 next_run_at_unix_ms = 8;
+  string last_error = 9;
+  int32 users_seen = 10;
+  int32 groups_seen = 11;
+  int32 created = 12;
+  int32 updated = 13;
+  int32 suspended = 14;
+}
+message GetReconcileStatusRequest {}
+message RunReconcileNowRequest {
+  string command_id = 1;
+  string reason = 2;
+}

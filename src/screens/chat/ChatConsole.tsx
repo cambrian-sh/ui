@@ -12,6 +12,8 @@ import { formatDuration, formatTokens } from '@/lib/format';
 import { useNavigate } from '@tanstack/react-router';
 import { setPlanDraft } from '@/screens/plan/planDraft';
 import { ConversationRail } from './ConversationRail';
+import { LiveOutput } from '@/screens/run/LiveOutput';
+import { RunApprovals } from '@/screens/run/RunApprovals';
 import { useDraftPersistence } from './useDraftPersistence';
 import {
   EMPTY_WORK,
@@ -475,9 +477,20 @@ export function ChatConsole() {
               result={started}
               run={runState}
               onOpenSessions={() =>
-                void navigate({ to: '/tasks', search: { focus: undefined } })
+                started.session_id
+                  ? void navigate({ to: '/tasks/$taskId', params: { taskId: started.session_id } })
+                  : void navigate({ to: '/tasks', search: { focus: undefined } })
               }
             />
+          )}
+
+          {/* The run, in the conversation that started it: approvals it is blocked
+              on, then what each step is producing (ADR-0139 step-output-stream). */}
+          {started?.accepted && started.session_id && (
+            <>
+              <RunApprovals sessionId={started.session_id} plan={runState?.plan} />
+              <LiveOutput taskSessionId={started.session_id} plan={runState?.plan} />
+            </>
           )}
 
           {proposal && (
@@ -980,7 +993,7 @@ function SubmitOutcome({
             onClick={onOpenSessions}
             className="ml-auto text-[12px] text-[var(--fg-muted)] underline underline-offset-4 hover:text-[var(--fg-primary)]"
           >
-            Watch it in Tasks →
+            Open the task →
           </button>
         )}
       </div>

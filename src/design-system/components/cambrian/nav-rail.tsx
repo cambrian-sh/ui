@@ -1,305 +1,234 @@
 import { Link, useRouterState } from "@tanstack/react-router";
 import {
-  Activity,
+  Blocks,
   Database,
-  Gavel,
+  GitMerge,
+  Inbox,
   LayoutGrid,
+  Library,
   ListChecks,
-  Workflow,
   MessagesSquare,
   Network,
-  Receipt,
+  Plug,
+  Radio,
   ScrollText,
   Search,
+  Send,
   Settings,
   ShieldCheck,
+  Building2,
+  Sparkles,
+  Workflow,
+  FileText,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import { Blocks, GitMerge, Library } from "lucide-react";
 import { cn } from "@/design-system/lib/utils";
+import { ORG_DIRECTORY_CAPABILITY } from "@/lib/hierarchy";
 
-interface NavEntry {
+export interface NavEntry {
   path: string;
   label: string;
   icon: LucideIcon;
-  /** Which projection count, if any, sits on the right of the row. */
+  /** Which count, if any, sits on the right of the row. */
   count?: NavCountKey;
-  /** Other paths that should keep this row lit (tabs under one destination). */
+  /** Other paths that keep this row lit (tabs under one destination). */
   matches?: readonly string[];
   /**
-   * Capability this destination needs to exist at all.
-   *
-   * ADR-0082 names the gap this closes: on a build without the plugin the
-   * premium RPCs answer `Unimplemented` and the event class never publishes, so
-   * a nav item for it is a lie. It is removed, and the Plugins page is the one
-   * place that says it could exist.
+   * Capability the destination needs to exist at all — THE gating rule for every
+   * premium or optional surface (AGENTS.md §5.2, ADR-0082 D2). On a build
+   * without it the RPCs answer Unimplemented and the events never publish, so a
+   * rail entry would be a lie. The Plugins page is the one place that says it
+   * could exist.
    */
   requires?: string;
+  /** Like `requires`, satisfied by any one of these. */
+  requiresAny?: readonly string[];
+  /**
+   * ADR-0142: open to a `member` — a signed-in person with no console role.
+   * The kernel lets a member reach only their own surfaces (chat, their
+   * approvals, their accounts); every other destination would answer
+   * PermissionDenied, so it is not shown. Default: console roles only.
+   */
+  forMembers?: boolean;
 }
 
-interface NavGroup {
-  /** The uppercase kicker. Groups answer a question; the label names it. */
+export interface NavGroup {
+  /** The uppercase kicker. Each group answers one question. */
   label: string;
   entries: readonly NavEntry[];
 }
 
-export type NavCountKey = "plans" | "sessions" | "agents" | "watches";
+export type NavCountKey = "inbox" | "tasks";
 
 /**
- * Fourteen flat entries at equal weight is not navigation — it is a list of
- * everything, and it makes the operator re-read the whole rail on every hop.
+ * Four groups, each answering one question (investigations/
+ * 2026-11-06-operator-console-redesign.md §5):
  *
- * Three groups, each answering one question:
- *   Work        what am I doing
- *   Execution   what can act here, and what is it doing
- *   Governance  what is allowed, what happened, what did it cost
+ *   Work       what am I doing                     (the end user lives here)
+ *   Knowledge  what does it know, how does it act
+ *   Automate   what runs without me
+ *   Admin      who may do what, and what happened
+ *
+ * The inbox is a rail entry with a badge rather than a banner: the count is
+ * every pending decision (tool approvals, skill access, skill proposals), and
+ * it is drawn only when it is non-zero.
  */
 export const NAV_GROUPS: readonly NavGroup[] = [
   {
     label: "Work",
     entries: [
-      { path: "/chat", label: "Chat", icon: MessagesSquare },
-      { path: "/tasks", label: "Tasks", icon: Network, count: "sessions" },
-      { path: "/plans", label: "Plans in flight", icon: ListChecks, count: "plans" },
-      { path: "/plan-builder", label: "Plan builder", icon: Workflow },
+      { path: "/chat", label: "Chat", icon: MessagesSquare, forMembers: true },
+      { path: "/inbox", label: "Inbox", icon: Inbox, count: "inbox", forMembers: true },
+      { path: "/tasks", label: "Tasks", icon: Network, count: "tasks" },
+    ],
+  },
+  {
+    label: "Knowledge",
+    entries: [
       { path: "/memory", label: "Memory", icon: Database },
       {
-        // ADR-0118: the knowledge substrate's console. Gated on the capability
-        // the plugin reports after Build finds Postgres — a deployment without
-        // it is CORRECT, and the entry stays absent rather than leading to a
-        // refusal.
-        path: "/knowledge",
-        label: "Knowledge",
-        icon: Library,
-        requires: "substrate-query",
+        path: "/skills",
+        label: "Skills",
+        icon: Sparkles,
+        requiresAny: ["skills-read", "skills-lifecycle", "skill-grants"],
       },
-      {
-        // Contract 0098: the identity plane's review lane. Work rather than
-        // Governance because it is a QUEUE — proposals a machine was not
-        // trusted to confirm on its own, waiting on a person — and it sits
-        // beside Knowledge because confirming one changes what Knowledge
-        // answers.
-        //
-        // Gated on `links`, which a kernel without a link store never
-        // advertises. That deployment is CORRECT, and a rail entry leading to
-        // a surface with nothing behind it is a lie.
-        path: "/links",
-        label: "Link review",
-        icon: GitMerge,
-        requires: "links",
-      },
+      { path: "/knowledge", label: "Knowledge", icon: Library, requires: "substrate-query" },
+      { path: "/links", label: "Link review", icon: GitMerge, requires: "links" },
     ],
   },
   {
-    // The group is "Execution" and the merged destination inside it is
-    // "Runtime": naming both the same made the row look like a group header.
-    label: "Execution",
+    label: "Automate",
     entries: [
-      // Agents, Tools & Skills and MCP are one destination with three tabs —
-      // see RuntimeTabs. They answered one question from three rail entries.
-      {
-        path: "/agents",
-        label: "Runtime",
-        icon: LayoutGrid,
-        count: "agents",
-        matches: ["/tools", "/mcp"],
-      },
-      {
-        // A door into the system that carries real people. It is a destination
-        // rather than a settings pane because its people, its activity and its
-        // credential are three different jobs on three different clocks — and
-        // because a page you reach by expanding a card on an index page is a
-        // page you scroll past to get to.
-        path: "/telegram",
-        label: "Telegram",
-        icon: MessagesSquare,
-        requires: "telegram-ingress",
-      },
-      {
-        path: "/watch",
-        label: "Watch & Reactive",
-        icon: ListChecks,
-        count: "watches",
-        requires: "watches-read",
-      },
-      {
-        // The Ingress Studio (ADR-0112): where external sources become armed
-        // ingresses. Execution because it answers "what arrives here and how"
-        // — a door into the substrate, not a record of what happened.
-        //
-        // Gated on `ingress-studio`, reported only after the plugin's Build
-        // finds Postgres and evidence capture: a deployment without either is
-        // CORRECT and the entry stays absent rather than leading to a refusal.
-        path: "/ingress-studio",
-        label: "Ingress Studio",
-        icon: Workflow,
-        requires: "ingress-studio",
-      },
-      { path: "/verifier", label: "Verifier Pool", icon: Gavel },
-      { path: "/lifecycle", label: "Lifecycle", icon: Activity },
+      { path: "/integrations", label: "Integrations", icon: Plug, forMembers: true },
+      { path: "/watch", label: "Pipelines", icon: Radio, requires: "watches-read" },
+      { path: "/plan-builder", label: "Plan builder", icon: ListChecks },
+      { path: "/ingress-studio", label: "Ingress Studio", icon: Workflow, requires: "ingress-studio" },
+      { path: "/telegram", label: "Telegram", icon: Send, requires: "telegram-ingress" },
     ],
   },
   {
-    label: "Governance",
+    label: "Admin",
     entries: [
-      { path: "/scope", label: "Scope & Access", icon: ShieldCheck },
-      { path: "/audit", label: "Audit", icon: ScrollText },
-      {
-        // What the PROCESS did, as opposed to who changed what (Audit) or what
-        // is true now (the feed). Operator-only at the kernel, so the nav entry
-        // is absent for a Viewer rather than leading to a refusal.
-        path: "/logs",
-        label: "Logs",
-        icon: ScrollText,
-        requires: "kernel-logs",
-      },
-      { path: "/cost", label: "Cost & Energy", icon: Receipt },
+      // Agents, Tools and MCP are one destination with three tabs (RuntimeTabs).
+      { path: "/agents", label: "Runtime", icon: LayoutGrid, matches: ["/tools", "/mcp"] },
+      { path: "/scope", label: "Access policy", icon: ShieldCheck, requires: "access-policy" },
+      // ADR-0142 D5/D6 (stage 2, premium): org tree, mapping rules, SCIM, reconcile.
+      { path: "/organisation", label: "Organisation", icon: Building2, requires: ORG_DIRECTORY_CAPABILITY },
+      { path: "/audit", label: "Audit", icon: ScrollText, requires: "audit" },
+      { path: "/logs", label: "Logs", icon: FileText, requires: "kernel-logs" },
       { path: "/plugins", label: "Plugins", icon: Blocks },
     ],
   },
 ];
 
+/**
+ * One gating rule for rail entries and screens alike: the capability the
+ * kernel advertises, and (ADR-0142) whether the signed-in person's role can
+ * reach the destination at all. `role` omitted = not role-gated (a console role).
+ */
+export function entryAvailable(
+  entry: Pick<NavEntry, "requires" | "requiresAny" | "forMembers">,
+  capabilities: readonly string[],
+  role?: string | null,
+): boolean {
+  if (role === "member" && !entry.forMembers) return false;
+  if (entry.requires && !capabilities.includes(entry.requires)) return false;
+  if (entry.requiresAny && !entry.requiresAny.some((c) => capabilities.includes(c))) return false;
+  return true;
+}
+
 export interface NavRailProps {
   collapsed: boolean;
   onToggle: () => void;
-  /** `pending_hitl.length`. The row is absent entirely at zero. */
-  needsYouCount: number;
-  /** Right-aligned row counts, keyed as in `NavCountKey`. */
+  /** Right-aligned row counts. A zero is never drawn. */
   counts?: Partial<Record<NavCountKey, number>>;
-  /** Which counts are currently *live* (accent) rather than merely present. */
-  liveCounts?: Partial<Record<NavCountKey, boolean>>;
+  /** The signed-in role (ADR-0142): a member sees only their own surfaces. */
+  role?: string | null;
   /** The handshake's capability list — destinations gate on it. */
   capabilities?: readonly string[];
   onOpenPalette: () => void;
 }
 
-export function NavRail({
-  collapsed,
-  onToggle,
-  needsYouCount,
-  counts,
-  liveCounts,
-  capabilities = [],
-  onOpenPalette,
-}: NavRailProps) {
+export function NavRail({ collapsed, onToggle, counts, capabilities = [], role = null, onOpenPalette }: NavRailProps) {
   const routerState = useRouterState();
   const currentPath = routerState.location.pathname;
 
   const isActive = (entry: NavEntry) =>
     currentPath === entry.path ||
     currentPath.startsWith(entry.path + "/") ||
-    (entry.matches?.some(
-      (m) => currentPath === m || currentPath.startsWith(m + "/"),
-    ) ??
-      false);
+    (entry.matches?.some((m) => currentPath === m || currentPath.startsWith(m + "/")) ?? false);
 
   return (
     <nav
       aria-label="Primary"
       className="flex h-full flex-none flex-col bg-[var(--bg-surface)] shadow-[inset_-1px_0_0_var(--border-subtle)]"
-      style={{
-        width: collapsed
-          ? "var(--nav-rail-collapsed-w)"
-          : "var(--nav-rail-w)",
-      }}
+      style={{ width: collapsed ? "var(--nav-rail-collapsed-w)" : "var(--nav-rail-w)" }}
     >
       <div className="flex-1 overflow-y-auto px-2 py-3">
-        {/* Never rendered at zero. A "Needs you: 0" row trains the operator to
-            ignore the one row that must never be ignored. */}
-        {needsYouCount > 0 && (
-          <Link
-            to="/inbox"
-            className={cn(
-              "mb-4 flex items-center gap-2 rounded-[var(--radius-nav)] px-2.5 py-2 transition-colors",
-              "tint-fill tint-ring hover:brightness-110",
-            )}
-            style={{ "--tint": "var(--status-warn)" } as React.CSSProperties}
-            title={collapsed ? `Needs you — ${needsYouCount}` : undefined}
-          >
-            <span
-              aria-hidden="true"
-              className="cambrian-live-pulse size-1.5 shrink-0 rounded-full bg-[var(--status-warn)]"
-            />
-            {!collapsed && (
-              <>
-                <span className="flex-1 text-[13px] font-medium text-[var(--fg-primary)]">
-                  Needs you
-                </span>
-                <span className="font-mono text-[10.5px] font-semibold text-[var(--status-warn)]">
-                  {needsYouCount}
-                </span>
-              </>
-            )}
-          </Link>
-        )}
-
         <div className="flex flex-col gap-4">
-          {NAV_GROUPS.map((group) => (
-            <div key={group.label}>
-              {!collapsed && (
-                <div className="px-2.5 pb-[7px] font-mono text-[9.5px] uppercase tracking-[0.14em] text-[color-mix(in_srgb,var(--fg-muted)_35%,transparent)]">
-                  {group.label}
-                </div>
-              )}
-              <ul className="flex flex-col gap-0.5">
-                {group.entries
-                  .filter((e) => !e.requires || capabilities.includes(e.requires))
-                  .map((entry) => {
-                  const active = isActive(entry);
-                  const count = entry.count ? counts?.[entry.count] : undefined;
-                  const live = entry.count ? liveCounts?.[entry.count] : false;
-                  const Icon = entry.icon;
-                  return (
-                    <li key={entry.path}>
-                      <Link
-                        to={entry.path}
-                        aria-current={active ? "page" : undefined}
-                        title={collapsed ? entry.label : undefined}
-                        className={cn(
-                          "flex items-center gap-2 rounded-[var(--radius-nav)] px-2.5 py-[7px] text-[13px] transition-colors",
-                          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--focus-ring)]",
-                          collapsed && "justify-center px-0",
-                          active
-                            ? "bg-[color-mix(in_srgb,var(--accent-bg)_13%,transparent)] font-medium text-[var(--fg-primary)] shadow-[inset_2px_0_0_var(--accent-bg)]"
-                            : "text-[color-mix(in_srgb,var(--fg-secondary)_72%,transparent)] hover:bg-[var(--list-row-bg-hover)] hover:text-[var(--fg-primary)]",
-                        )}
-                      >
-                        <Icon
-                          aria-hidden="true"
-                          size={15}
-                          strokeWidth={1.75}
-                          className="shrink-0"
-                        />
-                        {!collapsed && (
-                          <>
-                            <span className="flex-1 truncate">{entry.label}</span>
-                            {count != null && count > 0 && (
+          {NAV_GROUPS.map((group) => {
+            const entries = group.entries.filter((e) => entryAvailable(e, capabilities, role));
+            if (entries.length === 0) return null;
+            return (
+              <div key={group.label}>
+                {!collapsed && (
+                  <div className="px-2.5 pb-[7px] font-mono text-[9.5px] uppercase tracking-[0.14em] text-[var(--fg-muted)]">
+                    {group.label}
+                  </div>
+                )}
+                <ul className="flex flex-col gap-0.5">
+                  {entries.map((entry) => {
+                    const active = isActive(entry);
+                    const count = entry.count ? counts?.[entry.count] ?? 0 : 0;
+                    const urgent = entry.count === "inbox" && count > 0;
+                    const Icon = entry.icon;
+                    return (
+                      <li key={entry.path}>
+                        <Link
+                          to={entry.path}
+                          aria-current={active ? "page" : undefined}
+                          aria-label={count > 0 ? `${entry.label}, ${count} waiting` : undefined}
+                          title={collapsed ? entry.label : undefined}
+                          className={cn(
+                            "relative flex items-center gap-2 rounded-[var(--radius-nav)] px-2.5 py-[7px] text-[13px] transition-colors",
+                            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--focus-ring)]",
+                            collapsed && "justify-center px-0",
+                            active
+                              ? "bg-[color-mix(in_srgb,var(--accent-bg)_13%,transparent)] font-medium text-[var(--fg-primary)] shadow-[inset_2px_0_0_var(--accent-bg)]"
+                              : "text-[var(--fg-secondary)] hover:bg-[var(--list-row-bg-hover)] hover:text-[var(--fg-primary)]",
+                          )}
+                        >
+                          <Icon aria-hidden="true" size={15} strokeWidth={1.75} className="shrink-0" />
+                          {!collapsed && <span className="flex-1 truncate">{entry.label}</span>}
+                          {count > 0 &&
+                            (urgent ? (
                               <span
+                                aria-hidden="true"
                                 className={cn(
-                                  "font-mono text-[10px]",
-                                  live
-                                    ? "text-[var(--color-accent-400)]"
-                                    : "text-[var(--fg-muted)]",
+                                  "flex h-[17px] min-w-[17px] items-center justify-center rounded-[9px] bg-[var(--status-warn)] px-1 font-mono text-[10px] font-semibold text-[var(--bg-canvas)]",
+                                  collapsed && "absolute right-1 top-0.5 h-[14px] min-w-[14px] text-[9px]",
                                 )}
                               >
-                                {count}
+                                {count > 99 ? "99+" : count}
                               </span>
-                            )}
-                          </>
-                        )}
-                      </Link>
-                    </li>
-                  );
-                })}
-              </ul>
-            </div>
-          ))}
+                            ) : (
+                              !collapsed && (
+                                <span aria-hidden="true" className="font-mono text-[10px] text-[var(--fg-muted)]">
+                                  {count}
+                                </span>
+                              )
+                            ))}
+                        </Link>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            );
+          })}
         </div>
       </div>
 
-      {/* The `g x` hints used to be drawn next to every label, at 10px, heavier
-          than the labels themselves. The bindings still exist — they moved into
-          the palette and the shortcut sheet, where they are looked up. */}
       <div className="flex flex-none items-center gap-1.5 p-2 shadow-[inset_0_1px_0_var(--border-subtle)]">
         <button
           type="button"
@@ -309,6 +238,7 @@ export function NavRail({
             "border border-[var(--button-secondary-border)] text-[var(--fg-secondary)]",
             "hover:bg-[var(--list-row-bg-hover)] hover:text-[var(--fg-primary)]",
             "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)]",
+            collapsed && "justify-center px-0",
           )}
           aria-label="Search and jump"
         >
@@ -328,6 +258,7 @@ export function NavRail({
               "flex size-[30px] flex-none items-center justify-center rounded-md transition-colors",
               "border border-[var(--button-secondary-border)] text-[var(--fg-secondary)]",
               "hover:bg-[var(--list-row-bg-hover)] hover:text-[var(--fg-primary)]",
+              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)]",
             )}
           >
             <Settings aria-hidden="true" size={15} strokeWidth={1.75} />
@@ -338,8 +269,8 @@ export function NavRail({
       <button
         type="button"
         onClick={onToggle}
-        aria-label={collapsed ? "Expand nav rail" : "Collapse nav rail"}
-        className="flex-none px-2 pb-2 text-[10px] text-[var(--fg-muted)] hover:text-[var(--fg-primary)]"
+        aria-label={collapsed ? "Expand navigation" : "Collapse navigation"}
+        className="flex-none px-2 pb-2 text-[10px] text-[var(--fg-muted)] hover:text-[var(--fg-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)]"
       >
         {collapsed ? "›" : "‹ Collapse"}
       </button>

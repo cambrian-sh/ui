@@ -16,6 +16,15 @@ fn main() {
     tonic_build::configure()
         .build_server(false)
         .build_client(true)
+        // ADR-0142 stage 2: the org-directory messages cross the Tauri bridge
+        // as they are (src/org.rs), so they derive serde instead of being
+        // copied field by field into ~25 hand-written DTOs that would drift
+        // from the proto. `default` makes a field the webview omits its proto
+        // default, exactly as on the wire. The other planes keep their DTOs.
+        .type_attribute(
+            ".cambrian.premium.org",
+            "#[derive(serde::Serialize, serde::Deserialize)] #[serde(default)]",
+        )
         .compile_protos(
             &[
                 "../proto/operator.proto",
@@ -42,6 +51,14 @@ fn main() {
                 // the ADR-0073 reason; gated on "substrate-query", reported
                 // post-Build (a plugin with no Postgres never advertises it).
                 "../proto/substrate/substrate.proto",
+                // ADR-0141: the premium accounts plane (personal OAuth accounts
+                // for per-user integrations; replaced ADR-0140's six
+                // OperatorConsole RPCs). Gated on the "accounts" capability.
+                "../proto/accounts/accounts.proto",
+                // ADR-0142 stage 2: the premium organisation-hierarchy plane
+                // (units, people, manager edges, mapping rules, SCIM
+                // connections, Keycloak reconcile). Gated on "org-directory".
+                "../proto/org/org_directory.proto",
             ],
             &["../proto"],
         )
@@ -53,6 +70,8 @@ fn main() {
     println!("cargo:rerun-if-changed=../proto/telemetry/telemetry_admin.proto");
     println!("cargo:rerun-if-changed=../proto/ingress/ingress_studio.proto");
     println!("cargo:rerun-if-changed=../proto/substrate/substrate.proto");
+    println!("cargo:rerun-if-changed=../proto/accounts/accounts.proto");
+    println!("cargo:rerun-if-changed=../proto/org/org_directory.proto");
 
     tauri_build::build();
 }

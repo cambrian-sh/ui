@@ -26,6 +26,5 @@ export * from "./cambrian/audit-entry";
 export * from "./cambrian/audit-list";
 export * from "./cambrian/chat-message";
 export * from "./cambrian/chat-input";
-export * from "./cambrian/agent-output-stream";
 export * from "./cambrian/hitl-inline";
 export * from "./cambrian/reason-field";

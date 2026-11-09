@@ -4,7 +4,7 @@ import {
   useReasonGate,
 } from '@/design-system/components/cambrian/reason-field';
 import { SlideToConfirm } from '@/design-system/components/cambrian/slide-to-confirm';
-import { consequenceOf, formatIdle, idleSeconds } from '@/lib/hitl';
+import { consequenceOf, duplicateNoticeOf, formatIdle, idleSeconds } from '@/lib/hitl';
 import type { HITLIntervention } from '@/ipc/types';
 
 export interface FullScreenApprovalProps {
@@ -52,6 +52,7 @@ export function FullScreenApproval({
   const gate = useReasonGate();
   const action = intervention.proposed_action ?? {};
   const consequence = consequenceOf(intervention);
+  const duplicate = duplicateNoticeOf(intervention);
 
   // Only what the payload actually carries. Everything else says unknown,
   // because a confident zero here is the most dangerous possible lie.
@@ -105,6 +106,17 @@ export function FullScreenApproval({
         <p className="text-[17px] leading-[1.4] text-[var(--fg-primary)]">
           {consequence.sentence}
         </p>
+
+        {duplicate && (
+          <p
+            role="note"
+            aria-label="Possible duplicate"
+            className="rounded-md px-3 py-2.5 text-[13px] leading-[1.5] text-[var(--fg-primary)] tint-wash tint-ring"
+            style={{ '--tint': 'var(--status-warn)' } as React.CSSProperties}
+          >
+            {duplicate}
+          </p>
+        )}
 
         {/* Consequence first. */}
         <dl

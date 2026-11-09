@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { consequenceOf, formatIdle, idleSeconds } from './hitl';
+import { consequenceOf, duplicateNoticeOf, formatIdle, idleSeconds } from './hitl';
 import type { HITLIntervention } from '@/ipc/types';
 
 function hitl(overrides: Partial<HITLIntervention> = {}): HITLIntervention {
@@ -69,5 +69,16 @@ describe('idleSeconds / formatIdle', () => {
     expect(formatIdle(40)).toBe('40s');
     expect(formatIdle(60)).toBe('1m');
     expect(formatIdle(250)).toBe('4m 10s');
+  });
+});
+
+describe('duplicateNoticeOf', () => {
+  it('returns the kernel notice when the approval may duplicate an earlier call', () => {
+    const notice = 'Possible duplicate of create_issue (approval apr-1) — done at 2026-11-07 17:02:11 UTC, ids: key=OPS-11; same project_key, subject.';
+    expect(duplicateNoticeOf(hitl({ proposed_action: { tool_name: 'create_issue', duplicate_notice: notice } }))).toBe(notice);
+  });
+  it('is null when there is none', () => {
+    expect(duplicateNoticeOf(hitl({ proposed_action: { tool_name: 'create_issue' } }))).toBeNull();
+    expect(duplicateNoticeOf(hitl({ proposed_action: { duplicate_notice: '  ' } }))).toBeNull();
   });
 });

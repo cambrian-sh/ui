@@ -1,6 +1,8 @@
 
 
 import * as t from './types';
+import { createAccountsMock } from './accounts-mock';
+import { createHierarchyMock } from './hierarchy-mock';
 
 class MockIPC {
   private state: t.StateOfRecord = this.initialState();
@@ -32,6 +34,18 @@ class MockIPC {
         'memory-answer',
         'memory-event-time',
         'logout',
+        'skills-read',
+        'skills-lifecycle',
+        'skill-grants',
+        'memory-notes',
+        'step-output-stream',
+        'integrations',
+        // ADR-0141 accounts plane (ipc/accounts-mock.ts) + the studio reads it uses.
+        'accounts',
+        'ingress-studio',
+        // ADR-0142 stage 2 org-directory plane (ipc/hierarchy-mock.ts).
+        'org-directory',
+        'addressed-approvals',
       ],
       contract_skew: 0,
       plugins: [],
@@ -84,13 +98,54 @@ class MockIPC {
       role: 'operator',
       connection: { ...this.state.connection, status: 'live', endpoint, reason: null },
     };
-    if (remember) this.savedConn = { endpoint, username };
+    if (remember) this.savedConn = { endpoint, username, method: 'password' };
+    this.state = {
+      ...this.state,
+      identity: {
+        method: 'password', principal: `user:${username}`, display_name: username, username,
+        email: '', subject: '', issuer: '', roles: ['operator'], role_source: 'kernel', expires_at_unix_ms: 0,
+      },
+    };
     this.emitState();
     return { role: 'operator' };
   }
 
+  /** Mock DescribeAuth: password plus a single OIDC issuer. */
+  authMethods: t.AuthMethods = {
+    password_login: true,
+    oidc_issuer: 'https://id.example.org/realms/cambrian',
+    oidc_client_id: 'cambrian-console',
+    describe_supported: true,
+  };
+
+  async describeAuth(_endpoint: string): Promise<t.AuthMethods> {
+    return this.authMethods;
+  }
+
+  /** Mock OIDC sign-in: the role the probe would find (tests set `oidcRole`). */
+  oidcRole: t.Role = 'operator';
+
+  async loginOidc(endpoint: string, remember = false): Promise<t.LoginResponse> {
+    if (!this.authMethods.oidc_issuer) throw 'this kernel has no single sign-on provider configured';
+    const role = this.oidcRole;
+    this.state = {
+      ...this.state,
+      role,
+      identity: {
+        method: 'oidc', principal: '', display_name: 'Ada Lovelace', username: 'ada',
+        email: 'ada@example.org', subject: 'u-1', issuer: this.authMethods.oidc_issuer, roles: [],
+        role_source: 'probe', expires_at_unix_ms: Date.now() + 300_000,
+      },
+      connection: { ...this.state.connection, status: 'live', endpoint, reason: null },
+    };
+    if (remember) this.savedConn = { endpoint, username: '', method: 'oidc' };
+    this.emitState();
+    return { role };
+  }
+
   async loginSaved(): Promise<t.LoginResponse> {
     if (!this.savedConn) throw 'no saved connection';
+    if (this.savedConn.method === 'oidc') return this.loginOidc(this.savedConn.endpoint, true);
     return this.login(this.savedConn.endpoint, this.savedConn.username, '', true);
   }
 
@@ -104,6 +159,7 @@ class MockIPC {
     this.state = {
       ...this.initialState(),
       role: null,
+      identity: null,
       capabilities: [],
       kernel_version: '',
       contract_version: '',
@@ -255,6 +311,51 @@ class MockIPC {
       ),
     };
     this.emitState();
+    return { deduped: false };
+  }
+
+  private standing: t.StandingApproval[] = [];
+
+  async answerApproval(params: t.AnswerApprovalParams): Promise<t.AnswerApprovalResult> {
+    const h = this.state.pending_hitl.find((x) => x.intervention_id === params.id);
+    if (!h) return { ok: false, deduped: false, state: '', refusal: 'unknown approval', standing_id: '' };
+    if (h.answerable === false) {
+      return { ok: false, deduped: false, state: 'pending', refusal: `this approval may be answered by ${h.rule}`, standing_id: '' };
+    }
+    this.state = {
+      ...this.state,
+      pending_hitl: this.state.pending_hitl.filter((x) => x.intervention_id !== params.id),
+    };
+    let standingId = '';
+    if (params.approve && params.standing && h.allow_standing) {
+      standingId = `stand-${params.id}`;
+      this.standing = [
+        ...this.standing,
+        {
+          id: standingId,
+          action_class: h.kind || 'tool',
+          resource: (h.proposed_action?.tool_name as string) ?? '',
+          scope: h.beneficiary ? `person:${h.beneficiary.replace(/^user:/, '')}` : '',
+          beneficiary: h.beneficiary ?? '',
+          granted_by: 'operator',
+          granted_at_unix_ms: Date.now(),
+          expires_at_unix_ms: 0,
+          revoked_at_unix_ms: 0,
+          use_count: 0,
+          active: true,
+        },
+      ];
+    }
+    this.emitState();
+    return { ok: true, deduped: false, state: params.approve ? 'approved' : 'denied', refusal: '', standing_id: standingId };
+  }
+
+  async listStandingApprovals(includeInactive = false): Promise<t.StandingApproval[]> {
+    return this.standing.filter((s) => includeInactive || s.active);
+  }
+
+  async revokeStandingApproval(id: string, _reason: string): Promise<t.CommandAck> {
+    this.standing = this.standing.map((s) => (s.id === id ? { ...s, active: false, revoked_at_unix_ms: Date.now() } : s));
     return { deduped: false };
   }
 
@@ -475,6 +576,215 @@ class MockIPC {
 
   async listSkills(): Promise<t.SkillSummary[]> {
     return this.state.skills;
+  }
+
+  // ── ADR-0139 D13/D14 + skill grants: in-memory fixtures for the dev preview ──
+
+  private mockSkills: t.SkillRecord[] = [
+    {
+      name: 'web-research', description: 'Search the web and cite sources', tool_grants: ['web_fetch', 'search'],
+      scope_tags: [], body: '# Web research\n\nSearch, read two sources, cite both.\n', source_path: 'skills/web-research/SKILL.md',
+      version: '1.2.0', source: 'official', lifecycle_state: 'active', state_changed_at_unix_ms: Date.now() - 86_400_000 * 9,
+      locked: false, exempt_reason: '', use_count: 41, success_count: 37, last_used_at_unix_ms: Date.now() - 3_600_000,
+      ledger_entry_id: 'led-3',
+    },
+    {
+      name: 'report-writer', description: 'Turn findings into a short report', tool_grants: [], scope_tags: [],
+      body: '# Report\n\nWrite three sections.\n', source_path: '', version: '0.3.0', source: 'agent-proposed',
+      lifecycle_state: 'stale', state_changed_at_unix_ms: Date.now() - 86_400_000 * 2, locked: true, exempt_reason: '',
+      use_count: 3, success_count: 1, last_used_at_unix_ms: Date.now() - 86_400_000 * 20, ledger_entry_id: 'led-2',
+    },
+  ];
+  private mockProposals: t.SkillProposal[] = [
+    {
+      id: 'prop-1', name: 'report-writer', skill_md: '# Report\n\nWrite four sections.\nAlways add a summary.\n',
+      rationale: 'Reports kept missing a summary.', state: 'pending', proposer_agent_id: 'writer-agent',
+      principal_id: 'alice', source_run_id: 'run-77', evidence_cids: [], base_version: '0.3.0', current_version: '0.3.0',
+      scan_verdict: 'suspicious', scan_findings: ['mentions an external URL'], created_at_unix_ms: Date.now() - 1_800_000,
+      decided_at_unix_ms: 0, decided_by: '', decision_note: '',
+    },
+  ];
+  private mockGrants: t.SkillGrants = {
+    grants: [
+      { id: 'g-1', agent_id: 'writer-agent', skill_name: 'web-research', source: 'operator', granted_by: 'admin',
+        granted_at_unix_ms: Date.now() - 86_400_000, reason: 'needs sources', revoked_at_unix_ms: 0, revoked_by: '', revoke_reason: '' },
+    ],
+    requests: [
+      { id: 'req-1', agent_id: 'analyst', skill_name: 'web-research', run_id: 'run-80', rationale: 'Need current prices',
+        state: 'pending', requested_at_unix_ms: Date.now() - 600_000, decided_at_unix_ms: 0, decided_by: '' },
+    ],
+  };
+  private mockNotes: t.NotesDocument[] = [
+    { scope: 'personal', owner_id: 'alice', content: '## Preferences\n- Short answers\n- EUR amounts\n', size_chars: 38,
+      budget_chars: 2000, etag: 'e1', updated_at_unix_ms: Date.now() - 7_200_000, updated_by: 'alice', budget_overridden: false },
+    { scope: 'org', owner_id: 'acme', content: '## House style\n- Cite every number\n', size_chars: 36, budget_chars: 4000,
+      etag: 'e7', updated_at_unix_ms: Date.now() - 86_400_000, updated_by: 'admin', budget_overridden: true },
+  ];
+
+  private mockIntegrations: t.Integration[] = [
+    {
+      id: 'brave-search', catalog_id: 'brave-search', name: 'Brave Search', category: 'web-search', source: 'store',
+      overrides_file: false, editable: true, enabled: true, transport: 'stdio', command: 'npx', args: [], url: '',
+      settings: {}, secrets: [{ name: 'BRAVE_API_KEY', label: 'API key', set: true, source: 'store',
+        updated_at_unix_ms: Date.now() - 86_400_000, required: true, kind: 'env' }],
+      health: { server_id: 'brave-search', state: 'ready', last_handshake_unix_ms: Date.now() - 600_000, tool_count: 2,
+        last_error: '', restart_count: 0, changed_at_unix_ms: Date.now() - 600_000 },
+      installed_version: '0.6.0', update_available: false, missing_required: [], tool_policies: [],
+      has_default_policy: true, default_policy: null, policy_summary: 'read + egress (whole server)',
+      classification_tags: [], trust_tier: 'official', passthrough_env: [],
+    },
+    ...(['gmail', 'google-calendar', 'slack', 'github', 'filesystem'] as const).map((id): t.Integration => ({
+      id, catalog_id: id, name: { gmail: 'Gmail', 'google-calendar': 'Google Calendar', slack: 'Slack', github: 'GitHub', filesystem: 'Filesystem' }[id],
+      category: id === 'filesystem' ? 'files' : 'collaboration', source: 'store', overrides_file: id === 'github', editable: true, enabled: id !== 'google-calendar',
+      transport: 'stdio', command: 'npx', args: [], url: '', settings: {}, secrets: [],
+      health: { server_id: id, state: id === 'github' ? 'error' : 'ready', last_handshake_unix_ms: Date.now() - 300_000, tool_count: 4,
+        last_error: id === 'github' ? '401 Bad credentials' : '', restart_count: 0, changed_at_unix_ms: Date.now() - 300_000 },
+      installed_version: '1.0.0', update_available: false, missing_required: [], tool_policies: [], has_default_policy: true, default_policy: null,
+      policy_summary: id === 'filesystem' ? 'read (whole server)' : 'read + write + egress', classification_tags: [], trust_tier: 'official', passthrough_env: [],
+    })),
+  ];
+
+  async listIntegrationCatalog(): Promise<t.IntegrationCatalog> {
+    const entry = (o: Partial<t.IntegrationCatalogEntry>): t.IntegrationCatalogEntry => ({
+      id: '', name: '', description: '', category: '', publisher: '', license: 'MIT', trust_tier: 'official', docs_url: '',
+      version: '1.0.0', transport: 'stdio', command: 'npx', args: [], url: '', runtimes: ['node>=22'], platforms: [],
+      platform_supported: true, fields: [], tool_policies: [], has_default_policy: true, default_policy: null,
+      policy_summary: 'read + egress', probe_tool: '', notes: '', source: 'builtin', multi_instance: false, ...o,
+    });
+    return {
+      categories: ['web-search', 'email-calendar', 'database'],
+      entries: [
+        entry({ id: 'brave-search', name: 'Brave Search', category: 'web-search', publisher: 'Brave (official)',
+          description: 'Web and news search with citations.',
+          fields: [{ name: 'BRAVE_API_KEY', label: 'API key', secret: true, required: true, help: 'From api.search.brave.com', kind: 'env', default_value: '', placeholder: '' }] }),
+        entry({ id: 'gmail', name: 'Gmail', category: 'email-calendar', publisher: 'Community', trust_tier: 'community',
+          description: 'Read and draft mail in one Google account.', policy_summary: 'read + write + egress',
+          fields: [{ name: 'GOOGLE_OAUTH_TOKEN', label: 'OAuth token', secret: true, required: true, help: 'Consent with the gmail.modify scope', kind: 'env', default_value: '', placeholder: '' }] }),
+        entry({ id: 'postgres', name: 'PostgreSQL', category: 'database', publisher: 'MCP steering group', multi_instance: true,
+          description: 'Read-only SQL over one database.', policy_summary: 'read (whole server)',
+          fields: [{ name: 'DATABASE_URL', label: 'Connection URL', secret: true, required: true, help: 'Use a read-only role', kind: 'env', default_value: '', placeholder: 'postgres://…' }] }),
+      ],
+    };
+  }
+  async listIntegrations(): Promise<t.Integrations> {
+    return { integrations: this.mockIntegrations, configured: true };
+  }
+  async installIntegration(p: t.InstallIntegrationParams): Promise<t.IntegrationMutation> {
+    const i: t.Integration = { ...this.mockIntegrations[0], id: p.id || p.catalog_id || 'custom', catalog_id: p.catalog_id ?? '',
+      name: p.catalog_id ?? 'custom', enabled: p.enabled, health: null };
+    this.mockIntegrations = [...this.mockIntegrations, i];
+    return { deduped: false, outcome: { key: i.id, stored: true, effect: 'live', shadowed_by: '', error: '' }, integration: i };
+  }
+  async setIntegrationEnabled(p: { id: string; enabled: boolean }): Promise<t.IntegrationMutation> {
+    this.mockIntegrations = this.mockIntegrations.map((i) => (i.id === p.id ? { ...i, enabled: p.enabled } : i));
+    return { deduped: false, outcome: { key: p.id, stored: true, effect: 'live', shadowed_by: '', error: '' }, integration: null };
+  }
+  async testIntegration(): Promise<t.IntegrationTestResult> {
+    return { ok: true, latency_ms: 412, error: '', used_live_session: true, probe_tool: 'brave_web_search', probe_ok: true,
+      probe_output: '3 results', probe_skipped_reason: '',
+      tools: [{ name: 'brave_web_search', description: '', dangerous: false, effects: ['read', 'egress'], policy_source: 'default' }] };
+  }
+  async removeIntegration(p: { id: string }): Promise<t.IntegrationMutation> {
+    this.mockIntegrations = this.mockIntegrations.filter((i) => i.id !== p.id);
+    return { deduped: false, outcome: { key: p.id, stored: true, effect: 'live', shadowed_by: '', error: '' }, integration: null };
+  }
+  async revertIntegrationToFile(p: { id: string }): Promise<t.IntegrationMutation> {
+    this.mockIntegrations = this.mockIntegrations.map((i) => (i.id === p.id ? { ...i, source: 'file', overrides_file: false } : i));
+    return { deduped: false, outcome: { key: p.id, stored: true, effect: 'live', shadowed_by: '', error: '' }, integration: null };
+  }
+  async setIntegrationSecret(p: { id: string }): Promise<t.IntegrationMutation> {
+    return { deduped: false, outcome: { key: p.id, stored: true, effect: 'live', shadowed_by: '', error: '' }, integration: null };
+  }
+  async clearIntegrationSecret(p: { id: string }): Promise<t.IntegrationMutation> {
+    return this.setIntegrationSecret(p);
+  }
+  async updateIntegration(p: { id: string }): Promise<t.IntegrationMutation> {
+    return this.setIntegrationSecret(p);
+  }
+
+  async listSkillsFull(): Promise<t.SkillRecord[]> {
+    return this.mockSkills;
+  }
+  async listSkillProposals(state = 'pending'): Promise<t.SkillProposal[]> {
+    return this.mockProposals.filter((p) => state === 'all' || p.state === state);
+  }
+  async decideSkillProposal(p: t.DecideSkillProposalParams): Promise<t.SkillProposalDecision> {
+    this.mockProposals = this.mockProposals.map((x) =>
+      x.id === p.proposal_id ? { ...x, state: p.approve ? 'approved' : 'rejected', decision_note: p.reason } : x,
+    );
+    return { deduped: false, skill_version: p.approve ? '0.4.0' : '', ledger_entry_id: p.approve ? 'led-4' : '' };
+  }
+  async setSkillLock(p: { skill_name: string; locked: boolean }): Promise<t.CommandAck> {
+    this.mockSkills = this.mockSkills.map((s) => (s.name === p.skill_name ? { ...s, locked: p.locked } : s));
+    return { deduped: false };
+  }
+  async listSkillLedger(skillName = ''): Promise<t.SkillLedgerEntry[]> {
+    const all: t.SkillLedgerEntry[] = [
+      { id: 'led-3', skill_name: 'web-research', mutation: 'updated', from_version: '1.1.0', to_version: '1.2.0',
+        from_state: 'active', to_state: 'active', actor: 'admin', reason: 'cite both sources', at_unix_ms: Date.now() - 86_400_000 * 9,
+        proposal_id: '', rollback_of: '', restorable: true },
+      { id: 'led-1', skill_name: 'web-research', mutation: 'created', from_version: '', to_version: '1.1.0',
+        from_state: '', to_state: 'active', actor: 'admin', reason: 'initial', at_unix_ms: Date.now() - 86_400_000 * 30,
+        proposal_id: '', rollback_of: '', restorable: true },
+    ];
+    return all.filter((e) => !skillName || e.skill_name === skillName);
+  }
+  async rollbackSkill(): Promise<t.SkillRollback> {
+    return { deduped: false, ledger_entry_id: 'led-5', skill_version: '1.1.0' };
+  }
+  async listSkillGrants(): Promise<t.SkillGrants> {
+    return this.mockGrants;
+  }
+  async grantSkill(p: t.SkillGrantParams): Promise<t.CommandAck> {
+    this.mockGrants = {
+      grants: [...this.mockGrants.grants, { id: `g-${Date.now()}`, agent_id: p.agent_id, skill_name: p.skill_name,
+        source: 'operator', granted_by: 'you', granted_at_unix_ms: Date.now(), reason: p.reason, revoked_at_unix_ms: 0,
+        revoked_by: '', revoke_reason: '' }],
+      requests: this.mockGrants.requests.filter((r) => !(r.agent_id === p.agent_id && r.skill_name === p.skill_name)),
+    };
+    return { deduped: false };
+  }
+  async revokeSkillGrant(p: t.SkillGrantParams): Promise<t.CommandAck> {
+    this.mockGrants = {
+      ...this.mockGrants,
+      grants: this.mockGrants.grants.filter((g) => !(g.agent_id === p.agent_id && g.skill_name === p.skill_name)),
+    };
+    return { deduped: false };
+  }
+  async listMemoryNotes(): Promise<t.NotesSummary[]> {
+    return this.mockNotes.map(({ content: _c, budget_overridden: _b, ...n }) => ({
+      ...n,
+      over_budget: n.size_chars > n.budget_chars,
+    }));
+  }
+  async getMemoryNotes(p: { scope: string; owner_id: string }): Promise<t.NotesDocument> {
+    const doc = this.mockNotes.find((n) => n.scope === p.scope && n.owner_id === p.owner_id);
+    if (!doc) throw new Error('NOT_FOUND: no such notes document');
+    return doc;
+  }
+  async setMemoryNotes(p: t.SetMemoryNotesParams): Promise<t.NotesWriteResult> {
+    const doc = this.mockNotes.find((n) => n.scope === p.scope && n.owner_id === p.owner_id);
+    if (doc && p.if_match && p.if_match !== doc.etag) {
+      return { deduped: false, accepted: false, rejection: 'conflict', detail: 'etag mismatch', etag: doc.etag,
+        size_chars: doc.size_chars, budget_chars: doc.budget_chars };
+    }
+    const etag = `e${Date.now()}`;
+    const next = { scope: p.scope, owner_id: p.owner_id, content: p.content, size_chars: [...p.content].length,
+      budget_chars: doc?.budget_chars ?? 2000, etag, updated_at_unix_ms: Date.now(), updated_by: 'you',
+      budget_overridden: doc?.budget_overridden ?? false };
+    this.mockNotes = [...this.mockNotes.filter((n) => n !== doc), next];
+    return { deduped: false, accepted: true, rejection: '', detail: '', etag, size_chars: next.size_chars,
+      budget_chars: next.budget_chars };
+  }
+  async deleteMemoryNotes(p: { scope: string; owner_id: string }): Promise<t.CommandAck> {
+    this.mockNotes = this.mockNotes.filter((n) => !(n.scope === p.scope && n.owner_id === p.owner_id));
+    return { deduped: false };
+  }
+  async setMemoryNotesBudget(p: t.SetMemoryNotesBudgetParams): Promise<t.CommandAck> {
+    this.mockNotes = this.mockNotes.map((n) =>
+      n.scope === p.scope && n.owner_id === p.owner_id ? { ...n, budget_chars: p.budget_chars, budget_overridden: !p.clear_override } : n,
+    );
+    return { deduped: false };
   }
 
   async listWatches(): Promise<t.WatchConfigSummary[]> {
@@ -736,7 +1046,7 @@ class MockIPC {
   }
 }
 
-export const ipc = new MockIPC();
+export const ipc = Object.assign(new MockIPC(), createAccountsMock(), createHierarchyMock());
 
 export const onKernelState = (fn: (state: t.StateOfRecord) => void): Promise<() => void> =>
   Promise.resolve(ipc.onState(fn));

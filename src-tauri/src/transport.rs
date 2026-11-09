@@ -15,6 +15,11 @@ use tonic::{Request, Status};
 
 use crate::pb;
 use crate::pb::operator_console_client::OperatorConsoleClient;
+
+// ADR-0142 D1: OIDC sessions, DescribeAuth, the member lane and plane-role probing.
+mod session_auth;
+pub use session_auth::AuthMethods;
+pub(crate) use session_auth::saved_oidc as session_auth_saved_oidc;
 use crate::state::{DuplicateEffectKey, NodeItem, NodeReads, PipelineDryRun, PipelineFailure, PipelineGraph,
     PipelineNodeExample, PipelineSaved, PipelineTransitioned,
     PipelineSummary, PipelineValidation, Refusal,
@@ -98,6 +103,9 @@ fn watch_op_from_full(c: &WatchConfigFull) -> pb::WatchConfigOp {
         // one. Defaulted so the kernel keeps ownership of the answer.
         source_stream_state: String::new(),
         source_stream_refcount: 0,
+        // Set by the kernel for a principal-owned scheduled task, never by the
+        // console: an operator-registered watch has no owner.
+        owner_id: String::new(),
         last_fires: Vec::new(),
 
         // Arms 2..N. The console models a single action today, so it sends none —
@@ -346,12 +354,22 @@ pub struct Transport {
     channel: Arc<AsyncMutex<Option<Channel>>>,
     pub state: Arc<AsyncMutex<StateOfRecord>>,
     feed_running: Arc<StdMutex<bool>>,
+    /// True while the WatchToolApprovals enrichment loop runs (one per process).
+    approvals_running: Arc<StdMutex<bool>>,
     /// Set by `disconnect` to unwind the feed loop. Without it the loop
     /// reconnects forever and "disconnected" could only ever be cosmetic.
     stop_requested: Arc<StdMutex<bool>>,
     /// Wakes the loop out of a `stream.message()` or a backoff sleep so a
     /// disconnect is immediate rather than waiting on kernel traffic.
     stop_notify: Arc<Notify>,
+    /// ADR-0142 D1: the OIDC session. Its tokens live HERE only, never in the
+    /// webview. None for a password session.
+    oidc: Arc<AsyncMutex<Option<crate::oidc::OidcSession>>>,
+    /// Bumped by every sign-in and teardown, so a refresh loop that outlived its
+    /// session can tell and exit instead of installing a stale token.
+    auth_gen: Arc<std::sync::atomic::AtomicU64>,
+    /// True while the member lane (WatchMyApprovals, no feed) runs.
+    member_running: Arc<StdMutex<bool>>,
 }
 
 impl Default for Transport {
@@ -362,8 +380,12 @@ impl Default for Transport {
             channel: Arc::new(AsyncMutex::new(None)),
             state: Arc::new(AsyncMutex::new(StateOfRecord::default())),
             feed_running: Arc::new(StdMutex::new(false)),
+            approvals_running: Arc::new(StdMutex::new(false)),
             stop_requested: Arc::new(StdMutex::new(false)),
             stop_notify: Arc::new(Notify::new()),
+            oidc: Arc::new(AsyncMutex::new(None)),
+            auth_gen: Arc::new(std::sync::atomic::AtomicU64::new(0)),
+            member_running: Arc::new(StdMutex::new(false)),
         }
     }
 }
@@ -623,15 +645,21 @@ impl Transport {
             .map_err(|e| format!("login: {}", e.message()))?
             .into_inner();
 
+        // A password session replaces any OIDC one (and its refresh loop).
+        self.auth_gen.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        *self.oidc.lock().await = None;
         self.set_token(Some(resp.token.clone()));
         if remember {
             Self::save_connection(&endpoint, &username, &password);
+            // One remembered sign-in per console: the newest method wins.
+            session_auth::clear_saved_oidc();
         }
         {
             let mut s = self.state.lock().await;
             s.role = Some(resp.role.clone());
+            s.identity = Some(crate::state::Identity::from_password_login(&username, &resp));
         }
-        self.start_feed(app.clone());
+        self.start_session_loops(app.clone(), &resp.role);
         Ok(resp.role)
     }
 
@@ -650,6 +678,14 @@ impl Transport {
     ///
     /// Returns true when a fresh token was obtained.
     async fn reauthenticate(&self, app: &AppHandle) -> bool {
+        // ADR-0142 D1: an OIDC session re-authenticates by refreshing at the
+        // IdP. Its tokens are JWTs, so a kernel restart does not invalidate them;
+        // an Unauthenticated here means the access token expired early or was
+        // revoked, and a refresh is the whole fix.
+        if self.oidc.lock().await.is_some() {
+            let gen = self.auth_gen.load(std::sync::atomic::Ordering::SeqCst);
+            return self.refresh_oidc(app, gen).await;
+        }
         let endpoint = match self.endpoint.lock().await.clone() {
             Some(e) => e,
             None => return false,
@@ -685,6 +721,12 @@ impl Transport {
                 {
                     let mut st = self.state.lock().await;
                     st.role = Some(resp.role.clone());
+                    let username = st
+                        .identity
+                        .as_ref()
+                        .map(|i| i.username.clone())
+                        .unwrap_or_default();
+                    st.identity = Some(crate::state::Identity::from_password_login(&username, &resp));
                 }
                 tracing::info!("session re-established after a kernel restart");
                 true
@@ -715,9 +757,13 @@ impl Transport {
         self.stop_notify.notify_waiters();
 
         self.set_token(None);
+        // The OIDC session and its refresh loop end here too.
+        self.auth_gen.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        *self.oidc.lock().await = None;
         // Explicit disconnect means "forget me": drop the saved credentials so the
         // next launch does not silently reconnect to an instance the operator left.
         Self::clear_saved_connection();
+        session_auth::clear_saved_oidc();
         *self.channel.lock().await = None;
         *self.endpoint.lock().await = None;
 
@@ -725,6 +771,8 @@ impl Transport {
             let mut s = self.state.lock().await;
             s.reset_live();
             s.role = None;
+            s.identity = None;
+            s.unrouted_approvals.clear();
             s.capabilities.clear();
             s.kernel_version.clear();
             s.contract_version.clear();
@@ -745,9 +793,17 @@ impl Transport {
     /// that was only forgotten locally stays valid there until its TTL runs out,
     /// and that difference is the reason Logout exists.
     pub async fn logout(&self, app: &AppHandle) -> Result<LogoutOutcome, String> {
-        let outcome = logout_outcome(self.revoke_remote().await);
+        let mut outcome = logout_outcome(self.revoke_remote().await);
         if !outcome.revoked {
             tracing::warn!(note = %outcome.note, "logout: token not revoked on the kernel");
+        }
+        // ADR-0142 D1: an OIDC session also ends at the identity provider —
+        // the refresh token is revoked (RFC 7009) and the IdP's own session is
+        // ended in the system browser (RP-initiated logout), so the next
+        // "Sign in with…" asks for credentials again.
+        let oidc = self.oidc.lock().await.clone();
+        if let Some(session) = oidc {
+            outcome.idp_note = self.end_idp_session(app, &session).await;
         }
         self.disconnect(app).await?;
         Ok(outcome)
@@ -988,6 +1044,9 @@ impl Transport {
                 title,
                 profile,
                 policy,
+                // The console acts as the signed-in operator; act-for
+                // (on_behalf_of) has no console surface yet.
+                on_behalf_of: String::new(),
             }))
             .await
             .map_err(map_status)?
@@ -1008,6 +1067,7 @@ impl Transport {
                 reason,
                 conversation_id,
                 text,
+                on_behalf_of: String::new(),
             }))
             .await
             .map_err(map_status)?
@@ -1018,7 +1078,10 @@ impl Transport {
     pub async fn list_conversations(&self, limit: i32) -> Result<Vec<ConversationSummary>, String> {
         let mut client = self.client().await?;
         let resp = client
-            .list_conversations(Request::new(pb::ListConversationsOpRequest { limit }))
+            .list_conversations(Request::new(pb::ListConversationsOpRequest {
+                limit,
+                on_behalf_of: String::new(),
+            }))
             .await
             .map_err(map_status)?
             .into_inner();
@@ -1041,6 +1104,7 @@ impl Transport {
                 conversation_id,
                 after_seq,
                 limit,
+                on_behalf_of: String::new(),
             }))
             .await
             .map_err(map_status)?
@@ -1063,6 +1127,7 @@ impl Transport {
                 command_id: new_command_id(),
                 reason,
                 conversation_id,
+                on_behalf_of: String::new(),
             }))
             .await
             .map_err(map_status)?
@@ -1129,6 +1194,76 @@ impl Transport {
         let mut s = self.state.lock().await;
         s.pending_hitl
             .retain(|h| h.intervention_id != intervention_id);
+        Ok(ack.deduped)
+    }
+
+    /// ADR-0142 D11: answer one approval as the logged-in person. The kernel
+    /// authorises the answer against the item's rule; a refusal comes back as
+    /// ok=false with the reason, never an error.
+    pub async fn answer_approval(
+        &self,
+        id: String,
+        approve: bool,
+        standing: bool,
+        standing_ttl_seconds: i64,
+        reason: String,
+    ) -> Result<crate::AnswerApprovalResult, String> {
+        let mut client = self.client().await?;
+        let r = client
+            .answer_approval(Request::new(pb::AnswerApprovalOpRequest {
+                command_id: new_command_id(),
+                reason,
+                id: id.clone(),
+                approve,
+                choice: String::new(),
+                standing,
+                standing_ttl_seconds,
+            }))
+            .await
+            .map_err(map_status)?
+            .into_inner();
+        if r.ok {
+            let mut s = self.state.lock().await;
+            s.pending_hitl.retain(|h| h.intervention_id != id);
+        }
+        Ok(crate::AnswerApprovalResult {
+            ok: r.ok,
+            deduped: r.deduped,
+            state: r.state,
+            refusal: r.refusal,
+            standing_id: r.standing_id,
+        })
+    }
+
+    /// ADR-0142: the logged-in person's standing approvals.
+    pub async fn list_standing_approvals(
+        &self,
+        include_inactive: bool,
+    ) -> Result<Vec<crate::StandingApproval>, String> {
+        let mut client = self.client().await?;
+        let r = client
+            .list_standing_approvals(Request::new(pb::ListStandingApprovalsOpRequest {
+                include_inactive,
+                audit: false,
+            }))
+            .await
+            .map_err(map_status)?
+            .into_inner();
+        Ok(r.standing.into_iter().map(crate::StandingApproval::from).collect())
+    }
+
+    /// ADR-0142: revoke a standing approval (beneficiary, granter or operator).
+    pub async fn revoke_standing_approval(&self, id: String, reason: String) -> Result<bool, String> {
+        let mut client = self.client().await?;
+        let ack = client
+            .revoke_standing_approval(Request::new(pb::RevokeStandingApprovalOpRequest {
+                command_id: new_command_id(),
+                reason,
+                id,
+            }))
+            .await
+            .map_err(map_status)?
+            .into_inner();
         Ok(ack.deduped)
     }
 
@@ -2075,6 +2210,7 @@ impl Transport {
             attempt = 0; // connected
             waited = Duration::ZERO;
             self.set_connection(&app, ConnectionStatus::Live).await;
+            self.start_approvals(app.clone());
 
             if self.drain(&app, stream).await {
                 // graceful end (rare) — reconnect
@@ -2084,6 +2220,78 @@ impl Transport {
             }
             // dropped/errored: force a fresh channel + reconnect.
             *self.channel.lock().await = None;
+        }
+    }
+
+    // ---- Tool-approval enrichment (WatchToolApprovals, A2.5) ---------------
+    //
+    // The feed's HITLRaisedOp for a dangerous-tool or skill-access approval
+    // carries only the tool name. The operator is being asked to approve a
+    // CALL, so the arguments matter: WatchToolApprovals streams the same
+    // approval (same id space as ResolveHITL) with `args_preview` and `kind`.
+    // This loop merges those into the matching pending HITL (or inserts it, if
+    // the stream won the race against the feed). It never removes anything —
+    // removal stays the feed's job (the resolve_hitl audit record).
+    //
+    // A kernel without the hub answers Unimplemented: the loop then stops for
+    // this connection rather than retrying a call that can never succeed.
+
+    fn start_approvals(&self, app: AppHandle) {
+        {
+            let mut running = self.approvals_running.lock().unwrap();
+            if *running {
+                return;
+            }
+            *running = true;
+        }
+        let this = self.clone();
+        tokio::spawn(async move {
+            this.run_approvals(app).await;
+            *this.approvals_running.lock().unwrap() = false;
+        });
+    }
+
+    async fn run_approvals(&self, app: AppHandle) {
+        loop {
+            if self.stop_requested() {
+                return;
+            }
+            let mut client = match self.client().await {
+                Ok(c) => c,
+                Err(_) => return, // the feed loop owns reconnecting; it restarts us when live
+            };
+            let mut stream = match client
+                .watch_tool_approvals(Request::new(pb::SubscribeRequest { last_seq: 0 }))
+                .await
+            {
+                Ok(s) => s.into_inner(),
+                Err(e) => {
+                    if e.code() != tonic::Code::Unimplemented {
+                        tracing::warn!("watch_tool_approvals: {}", e.message());
+                    }
+                    return;
+                }
+            };
+            loop {
+                let next = tokio::select! {
+                    msg = stream.message() => msg,
+                    _ = self.stop_notify.notified() => return,
+                };
+                match next {
+                    Ok(Some(a)) => {
+                        {
+                            let mut s = self.state.lock().await;
+                            crate::state::merge_approval(&mut s, &a);
+                        }
+                        self.emit_state(&app).await;
+                    }
+                    Ok(None) => break,
+                    Err(e) => {
+                        tracing::warn!("approval stream: {}", e.message());
+                        return; // feed reconnect restarts us
+                    }
+                }
+            }
         }
     }
 
@@ -2238,12 +2446,15 @@ fn config_write_result(resp: pb::SetConfigOpResponse) -> ConfigWriteResult {
 }
 
 /// What a sign-out achieved on the kernel. The local session is always gone.
-#[derive(Clone, serde::Serialize, Debug, PartialEq)]
+#[derive(Clone, serde::Serialize, Debug, PartialEq, Default)]
 pub struct LogoutOutcome {
     /// True when the token can no longer be used against the kernel.
     pub revoked: bool,
     /// Empty on a clean revoke; otherwise what the operator should know.
     pub note: String,
+    /// ADR-0142 D1: what happened at the identity provider for an OIDC session
+    /// (refresh token revoked, end-session page opened). Empty for a password one.
+    pub idp_note: String,
 }
 
 /// Turn the Logout RPC's answer into what the console tells the operator.
@@ -2252,18 +2463,21 @@ pub(crate) fn logout_outcome(r: Result<(), Status>) -> LogoutOutcome {
         Ok(()) => LogoutOutcome {
             revoked: true,
             note: String::new(),
+            ..Default::default()
         },
         // The kernel refused the token at its auth gate: it was already revoked or
         // expired (or a kernel restart dropped it). Dead either way.
         Err(e) if e.code() == tonic::Code::Unauthenticated => LogoutOutcome {
             revoked: true,
             note: "the kernel had already ended this session".into(),
+            ..Default::default()
         },
         Err(e) if e.code() == tonic::Code::Unimplemented => LogoutOutcome {
             revoked: false,
             note: "this kernel predates Logout (contract 0099): the token was forgotten here \
                    but stays valid on the kernel until it expires"
                 .into(),
+            ..Default::default()
         },
         Err(e) => LogoutOutcome {
             revoked: false,
@@ -2272,6 +2486,7 @@ pub(crate) fn logout_outcome(r: Result<(), Status>) -> LogoutOutcome {
                  stays valid there until it expires",
                 e.message()
             ),
+            ..Default::default()
         },
     }
 }
@@ -3017,7 +3232,7 @@ mod tests {
     fn logout_outcome_distinguishes_revoked_from_only_forgotten() {
         assert_eq!(
             logout_outcome(Ok(())),
-            LogoutOutcome { revoked: true, note: String::new() }
+            LogoutOutcome { revoked: true, ..Default::default() }
         );
         let already = logout_outcome(Err(Status::unauthenticated("revoked")));
         assert!(already.revoked);

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
-import { Outlet, useNavigate } from "@tanstack/react-router";
+import { Link, Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
+import { routeAllowedForRole } from "@/lib/roleGate";
 import { signOut } from "@/lib/signOut";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { HeaderBar } from "@/components/HeaderBar";
@@ -11,7 +12,9 @@ import { CommandPalette, ShortcutPalette } from "@/screens/palette/CommandPalett
 import { projectionStore } from "@/store/projection";
 import { shellStore } from "@/store/shell";
 import { useStore } from "@/store/useStore";
-import { ipc, onKernelState } from "@/ipc";
+import { ipc, onKernelState, onKernelToken } from "@/ipc";
+import { createChunkBatcher, stepOutputStore } from "@/lib/stepOutput";
+import { useInbox } from "@/lib/useInbox";
 import { useRefetchOnReconnect } from "@/lib/useRefetchOnReconnect";
 import { autoConnectOnce } from "@/lib/autoConnect";
 import { useBreakpoint } from "@/lib/useBreakpoint";
@@ -62,9 +65,20 @@ export function Shell() {
       else unlisten = fn;
     });
 
+    // The live step-output lane (ADR-0139, capability step-output-stream). It was
+    // forwarded by the Rust core and subscribed by nothing. One subscription for
+    // the whole app, batched at ~100ms, folded by lease + chunk_seq.
+    let unlistenToken: (() => void) | undefined;
+    const push = createChunkBatcher((chunks) => stepOutputStore.getState().ingest(chunks));
+    onKernelToken(push).then((fn) => {
+      if (cancelled) fn();
+      else unlistenToken = fn;
+    });
+
     return () => {
       cancelled = true;
       unlisten?.();
+      unlistenToken?.();
     };
   }, []);
 
@@ -92,6 +106,11 @@ export function Shell() {
   useRefetchOnReconnect(connection);
   const role = state?.role ?? null;
   const isHydrating = projection.isHydrating;
+  // ADR-0142: a member reaches only their own surfaces. The rail hides the rest;
+  // this stops a deep link or the palette from rendering an admin screen whose
+  // every call the kernel would refuse.
+  const pathname = useRouterState({ select: (r) => r.location.pathname });
+  const routeAllowed = routeAllowedForRole(pathname, role);
 
   // Contract 0099: sign-out is offered only when the kernel can revoke the
   // token. It ends on the login screen (Settings opens on Connection).
@@ -101,27 +120,19 @@ export function Shell() {
     void signOut().then(() => navigate({ to: "/settings" }));
   };
 
+  // Every pending decision — feed HITL, skill proposals, timed-out skill-access
+  // requests — counted by the same aggregation the Inbox screen renders.
+  const inbox = useInbox();
+  const needsYouCount = inbox.count;
   const plans = state?.plans ?? [];
-  const needsYouCount = state?.pending_hitl.length ?? 0;
   const runningPlans = useMemo(
     () => plans.filter((p) => p.status === 'running' || p.status === 'forming').length,
     [plans],
   );
-  const degradedBreakers = useMemo(
-    () =>
-      (state?.cost_dashboard.circuit_breakers ?? []).filter((b) => b.state !== 'ok')
-        .length,
-    [state?.cost_dashboard.circuit_breakers],
-  );
 
   const navCounts = useMemo(
-    () => ({
-      sessions: state?.sessions.length ?? 0,
-      plans: plans.length,
-      agents: state?.agents.length ?? 0,
-      watches: state?.watch_configs.length ?? 0,
-    }),
-    [state?.sessions.length, plans.length, state?.agents.length, state?.watch_configs.length],
+    () => ({ inbox: needsYouCount, tasks: runningPlans }),
+    [needsYouCount, runningPlans],
   );
 
   const isMobile = breakpoint === 'mobile';
@@ -142,7 +153,20 @@ export function Shell() {
         </div>
       ) : (
         <ErrorBoundary>
-          <Outlet />
+          {routeAllowed ? (
+            <Outlet />
+          ) : (
+            <div role="status" className="m-6 flex max-w-lg flex-col gap-2 rounded-md p-4 tint-wash tint-ring" style={{ "--tint": "var(--fg-muted)" } as React.CSSProperties}>
+              <h1 className="text-sm font-semibold">Not available with your role</h1>
+              <p className="text-[12.5px] leading-[1.55] text-[var(--fg-secondary)]">
+                You are signed in without a console role, so this deployment shows you your own
+                chat, approvals and accounts. An administrator can give you a console role.
+              </p>
+              <Link to="/chat" className="self-start text-[12px] text-[var(--color-accent-400)] underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)]">
+                Go to Chat
+              </Link>
+            </div>
+          )}
         </ErrorBoundary>
       )}
     </main>
@@ -158,10 +182,9 @@ export function Shell() {
         kernelVersion={state?.kernel_version ?? ''}
         contractVersion={state?.contract_version ?? ''}
         contractSkew={state?.contract_skew ?? 0}
-        spendRateTokens={state?.cost_dashboard.spend_rate_usd ?? 0}
         needsYouCount={needsYouCount}
-        degradedBreakers={degradedBreakers}
         role={role}
+        identityName={state?.identity?.display_name ?? null}
         compact={isMobile}
         onSignOut={canSignOut ? onSignOut : undefined}
       />
@@ -171,10 +194,9 @@ export function Shell() {
           <NavRail
             collapsed={railCollapsed}
             onToggle={() => shellStore.getState().toggleLeftRail()}
-            needsYouCount={needsYouCount}
             counts={navCounts}
-            liveCounts={{ plans: runningPlans > 0 }}
             capabilities={state?.capabilities ?? []}
+            role={role}
             onOpenPalette={() => setPaletteOpen(true)}
           />
         )}
@@ -191,7 +213,7 @@ export function Shell() {
         )}
       </div>
 
-      {isMobile && <MobileTabBar needsYouCount={needsYouCount} />}
+      {isMobile && <MobileTabBar needsYouCount={needsYouCount} role={role} />}
 
       {paletteOpen && <CommandPalette onClose={() => setPaletteOpen(false)} />}
       {shortcutOpen && <ShortcutPalette onClose={() => setShortcutOpen(false)} />}

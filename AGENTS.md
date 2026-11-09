@@ -66,22 +66,33 @@ This is a **Tauri 2** desktop app: a **Rust core** + a **React 19 / TypeScript**
 
 ## Transport rules (implement in the Rust core)
 
-- **Auth:** `Login(username,password) → {token, role}`; send `authorization: Bearer <token>` on every call. Store the token in the **OS keychain**. Unauthenticated ⇒ rejected. Secure-by-default: no kernel accounts ⇒ login fails (surface that state). TLS is additive on the remote hop.
+- **Auth (ADR-0142 D1):** ask the kernel how to sign in first — `DescribeAuth` (unauthenticated) names local password login and/or ONE OIDC issuer + client id. Password: `Login(username,password) → {token, role, principal, roles}`. OIDC: authorization code + PKCE in the **system browser** with a **loopback redirect** (`http://127.0.0.1:<ephemeral>/callback`, RFC 8252 §7.3), run entirely in `src-tauri/src/oidc.rs`; the ACCESS token is the bearer (its `aud` must carry the client id). Send `authorization: Bearer <token>` on every call. **Tokens, codes, verifiers, state and nonce never enter the webview, a log or the DOM**; the webview gets `StateOfRecord.identity` (display name, email, issuer, expiry, role source) only. Refresh runs in Rust 60 s before expiry; Sign out also revokes the refresh token (RFC 7009) and opens the IdP's end-session page with `client_id` (never `id_token_hint`). "Remember this instance" keeps the password or the OIDC REFRESH token in the OS keychain. Secure-by-default: a kernel with no sign-in method rejects every login (surface that state). TLS is additive on the remote hop.
+- **Roles (ADR-0142):** `operator` | `viewer` | `member`. A `member` (signed in, no console role) may call only their own surfaces (chat, `WatchMyApprovals`/`AnswerApproval`, their accounts, Logout) — `Snapshot`/`StreamEvents` are refused, so the Rust core runs the **member lane** (`transport/session_auth.rs`) instead of the feed. Hide what a member cannot reach with the ONE gating rule: `entryAvailable(entry, capabilities, role)` (rail entries opt in with `forMembers`) plus `routeAllowedForRole` (`lib/roleGate.ts`) for deep links; `useCommandGate` refuses non-self-service commands for members. An OIDC session's role is PROBED until the kernel has a WhoAmI (T-20261106-operator-plane-has-no-whoami-an-oidc-signed-in) — say so (`identity.role_source`).
 - **Feed:** subscribe `StreamEvents(last_seq)`. Events carry a **global monotonic `seq`** (the cursor) and **absolute-state** payloads. Fold them **idempotently** (last-writer-wins by id) — never as increments.
 - **Recovery:** on a `ResyncRequired` event (cursor aged out of the ~120s spool), call `Snapshot`, replace state, and resubscribe from `Snapshot.as_of_seq`. Re-received events after a snapshot are harmless (idempotent fold). Gaps are impossible; duplicates are fine.
 - **`token` events** (`seq=0`) are **live-only, never replayed** — accumulate text live; resync it from snapshot/pull on reconnect, not by replaying chunks.
 - **Reconnect** (Rust↔kernel) with backoff+jitter (`base=1s ×2 cap=30s ±10%`); after ~2–5 min surface "kernel unreachable". A webview reload is a cheap local resync from the still-connected core — not a kernel reconnect.
 - **Commands:** every mutating command needs a client-generated **`command_id` (UUID)** + a **mandatory `reason`**; reuse the same `command_id` across retries (the kernel dedups → `CommandAck{deduped}`). The actor comes from the token, never the body.
-- **Roles & capabilities:** Operator vs Viewer is **server-enforced** (Viewer mutations → `PermissionDenied`); reflect it by hiding mutating controls. Read `kernel_version`/`contract_version`/`capabilities[]` from `Snapshot` — **hide surfaces the kernel doesn't advertise** and **warn on contract-version skew**.
+- **Roles & capabilities:** Operator vs Viewer vs Member is **server-enforced** (Viewer mutations → `PermissionDenied`); reflect it by hiding mutating controls. Read `kernel_version`/`contract_version`/`capabilities[]` from `Snapshot` — **hide surfaces the kernel doesn't advertise** and **warn on contract-version skew**.
 
 ## Development rules
 
 - **Match the existing stack:** Tauri 2, React 19 + TypeScript + Vite, **Bun** for JS deps, Cargo for the Rust core. Don't introduce a second framework or a second visual language.
 - **Dark-mode-first, dense, keyboard-friendly, accessible by construction** (WCAG AA in dark mode minimum). Accessibility is not a follow-on (PRD story 46).
 - **Every screen traces to a PRD user story.** A screen with no story is scope creep; a story with no screen is a gap. The PRD (`docs/web-ui-prd.md`) is normative.
-- **The plan is the centre of gravity.** When a session has a running plan, the plan view is always visible; chat and console are *around* it.
+- **The plan is the centre of gravity.** When a session has a running plan, the plan view is always visible; chat and console are *around* it. Since the 2026-11-06 redesign the run (steps, live output, inline approvals) renders *inside* the conversation that started it, and Chat is the landing route.
+- **One gating rule.** A rail entry declares `requires` / `requiresAny` (`nav-rail.tsx`, `entryAvailable`); a screen asks `useCapability()`; a mutating control asks `useCommandGate()` for its disabled reason. Do not add a fourth way.
+- **One inbox count.** The rail badge, the header and the Inbox screen all read `useInbox()` (`lib/inbox.ts buildInbox`). A new kind of pending human decision is added there, not as a second badge.
+- **Secrets are write-only in the webview.** Integration credentials, org-account keys and OAuth client secrets are typed into password inputs, cleared on every outcome and sent once; nothing in the core returns a secret (an org key shows its last four at most), and the UI never stores one.
+- **Account sign-in opens the SYSTEM browser from the Rust core.** `op_start_account_connect` opens the kernel's single-use start URL itself (http/https only) and returns only flow id / provider / scopes / expiry; never put the URL in webview state, a webview, or a log. Self-service account actions use `useCommandGate(action, { selfService: true })` (any role); everything org-wide is Operator-only.
+- **External systems are one page each** (ADR-0141 D9). Account, data-in and agent-action logic lives in `lib/accounts.ts`; add a new account surface there and render it on the system page, not as a second accounts screen.
 - **State of record = Rust core; projection = webview.** Batch high-frequency event classes (tokens, plan ticks) at the core→webview seam (~60fps/100ms); deliver control classes (HITL, audit, errors, health) immediately and un-batched.
 - After changing how the UI talks to the runtime (transport, recovery, auth, the consumed contract), **update `CONTEXT.md`** so it always reflects the current integration.
+
+## Generated files
+
+`src/routeTree.gen.ts` is regenerated by the TanStack router Vite plugin on `bun run dev` /
+`bun run build` after a route file is added or deleted. Never hand-edit it.
 
 ## What works today (so you can build against reality)
 

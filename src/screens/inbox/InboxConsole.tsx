@@ -1,166 +1,186 @@
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { Link } from '@tanstack/react-router';
 import {
+  Button,
   EmptyState,
   ErrorState,
   HITLInline,
+  ReasonField,
   ScrollArea,
   Sheet,
   SheetContent,
   SheetTitle,
+  useReasonGate,
 } from '@/design-system/components';
-import { useStore } from '@/store/useStore';
-import { projectionStore } from '@/store/projection';
+import { cn } from '@/design-system/lib/utils';
 import { ipc } from '@/ipc';
 import { useMutation } from '@/lib/useMutation';
 import { useBreakpoint } from '@/lib/useBreakpoint';
-import { consequenceOf, formatIdle, idleSeconds, NATURE_LABEL, NATURE_TONE } from '@/lib/hitl';
-import { cn } from '@/design-system/lib/utils';
-import type { HITLIntervention } from '@/ipc/types';
+import { projectionStore } from '@/store/projection';
+import { useStore } from '@/store/useStore';
+import { useKernelQuery } from '@/lib/useKernelQuery';
+import { ago, formatUnixMs, useCommandGate } from '@/lib/useCommandGate';
+import { KIND_LABEL, type InboxItem } from '@/lib/inbox';
+import { refreshInbox, useInbox } from '@/lib/useInbox';
+import { SkillDiff, ScanVerdict } from '@/screens/skills/SkillDiff';
 import { FullScreenApproval } from './FullScreenApproval';
+import { AccountItem } from './AccountItem';
+import { AttentionItem } from './AttentionItem';
+import { UnroutedApprovals } from './UnroutedApprovals';
+import { EscalationChain } from './EscalationChain';
+import { describeRule, needsHierarchy } from '@/lib/approvalRules';
 
 /**
- * The approvals inbox.
+ * The Inbox — every pending human decision in one place.
  *
- * Before this screen existed, a HITL only appeared inside the chat of a session
- * the operator had already opened — so the one thing in the whole console that
- * genuinely blocks on a human was the one thing you had to go looking for. Now
- * the count is in the header and on the rail from every screen, and this is
- * where it lands.
- *
- * Ordering is longest-waiting first. A plan blocked on an approval is burning
- * wall-clock time, so "how long has this been stuck" is the priority, not when
- * it was raised relative to the others.
+ * Tool approvals and live skill-access requests arrive on the feed; skill
+ * proposals and timed-out skill-access requests are read (they have no feed
+ * event). `useInbox` merges them, and the rail badge is the same count.
+ * Longest-waiting first: a run blocked on an approval is burning wall-clock time.
  */
-export function InboxConsole() {
-  const projection = useStore(projectionStore);
-  const breakpoint = useBreakpoint();
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+const EMPTY_UNROUTED: never[] = [];
 
-  const role = projection.state?.role ?? null;
-  const connection = projection.state?.connection.status ?? 'down';
-  const pending = projection.state?.pending_hitl ?? [];
-  const plans = projection.state?.plans ?? [];
+export function InboxConsole() {
+  const inbox = useInbox();
+  const isMobile = useBreakpoint() === 'mobile';
+  const gate = useCommandGate('decide');
+  const [open, setOpen] = useState<string | null>(null);
 
   const resolve = useMutation(ipc.resolveHITL);
+  const answer = useMutation(ipc.answerApproval);
+  const [refusal, setRefusal] = useState<string | null>(null);
+  // ADR-0142: per-item "approve always" (a standing approval) choice.
+  const [standing, setStanding] = useState<Record<string, boolean>>({});
+  const caps = useStore(projectionStore, (s) => s.state?.capabilities ?? []);
+  const addressed = caps.includes('addressed-approvals');
+  const unrouted = useStore(projectionStore, (s) => s.state?.unrouted_approvals ?? EMPTY_UNROUTED);
+  const selected = inbox.items.find((i) => i.key === open && i.hitl) ?? null;
 
-  const ordered = useMemo(
-    () => [...pending].sort((a, b) => idleSeconds(b) - idleSeconds(a)),
-    [pending],
-  );
-
-  const sessionOfPlan = useMemo(
-    () => new Map(plans.map((p) => [p.plan_id, p.session_id])),
-    [plans],
-  );
-
-  // A Viewer's mutations are refused server-side; saying so up front is more
-  // honest than a button that fails on click.
-  const disabledReason =
-    role === 'viewer'
-      ? 'Operator role required to resolve an intervention.'
-      : connection === 'reconnecting'
-        ? 'Reconnecting — the kernel is not accepting commands right now.'
-        : connection === 'down'
-          ? 'Kernel unreachable.'
-          : undefined;
-
-  const decide = (interventionId: string, approve: boolean, reason: string) => {
-    void resolve.mutate({ intervention_id: interventionId, approve, reason });
-    setSelectedId(null);
+  const decideHitl = async (id: string, approve: boolean, reason: string) => {
+    setRefusal(null);
+    if (addressed) {
+      // The kernel authorises the answer against the item's rule (ADR-0142 D11).
+      const r = await answer.mutate({
+        id,
+        approve,
+        standing: approve && Boolean(standing[id]),
+        standing_ttl_seconds: 0,
+        reason,
+      });
+      if (r && !r.ok) setRefusal(r.refusal || 'The kernel refused the answer.');
+    } else {
+      await resolve.mutate({ intervention_id: id, approve, reason });
+    }
+    setOpen(null);
+    refreshInbox(); // an approved skill_access also resolves its request row
   };
-
-  const selected = ordered.find((h) => h.intervention_id === selectedId) ?? null;
-  const isMobile = breakpoint === 'mobile';
-
-  if (ordered.length === 0) {
-    return (
-      <div className="flex h-full flex-col">
-        <InboxHeader count={0} />
-        <EmptyState
-          title="Nothing is waiting on you"
-          body="Interventions appear here the moment a plan raises one. Nothing polls — this list is folded from the kernel feed."
+  const busy = resolve.isLoading || answer.isLoading;
+  const standingToggle = (item: InboxItem) =>
+    item.hitl?.allow_standing && item.answerable !== false ? (
+      <label className="flex items-center gap-2 text-[12px] text-[var(--fg-secondary)]">
+        <input
+          type="checkbox"
+          checked={Boolean(standing[item.hitl.intervention_id])}
+          onChange={(e) => setStanding((s) => ({ ...s, [item.hitl!.intervention_id]: e.target.checked }))}
         />
-      </div>
-    );
-  }
+        Approve always: pre-approve this kind of action until I revoke it
+      </label>
+    ) : null;
 
   return (
     <div className="flex h-full flex-col">
-      <InboxHeader count={ordered.length} />
+      <header className="flex-none px-[26px] pb-3.5 pt-4 shadow-[inset_0_-1px_0_var(--border-subtle)]">
+        <h1 className="text-[19px] font-medium leading-[1.25] tracking-[-0.01em]">Inbox</h1>
+        <p className="mt-1 text-[12.5px] text-[var(--fg-muted)]" aria-live="polite">
+          {inbox.count === 0
+            ? 'Nothing is waiting on a decision.'
+            : `${inbox.count} decision${inbox.count === 1 ? '' : 's'} waiting · longest waiting first`}
+        </p>
+      </header>
 
-      {resolve.error && (
+      {(resolve.error || answer.error || refusal || inbox.error) && (
         <div className="px-[26px] pt-3">
           <ErrorState
-            reason={resolve.error}
-            whatToDo="The intervention is still pending — nothing was decided. Try again, or open the task to see what the plan is waiting on."
+            reason={(resolve.error ?? answer.error ?? refusal ?? inbox.error) as string}
+            whatToDo="Nothing was decided. Try again; the item stays here until the kernel confirms it."
           />
         </div>
       )}
 
-      <ScrollArea className="flex-1">
-        <ul className="flex flex-col gap-3 px-[26px] py-[22px]">
-          {ordered.map((h) => (
-            <li key={h.intervention_id}>
-              {isMobile ? (
-                <ApprovalCard
-                  intervention={h}
-                  sessionId={sessionOfPlan.get(h.plan_id) ?? null}
-                  onOpen={() => setSelectedId(h.intervention_id)}
-                />
-              ) : (
-                <div className="flex flex-col gap-1.5">
-                  <SessionLink
-                    sessionId={sessionOfPlan.get(h.plan_id) ?? null}
-                    planId={h.plan_id}
-                  />
-                  <HITLInline
-                    intervention={h}
-                    disabledReason={disabledReason}
-                    busy={resolve.isLoading}
-                    onApprove={(id, reason) => decide(id, true, reason)}
-                    onReject={(id, reason) => decide(id, false, reason)}
-                  />
-                </div>
-              )}
-            </li>
-          ))}
-        </ul>
-      </ScrollArea>
-
-      {/* An irreversible action gets the whole screen and a slide, not a sheet
-          and a tap: `destructive_command` is the class where undo does not
-          exist, so the confirmation has to cost more than a thumb. */}
-      {selected && selected.nature === 'destructive_command' && (
-        <FullScreenApproval
-          intervention={selected}
-          disabledReason={disabledReason}
-          busy={resolve.isLoading}
-          onApprove={(reason) => decide(selected.intervention_id, true, reason)}
-          onReject={(reason) => decide(selected.intervention_id, false, reason)}
-          onClose={() => setSelectedId(null)}
+      {inbox.count === 0 ? (
+        <EmptyState
+          title="Nothing is waiting on you"
+          body="Tool approvals, skill-access requests and skill proposals appear here as soon as an agent raises them."
         />
+      ) : (
+        <ScrollArea className="flex-1">
+          <ul className="flex max-w-[860px] flex-col gap-3 px-[26px] py-[22px]">
+            {inbox.items.map((item) => (
+              <li key={item.key}>
+                {item.hitl ? (
+                  isMobile ? (
+                    <MobileHitlCard item={item} onOpen={() => setOpen(item.key)} />
+                  ) : (
+                    <div className="flex flex-col gap-1.5">
+                      <ItemMeta item={item} />
+                      {item.rule && item.hitl?.beneficiary && (
+                        <EscalationChain rule={item.rule} beneficiary={item.hitl.beneficiary} />
+                      )}
+                      {standingToggle(item)}
+                      <HITLInline
+                        intervention={item.hitl}
+                        disabledReason={gate ?? item.approve_blocked}
+                        busy={busy}
+                        onApprove={(id, reason) => void decideHitl(id, true, reason)}
+                        onReject={(id, reason) => void decideHitl(id, false, reason)}
+                      />
+                    </div>
+                  )
+                ) : item.account ? (
+                  <AccountItem item={item} />
+                ) : item.attention ? (
+                  <AttentionItem item={item} />
+                ) : item.proposal ? (
+                  <ProposalDecision item={item} disabledReason={gate} />
+                ) : (
+                  <AccessRequestDecision item={item} disabledReason={gate} />
+                )}
+              </li>
+            ))}
+          </ul>
+        </ScrollArea>
       )}
 
-      {/* On a phone a reversible decision gets the bottom sheet rather than a
-          card in a scrolling list — approving should not be a thing you can do
-          while scrolling past it. */}
+      <UnroutedApprovals items={unrouted} />
+
+      {addressed && <StandingApprovals />}
+
+      {/* Irreversible actions get the whole screen and a slide on a phone. */}
+      {selected?.hitl && selected.hitl.nature === 'destructive_command' && (
+        <FullScreenApproval
+          intervention={selected.hitl}
+          disabledReason={gate ?? selected.approve_blocked}
+          busy={busy}
+          onApprove={(reason) => void decideHitl(selected.hitl!.intervention_id, true, reason)}
+          onReject={(reason) => void decideHitl(selected.hitl!.intervention_id, false, reason)}
+          onClose={() => setOpen(null)}
+        />
+      )}
       <Sheet
-        open={Boolean(selected) && selected?.nature !== 'destructive_command'}
-        onOpenChange={(open) => !open && setSelectedId(null)}
+        open={Boolean(selected?.hitl) && selected?.hitl?.nature !== 'destructive_command'}
+        onOpenChange={(o) => !o && setOpen(null)}
       >
         <SheetContent side="bottom" className="max-h-[88vh] overflow-y-auto p-4">
-          {selected && (
+          {selected?.hitl && (
             <>
-              <SheetTitle className="sr-only">
-                Resolve intervention {selected.intervention_id}
-              </SheetTitle>
+              <SheetTitle className="sr-only">Decide {selected.title}</SheetTitle>
+              {standingToggle(selected)}
               <HITLInline
-                intervention={selected}
-                disabledReason={disabledReason}
-                busy={resolve.isLoading}
-                onApprove={(id, reason) => decide(id, true, reason)}
-                onReject={(id, reason) => decide(id, false, reason)}
+                intervention={selected.hitl}
+                disabledReason={gate ?? selected.approve_blocked}
+                busy={busy}
+                onApprove={(id, reason) => void decideHitl(id, true, reason)}
+                onReject={(id, reason) => void decideHitl(id, false, reason)}
               />
             </>
           )}
@@ -170,38 +190,33 @@ export function InboxConsole() {
   );
 }
 
-function InboxHeader({ count }: { count: number }) {
+function ItemMeta({ item }: { item: InboxItem }) {
+  const session = item.hitl?.session_id;
   return (
-    <div className="flex-none px-[26px] pb-3.5 pt-4 shadow-[inset_0_-1px_0_var(--border-subtle)]">
-      <h1 className="text-[19px] font-medium leading-[1.25] tracking-[-0.01em]">Inbox</h1>
-      <p className="mt-1 text-[12.5px] text-[var(--fg-muted)]">
-        {count === 0
-          ? 'Nothing is blocked on a decision.'
-          : `${count} decision${count === 1 ? '' : 's'} blocking a plan · longest waiting first`}
-      </p>
-    </div>
-  );
-}
-
-function SessionLink({
-  sessionId,
-  planId,
-}: {
-  sessionId: string | null;
-  planId: string;
-}) {
-  return (
-    <div className="flex items-center gap-2 font-mono text-[10.5px] text-[var(--fg-muted)]">
-      <span>plan {planId.slice(0, 8)}</span>
-      {sessionId && (
+    <div className="flex flex-wrap items-center gap-2 font-mono text-[10.5px] text-[var(--fg-muted)]">
+      <span className="uppercase tracking-[0.08em]">{KIND_LABEL[item.kind]}</span>
+      {item.rule && (
         <>
           <span aria-hidden="true">·</span>
-          <Link
-            to="/tasks/$taskId"
-            params={{ taskId: sessionId }}
-            className="hover:text-[var(--fg-primary)]"
-          >
-            open the session
+          <span title={`Who may answer this approval (ADR-0142): ${describeRule(item.rule)}`}>
+            answered by {describeRule(item.rule)}
+            {needsHierarchy(item.rule) && ' — resolved from the organisation hierarchy'}
+          </span>
+        </>
+      )}
+      {item.agent_id && (
+        <>
+          <span aria-hidden="true">·</span>
+          <span>{item.agent_id}</span>
+        </>
+      )}
+      <span aria-hidden="true">·</span>
+      <span>waiting {ago(item.since_ms)}</span>
+      {session && (
+        <>
+          <span aria-hidden="true">·</span>
+          <Link to="/tasks/$taskId" params={{ taskId: session }} className="hover:text-[var(--fg-primary)]">
+            open the task
           </Link>
         </>
       )}
@@ -209,19 +224,166 @@ function SessionLink({
   );
 }
 
-function ApprovalCard({
-  intervention,
-  sessionId,
-  onOpen,
-}: {
-  intervention: HITLIntervention;
-  sessionId: string | null;
-  onOpen: () => void;
-}) {
-  const tone = NATURE_TONE[intervention.nature];
-  const toneVar = tone === 'err' ? 'var(--status-err)' : 'var(--status-warn)';
-  const consequence = consequenceOf(intervention);
+function CardShell({ tone, children }: { tone: string; children: React.ReactNode }) {
+  return (
+    <div
+      className="flex flex-col gap-2.5 rounded-[var(--radius-xl)] p-[13px_14px] tint-wash tint-ring"
+      style={{ '--tint': tone } as React.CSSProperties}
+    >
+      {children}
+    </div>
+  );
+}
 
+/** Approve / deny with a mandatory reason. `extra` renders above the reason. */
+function DecisionControls({
+  id,
+  disabledReason,
+  approveBlocked,
+  denyUnavailable,
+  busy,
+  approveLabel = 'Approve',
+  denyLabel = 'Reject',
+  onDecide,
+  extra,
+}: {
+  id: string;
+  disabledReason?: string;
+  approveBlocked?: string;
+  denyUnavailable?: string;
+  busy: boolean;
+  approveLabel?: string;
+  denyLabel?: string;
+  onDecide: (approve: boolean, reason: string) => void;
+  extra?: React.ReactNode;
+}) {
+  const gate = useReasonGate();
+  const blocked = Boolean(disabledReason);
+  return (
+    <div className="flex flex-col gap-2">
+      {extra}
+      <ReasonField gate={gate} id={`reason-${id}`} disabled={blocked || busy} />
+      <div className="flex flex-wrap items-center gap-2">
+        <Button
+          size="sm"
+          disabled={blocked || busy || !gate.satisfied || Boolean(approveBlocked)}
+          onClick={() => onDecide(true, gate.reason.trim())}
+        >
+          {approveLabel}
+        </Button>
+        {!denyUnavailable && (
+          <Button
+            size="sm"
+            variant="secondary"
+            disabled={blocked || busy || !gate.satisfied}
+            onClick={() => onDecide(false, gate.reason.trim())}
+          >
+            {denyLabel}
+          </Button>
+        )}
+        {(disabledReason || approveBlocked || denyUnavailable) && (
+          <span className="text-[11.5px] text-[var(--fg-muted)]">
+            {disabledReason ?? approveBlocked ?? denyUnavailable}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+export function ProposalDecision({ item, disabledReason }: { item: InboxItem; disabledReason?: string }) {
+  const p = item.proposal!;
+  const [showDiff, setShowDiff] = useState(false);
+  const [lock, setLock] = useState(false);
+  const skills = useKernelQuery(['skills', 'full', true], () => ipc.listSkillsFull(true), { enabled: showDiff });
+  const current = skills.data?.find((s) => s.name === p.name)?.body ?? '';
+  const decide = useMutation(ipc.decideSkillProposal);
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      <ItemMeta item={item} />
+      <CardShell tone={item.approve_blocked ? 'var(--status-err)' : 'var(--status-warn)'}>
+        <div className="flex flex-wrap items-baseline gap-2">
+          <h2 className="text-[15px] font-medium">{item.title}</h2>
+          {p.base_version && (
+            <span className="font-mono text-[10.5px] text-[var(--fg-muted)]">
+              base {p.base_version} · current {p.current_version || '—'}
+            </span>
+          )}
+        </div>
+        {p.rationale && <p className="text-[12.5px] leading-[1.55] text-[var(--fg-secondary)]">{p.rationale}</p>}
+        <ScanVerdict verdict={p.scan_verdict} findings={p.scan_findings} />
+        {item.warning && <p className="text-[12px] text-[var(--status-warn)]">{item.warning}</p>}
+        <button
+          type="button"
+          aria-expanded={showDiff}
+          onClick={() => setShowDiff((v) => !v)}
+          className="w-fit text-[12px] text-[var(--accent-bg)] underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)]"
+        >
+          {showDiff ? 'Hide the change' : 'Review the change'}
+        </button>
+        {showDiff &&
+          (skills.isLoading ? (
+            <p className="text-[12px] text-[var(--fg-muted)]">Loading the current version…</p>
+          ) : (
+            <SkillDiff before={p.base_version ? current : ''} after={p.skill_md} />
+          ))}
+        {decide.error && <ErrorState reason={decide.error} />}
+        <DecisionControls
+          id={p.id}
+          busy={decide.isLoading}
+          disabledReason={disabledReason}
+          approveBlocked={item.approve_blocked}
+          onDecide={async (approve, reason) => {
+            const r = await decide.mutate({ proposal_id: p.id, approve, reason, lock_after_approve: lock });
+            if (r) refreshInbox();
+          }}
+          extra={
+            <label className="flex items-center gap-2 text-[12px] text-[var(--fg-secondary)]">
+              <input type="checkbox" checked={lock} onChange={(e) => setLock(e.target.checked)} />
+              Lock the skill against further agent edits after approving
+            </label>
+          }
+        />
+      </CardShell>
+    </div>
+  );
+}
+
+export function AccessRequestDecision({ item, disabledReason }: { item: InboxItem; disabledReason?: string }) {
+  const r = item.request!;
+  const grant = useMutation(ipc.grantSkill);
+  return (
+    <div className="flex flex-col gap-1.5">
+      <ItemMeta item={item} />
+      <CardShell tone="var(--status-warn)">
+        <h2 className="text-[15px] font-medium">
+          {r.agent_id} asks to use the skill {r.skill_name}
+        </h2>
+        {r.rationale && <p className="text-[12.5px] leading-[1.55] text-[var(--fg-secondary)]">{r.rationale}</p>}
+        <p className="text-[11.5px] text-[var(--fg-muted)]">
+          The live approval timed out at {formatUnixMs(r.requested_at_unix_ms)}
+          {r.run_id ? ` (run ${r.run_id})` : ''}. Granting lasts until revoked.
+        </p>
+        {grant.error && <ErrorState reason={grant.error} />}
+        <DecisionControls
+          id={r.id}
+          busy={grant.isLoading}
+          disabledReason={disabledReason}
+          denyUnavailable={item.deny_unavailable}
+          approveLabel="Grant"
+          onDecide={async (_approve, reason) => {
+            const ok = await grant.mutate({ agent_id: r.agent_id, skill_name: r.skill_name, reason });
+            if (ok) refreshInbox();
+          }}
+        />
+      </CardShell>
+    </div>
+  );
+}
+
+function MobileHitlCard({ item, onOpen }: { item: InboxItem; onOpen: () => void }) {
+  const tone = item.destructive ? 'var(--status-err)' : 'var(--status-warn)';
   return (
     <button
       type="button"
@@ -230,25 +392,58 @@ function ApprovalCard({
         'flex w-full flex-col gap-2 rounded-[var(--radius-xl)] p-[13px_14px] text-left',
         'tint-wash tint-ring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)]',
       )}
-      style={{ '--tint': toneVar } as React.CSSProperties}
+      style={{ '--tint': tone } as React.CSSProperties}
     >
       <div className="flex items-center justify-between gap-2">
-        <span
-          className="font-mono text-[10px] uppercase tracking-[0.1em]"
-          style={{ color: toneVar }}
-        >
-          {NATURE_LABEL[intervention.nature]}
+        <span className="font-mono text-[10px] uppercase tracking-[0.1em]" style={{ color: tone }}>
+          {KIND_LABEL[item.kind]}
         </span>
-        <span className="font-mono text-[10px] text-[var(--fg-muted)]">
-          {formatIdle(idleSeconds(intervention))}
-        </span>
+        <span className="font-mono text-[10px] text-[var(--fg-muted)]">{ago(item.since_ms)}</span>
       </div>
-      <p className="text-[15px] leading-[1.4] text-[var(--fg-primary)]">
-        {consequence.sentence}
-      </p>
-      <span className="font-mono text-[10.5px] text-[var(--fg-muted)]">
-        {sessionId ? `session ${sessionId.slice(0, 8)}` : `plan ${intervention.plan_id.slice(0, 8)}`}
-      </span>
+      <p className="text-[15px] leading-[1.4] text-[var(--fg-primary)]">{item.title}</p>
+      <span className="font-mono text-[10.5px] text-[var(--fg-muted)]">{item.agent_id}</span>
     </button>
+  );
+}
+
+/**
+ * ADR-0142: my standing approvals — "approve once, pre-approved until revoked
+ * or expired". Listed and revocable here; every revoke is audited by the kernel.
+ */
+export function StandingApprovals() {
+  const list = useKernelQuery(['inbox', 'standing-approvals'], () => ipc.listStandingApprovals(false));
+  const revoke = useMutation(ipc.revokeStandingApproval);
+  const rows = list.data ?? [];
+  if (list.error || rows.length === 0) return null;
+  return (
+    <section aria-labelledby="standing-h" className="max-w-[860px] px-[26px] pb-[22px]">
+      <h2 id="standing-h" className="mb-2 text-[13px] font-medium">
+        Standing approvals
+      </h2>
+      {revoke.error && <ErrorState reason={revoke.error} />}
+      <ul className="flex flex-col gap-1.5">
+        {rows.map((s) => (
+          <li key={s.id} className="flex flex-wrap items-center gap-2 text-[12px]">
+            <span className="font-mono">{s.action_class}</span>
+            <span className="text-[var(--fg-secondary)]">{s.resource}</span>
+            <span className="text-[var(--fg-muted)]">
+              granted by {s.granted_by} · used {s.use_count}× ·{' '}
+              {s.expires_at_unix_ms ? `until ${formatUnixMs(s.expires_at_unix_ms)}` : 'until revoked'}
+            </span>
+            <Button
+              size="sm"
+              variant="secondary"
+              disabled={revoke.isLoading}
+              onClick={async () => {
+                await revoke.mutate(s.id, 'revoked from the inbox');
+                refreshInbox();
+              }}
+            >
+              Revoke
+            </Button>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }

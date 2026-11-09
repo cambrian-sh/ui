@@ -1,0 +1,525 @@
+syntax = "proto3";
+
+package cambrian.premium.accounts;
+
+option go_package = "github.com/cambrian-sh/cambrian-premium/api/proto/accounts;accountspb";
+
+// AccountsAdmin is the PREMIUM account plane (ADR-0141), mounted on the kernel
+// gRPC server through the OSS app.Registry.AddGRPCService seam (ADR-0073),
+// behind the same operator auth interceptors, connection and token as
+// OperatorConsole (ADR-0088). Capability: "accounts".
+//
+// An ACCOUNT is an outbound credential to an external system, owned by a
+// principal (phase 1: personal accounts for per_user / either MCP servers,
+// connected by OAuth sign-in hosted by the kernel — ADR-0140's flow, kept).
+// It replaces the six ADR-0140 RPCs that were briefly on OperatorConsole and
+// never released.
+//
+// Self-service (any authenticated role, the CALLER's own principal only — no
+// request field names a principal): StartAccountConnect, GetAccountConnectFlow,
+// ListMyAccounts, DisconnectMyAccount. Operator (Operator role): ListAccounts
+// across principals, RevokeAccount for any principal. Mutations take
+// command_id (+ reason for revoke), are deduped and audited on the operator
+// audit store. No message here carries a token.
+service AccountsAdmin {
+  // StartAccountConnect returns a kernel start_url; the console opens it in
+  // the system browser, the person signs in at the provider, and the kernel's
+  // callback stores the account for the caller. Poll GetAccountConnectFlow
+  // (or ListMyAccounts) for the end.
+  rpc StartAccountConnect(StartAccountConnectRequest) returns (StartAccountConnectResponse);
+  rpc GetAccountConnectFlow(GetAccountConnectFlowRequest) returns (GetAccountConnectFlowResponse);
+  rpc ListMyAccounts(ListMyAccountsRequest) returns (ListAccountsResponse);
+  // DisconnectMyAccount deletes the caller's account for one server (and
+  // revokes it upstream where the provider allows).
+  rpc DisconnectMyAccount(DisconnectMyAccountRequest) returns (AccountMutationResponse);
+  rpc ListAccounts(ListAccountsRequest) returns (ListAccountsResponse);
+  rpc RevokeAccount(RevokeAccountRequest) returns (AccountMutationResponse);
+
+  // -- Phase 2 (ADR-0141 owner position 4: phishing defence) -- self-service.
+  // ConfirmMyAccount makes the caller's PENDING personal account live. A
+  // sign-in whose principal has no known external identity is stored as
+  // status "pending_confirmation" (unusable) until the person confirms the
+  // account identity the console showed them; `account` must equal it, so a
+  // swapped account cannot be confirmed blind. Reject = DisconnectMyAccount.
+  rpc ConfirmMyAccount(ConfirmMyAccountRequest) returns (AccountMutationResponse);
+
+  // -- Phase 2: ORG accounts (owner = the organisation) -- Operator.
+  // An org account is an outbound credential the organisation holds (a
+  // pasted static key or bot token). Consumers (MCP servers, ingresses) bind
+  // to it by reference through grants; none holds a copy. The secret is
+  // write-only: no read returns it (only its last four characters).
+  rpc ListOrgAccounts(ListOrgAccountsRequest) returns (ListOrgAccountsResponse);
+  rpc CreateOrgAccount(CreateOrgAccountRequest) returns (OrgAccountMutationResponse);
+  rpc UpdateOrgAccount(UpdateOrgAccountRequest) returns (OrgAccountMutationResponse);
+  rpc RotateOrgAccount(RotateOrgAccountRequest) returns (OrgAccountMutationResponse);
+  // RevokeOrgAccount drops the secret material and marks the account
+  // "revoked"; every bound consumer fails closed on its next use
+  // (account_revoked). Grants are kept so the console can show what broke.
+  rpc RevokeOrgAccount(RevokeOrgAccountRequest) returns (OrgAccountMutationResponse);
+  rpc BindOrgAccount(BindOrgAccountRequest) returns (OrgAccountMutationResponse);
+  rpc UnbindOrgAccount(UnbindOrgAccountRequest) returns (OrgAccountMutationResponse);
+
+  // -- Phase 2: provider OAuth clients -- Operator. The one writer of
+  // oauth:<provider>:client_id / client_secret. The secret is write-only;
+  // reads return configured / last four / updated-at only.
+  rpc ListProviderClients(ListProviderClientsRequest) returns (ListProviderClientsResponse);
+  rpc SetProviderClient(SetProviderClientRequest) returns (ProviderClientMutationResponse);
+  rpc ClearProviderClient(ClearProviderClientRequest) returns (ProviderClientMutationResponse);
+
+  // -- Org OAuth install (ADR-0141 D1) -- Operator. Starts an organisation
+  // install: the provider's org_install (providers table, data) - Slack's
+  // OAuth v2 bot install, Microsoft's tenant admin consent. Same kernel
+  // start_url / single-use / browser-binding cookie / state (+ PKCE where the
+  // install returns a code) as StartAccountConnect, but the tokens become an
+  // ORG account (<provider>:org:<team|tenant>), refreshed automatically.
+  // Least privilege: it requests exactly the union of the scopes its
+  // consumers declare (the consumers given here, plus those already bound to
+  // account_id when widening it - incremental consent). Follow it with
+  // GetAccountConnectFlow (mode "org", account_id once completed).
+  rpc StartOrgAccountInstall(StartOrgAccountInstallRequest) returns (StartAccountConnectResponse);
+
+  // -- System catalog (ADR-0141 D5/D9) -- the premium catalog of external
+  // systems (data: accounts/systems.json + CAMBRIAN_ACCOUNTS_SYSTEMS_FILE),
+  // each with its installed MCP servers, accounts, consumers and health.
+  // Any role: a non-Operator gets the catalog, the servers and their OWN
+  // personal accounts' consumers only (operator_view false).
+  rpc ListSystems(ListSystemsRequest) returns (ListSystemsResponse);
+  // ListAccountConsumers lists every consumer (MCP server, ingress) bound to
+  // one account - what breaks if it is revoked - with whether the account's
+  // granted scopes cover what each declares. Operator.
+  rpc ListAccountConsumers(ListAccountConsumersRequest) returns (ListAccountConsumersResponse);
+
+  // ListMyAttention lists the consumers stopped by an unusable account that
+  // the CALLER must act on (ADR-0141 D3): an ingress paused because its
+  // account was revoked, needs reconnecting, awaits confirmation or is
+  // missing. A person sees the items of consumers they own (personal ingest:
+  // "reconnect your Google account to keep ingesting"); an Operator also sees
+  // the organisation's. Any authenticated role (a read). Each item resolves
+  // itself when the account works again; there is nothing to dismiss.
+  rpc ListMyAttention(ListMyAttentionRequest) returns (ListMyAttentionResponse);
+  // PurgeLegacyCredentials deletes, NOW, the consumer-named copies of
+  // credentials the boot migration moved into org accounts (mcp:<id>:token,
+  // mcp:<id>:env:<NAME>, outbound ingress:<id>:<name>) instead of waiting for
+  // the next release's boot cleanup (ADR-0141 D11). Only copies whose org
+  // account still exists and resolves are deleted; a binary rollback to the
+  // previous release then no longer finds them. Operator; command_id + reason
+  // (audited per deleted name, never a value).
+  rpc PurgeLegacyCredentials(PurgeLegacyCredentialsRequest) returns (PurgeLegacyCredentialsResponse);
+}
+
+message StartAccountConnectRequest {
+  // server_id is the consumer the account is for (an MCP server id).
+  string server_id = 1;
+}
+
+message StartAccountConnectResponse {
+  string flow_id = 1;
+  // start_url is a KERNEL URL (<public base url>/oauth/start?flow=…), single
+  // use: opening it binds the sign-in to that browser and redirects to the
+  // provider. Open it in the system browser, not a webview.
+  string start_url = 2;
+  int64 expires_at_unix_ms = 3;
+  string provider = 4;
+  repeated string scopes = 5;   // exactly what will be requested
+}
+
+message GetAccountConnectFlowRequest {
+  string flow_id = 1;
+}
+
+message GetAccountConnectFlowResponse {
+  // status: "pending" (not opened), "started" (at the provider),
+  // "completed", "failed" or "expired". A flow of another principal reads
+  // as NOT_FOUND, like an unknown one.
+  string status = 1;
+  string detail = 2;            // why it failed; never secret material
+  string server_id = 3;
+  string account = 4;           // the connected account, when completed
+  int64 expires_at_unix_ms = 5;
+  // mode: "" (personal sign-in) or "org" (StartOrgAccountInstall).
+  string mode = 6;
+  // account_id: for an org install, the org account being widened, or the
+  // one the install produced once completed.
+  string account_id = 7;
+}
+
+message ListMyAccountsRequest {}
+
+message ListAccountsRequest {
+  string server_id = 1;         // "" = all
+  string principal_id = 2;      // "" = all
+}
+
+// Account is one principal's account for one server. Metadata only: there is
+// no token field.
+message Account {
+  string server_id = 1;
+  string principal_id = 2;
+  string provider = 3;
+  string account = 4;           // the provider account (email, login or id)
+  repeated string scopes = 5;   // granted
+  // status: "connected", "reconnect_needed" (the grant can no longer be
+  // refreshed; the person must sign in again — status_detail says why), or
+  // "pending_confirmation" (stored but unusable until ConfirmMyAccount: the
+  // principal has no known external identity to match the account against).
+  string status = 6;
+  string status_detail = 7;
+  int64 connected_at_unix_ms = 8;
+  int64 last_used_unix_ms = 9;
+  int64 last_refreshed_unix_ms = 10;
+  int64 expires_at_unix_ms = 11; // access-token expiry; 0 = none declared
+  // account_id is the account's deterministic id
+  // (<provider>:<principal>:<server>), phase 2.
+  string account_id = 12;
+  // account_subject is the provider's stable subject id for the account,
+  // when it reported one ("" otherwise).
+  string account_subject = 13;
+  // missing_scopes: scopes the server declares that this account was not
+  // granted. Non-empty: calls fail closed with "needs more permission"
+  // until the person reconnects and approves them (incremental consent).
+  repeated string missing_scopes = 14;
+}
+
+message ListAccountsResponse {
+  repeated Account accounts = 1;
+  // personal_servers lists installed servers whose credential scope is
+  // per_user or either, so the console can offer "Connect" for those not yet
+  // connected.
+  repeated PersonalServer personal_servers = 2;
+  // redirect_uri is what an operator registers with each provider.
+  string redirect_uri = 3;
+}
+
+message PersonalServer {
+  string server_id = 1;
+  string display_name = 2;
+  string provider = 3;
+  string credential_scope = 4;  // "per_user" | "either"
+  repeated string scopes = 5;
+  // provider_configured is false until an operator stores the provider's
+  // OAuth client (secrets oauth:<provider>:client_id / client_secret).
+  bool provider_configured = 6;
+  // missing_scopes: what the caller's connected account for this server
+  // lacks (ListMyAccounts only); empty when covered or not connected.
+  repeated string missing_scopes = 7;
+}
+
+message DisconnectMyAccountRequest {
+  string command_id = 1;
+  string reason = 2;            // optional for self-service; recorded when given
+  string server_id = 3;
+}
+
+message RevokeAccountRequest {
+  string command_id = 1;
+  string reason = 2;
+  string server_id = 3;
+  string principal_id = 4;
+}
+
+message AccountMutationResponse {
+  string command_id = 1;
+  bool deduped = 2;
+  bool removed = 3;             // false when there was nothing to remove
+}
+
+message ConfirmMyAccountRequest {
+  string command_id = 1;
+  string server_id = 2;
+  // account is the account identity the person was shown (email or login);
+  // it must equal the stored one.
+  string account = 3;
+}
+
+// AccountGrant binds one consumer to an account for one purpose.
+message AccountGrant {
+  // purpose: "mcp" (an MCP server's shared credential) or "ingress" (an
+  // ingress's outbound credential).
+  string purpose = 1;
+  // consumer_id is the MCP server id or the ingress id.
+  string consumer_id = 2;
+  // slot names which credential of the consumer: "token" (an http/sse MCP
+  // bearer), "env:<NAME>" (an MCP stdio secret_env variable), or an ingress
+  // credential binding name.
+  string slot = 3;
+  // scopes the consumer DECLARES it needs for this purpose (in addition to
+  // what an MCP server's own credential model declares).
+  repeated string scopes = 4;
+  int64 granted_at_unix_ms = 5;
+  // Read-only, computed on read (grant scope enforcement): what the
+  // account's granted scopes do not cover, and the verdict - "ok",
+  // "needs_consent", "unverified" (a pasted key with no recorded scopes),
+  // "account_revoked" or "reconnect_needed".
+  repeated string missing_scopes = 6;
+  string scope_check = 7;
+}
+
+// OrgAccount is one organisation-owned account. Metadata only.
+message OrgAccount {
+  // id is deterministic: <provider>:org:<external_account>.
+  string id = 1;
+  string provider = 2;           // "static_token", "api_key", or an OAuth provider id
+  string external_account = 3;   // the account at the provider (workspace, login, label)
+  string display_name = 4;
+  // status: "connected" or "revoked".
+  string status = 5;
+  string status_detail = 6;
+  int64 created_at_unix_ms = 7;
+  int64 updated_at_unix_ms = 8;
+  int64 rotated_at_unix_ms = 9;
+  int64 last_used_unix_ms = 10;
+  string secret_last_four = 11;  // "" when revoked
+  repeated AccountGrant grants = 12;
+  // origin: "operator", or "migrated:<legacy secret name>" for an account the
+  // boot migration created from a per-consumer secret.
+  string origin = 13;
+  // scopes the account was GRANTED (an install: what the provider reported;
+  // a pasted key: what the operator recorded, else empty).
+  repeated string scopes = 14;
+  // auth_kind: "" (a pasted secret), "oauth_install" or "client_credentials".
+  string auth_kind = 15;
+  int64 expires_at_unix_ms = 16; // access-token expiry of an install; 0 = none
+  // scopes_known: false for a pasted key with no recorded scopes - its
+  // consumers are not scope-checked (scope_check "unverified").
+  bool scopes_known = 17;
+}
+
+message ListOrgAccountsRequest {
+  string provider = 1;           // "" = all
+  string consumer_id = 2;        // "" = all; else only accounts granted to it
+}
+
+message ListOrgAccountsResponse {
+  repeated OrgAccount accounts = 1;
+}
+
+message CreateOrgAccountRequest {
+  string command_id = 1;
+  string reason = 2;
+  string provider = 3;
+  string external_account = 4;
+  string display_name = 5;
+  string secret = 6;             // write-only
+  repeated AccountGrant grants = 7; // optional initial bindings
+  // scopes the pasted key is known to carry (optional). Recorded scopes are
+  // enforced against every consumer's declared scopes.
+  repeated string scopes = 8;
+}
+
+message UpdateOrgAccountRequest {
+  string command_id = 1;
+  string reason = 2;
+  string account_id = 3;
+  string display_name = 4;
+}
+
+message RotateOrgAccountRequest {
+  string command_id = 1;
+  string reason = 2;
+  string account_id = 3;
+  string secret = 4;             // write-only; also re-activates a revoked account
+}
+
+message RevokeOrgAccountRequest {
+  string command_id = 1;
+  string reason = 2;
+  string account_id = 3;
+}
+
+message BindOrgAccountRequest {
+  string command_id = 1;
+  string reason = 2;
+  string account_id = 3;
+  AccountGrant grant = 4;        // purpose + consumer_id + slot (+ scopes)
+}
+
+message UnbindOrgAccountRequest {
+  string command_id = 1;
+  string reason = 2;
+  string account_id = 3;
+  string purpose = 4;
+  string consumer_id = 5;
+  string slot = 6;
+}
+
+message OrgAccountMutationResponse {
+  string command_id = 1;
+  bool deduped = 2;
+  OrgAccount account = 3;        // the account after the change (metadata only)
+}
+
+// ProviderClient is one OAuth provider's client registration. No secret.
+message ProviderClient {
+  string provider = 1;
+  string display_name = 2;
+  bool client_id_configured = 3;
+  string client_id_last_four = 4;
+  bool client_secret_configured = 5;
+  int64 updated_at_unix_ms = 6;  // latest write of either half; 0 = unknown
+  bool public_client = 7;        // the provider takes no client secret (PKCE only)
+  bool configured = 8;           // usable for sign-in
+}
+
+message ListProviderClientsRequest {}
+
+message ListProviderClientsResponse {
+  repeated ProviderClient providers = 1;
+  // redirect_uri is what an operator registers with each provider.
+  string redirect_uri = 2;
+}
+
+message SetProviderClientRequest {
+  string command_id = 1;
+  string reason = 2;
+  string provider = 3;
+  string client_id = 4;
+  string client_secret = 5;      // write-only; "" keeps the stored secret
+}
+
+message ClearProviderClientRequest {
+  string command_id = 1;
+  string reason = 2;
+  string provider = 3;
+}
+
+message ProviderClientMutationResponse {
+  string command_id = 1;
+  bool deduped = 2;
+  ProviderClient provider = 3;
+}
+
+message ListMyAttentionRequest {}
+
+// AttentionItem is one consumer stopped by its account. It carries no
+// credential.
+message AttentionItem {
+  // id is <purpose>:<consumer_id>, stable while the item is open.
+  string id = 1;
+  // purpose is the consumer kind: "ingress".
+  string purpose = 2;
+  string consumer_id = 3;
+  string consumer_name = 4;
+  // slot is the consumer's credential slot (an ingress binding name).
+  string slot = 5;
+  // owner is the principal who must act; "" means the organisation
+  // (Operators).
+  string owner = 6;
+  // account is the consumer's account reference as authored: an org account
+  // id, "owner:<provider>", or "" (the org account bound to the slot).
+  string account = 7;
+  string provider = 8;
+  // reason: account_revoked | account_reconnect_needed |
+  // account_pending_confirmation | account_missing | account_not_permitted |
+  // account_insufficient_scope.
+  string reason = 9;
+  // title is addressed to the owner, ready to show.
+  string title = 10;
+  string detail = 11;
+  int64 since_unix_ms = 12;
+}
+
+message ListMyAttentionResponse {
+  repeated AttentionItem items = 1;
+}
+
+message PurgeLegacyCredentialsRequest {
+  string command_id = 1;
+  string reason = 2;
+}
+
+message PurgeLegacyCredentialsResponse {
+  string command_id = 1;
+  bool deduped = 2;
+  // Names only, never values.
+  repeated string deleted = 3;
+  // kept: not deleted because the org account is gone, revoked or does not
+  // resolve (the legacy copy may be the only one left).
+  repeated string kept = 4;
+  // absent: already gone.
+  repeated string absent = 5;
+  repeated string errors = 6;
+}
+
+// -- Org OAuth install + system catalog (ADR-0141) --------------------------
+
+message StartOrgAccountInstallRequest {
+  string provider = 1;
+  // account_id widens an existing installed org account (incremental
+  // consent); "" installs a new one.
+  string account_id = 2;
+  // consumers are bound to the account when the install completes; their
+  // declared scopes (AccountGrant.scopes + an MCP server's own) are what the
+  // install asks for. granted_at / missing_scopes / scope_check are ignored.
+  repeated AccountGrant consumers = 3;
+  string reason = 4;
+}
+
+// AccountConsumer is one consumer bound to an account.
+message AccountConsumer {
+  string kind = 1;               // "mcp" | "ingress"
+  string consumer_id = 2;        // MCP server id | ingress id
+  string display_name = 3;
+  string slot = 4;
+  string account_id = 5;
+  string principal_id = 6;       // a personal account's owner; "" for org
+  repeated string required_scopes = 7;
+  repeated string missing_scopes = 8;
+  // state: "ok", "needs_consent", "unverified", "account_revoked",
+  // "reconnect_needed", "pending_confirmation" or "not_connected".
+  string state = 9;
+  string detail = 10;            // why; never secret material
+}
+
+message ListAccountConsumersRequest {
+  string account_id = 1;         // org or personal account id
+}
+
+message ListAccountConsumersResponse {
+  string account_id = 1;
+  repeated AccountConsumer consumers = 2;
+}
+
+message ListSystemsRequest {}
+
+message SystemAccountSummary {
+  int32 org_accounts = 1;
+  int32 org_connected = 2;
+  int32 org_attention = 3;
+  int32 personal_connected = 4;
+  int32 personal_attention = 5;
+  int32 consumers = 6;
+  int32 consumers_needing_consent = 7;
+}
+
+// System is one external system (premium catalog data) with its live
+// membership.
+message System {
+  string id = 1;
+  string name = 2;
+  string provider = 3;           // "" for a system with no accounts
+  string icon = 4;               // an icon KEY, not a URL
+  string docs_url = 5;
+  // org_mode: "oauth_install", "admin_consent", "service_account_key",
+  // "static" or "" (no org account); personal_mode: "oauth_user" or "".
+  string org_mode = 6;
+  string personal_mode = 7;
+  repeated string account_providers = 8;
+  repeated string mcp_catalog_ids = 9;
+  repeated string ingress_templates = 10;
+  repeated string server_ids = 11;      // installed MCP servers in this system
+  repeated string org_account_ids = 12; // Operator view only
+  // consumers bound to this system's accounts (Operator: all; otherwise the
+  // caller's own personal accounts' consumers).
+  repeated AccountConsumer consumers = 13;
+  SystemAccountSummary summary = 14;
+  // health: "ok", "attention", "not_connected" (servers but no account) or
+  // "idle" (nothing installed).
+  string health = 15;
+  bool org_install_available = 16;      // Operator view only
+  string org_install_unavailable_reason = 17;
+}
+
+message ListSystemsResponse {
+  repeated System systems = 1;
+  bool operator_view = 2;
+}

@@ -29,6 +29,86 @@ pub(crate) fn ts_millis(ts: &Option<::prost_types::Timestamp>) -> i64 {
     }
 }
 
+/// Merge one WatchToolApprovals record into the pending HITL set.
+///
+/// Same id space as the feed's HITLRaisedOp and ResolveHITL. The stream adds
+/// what the feed does not carry — the tool, its argument preview and the kind —
+/// into `proposed_action`, where the inbox card reads them. If the stream wins
+/// the race against the feed the entry is inserted; the feed's later raise is
+/// then a no-op (de-dup by id).
+pub(crate) fn merge_approval(s: &mut StateOfRecord, a: &pb::ApprovalOp) {
+    let mut action = HashMap::new();
+    action.insert("tool_name".to_string(), serde_json::Value::String(a.tool_name.clone()));
+    if !a.args_preview.is_empty() {
+        action.insert("args_preview".to_string(), serde_json::Value::String(a.args_preview.clone()));
+    }
+    // The kernel's "possible duplicate of an earlier call" notice; the inbox card
+    // renders it under the consequence (T-20261107-approver-is-not-told-that-an-identical-side).
+    if !a.duplicate_notice.is_empty() {
+        action.insert("duplicate_notice".to_string(), serde_json::Value::String(a.duplicate_notice.clone()));
+    }
+    // ADR-0142 D11: a resolved op (any state but pending) leaves the set; a
+    // stream predating the addressed hub never sends one (state is "").
+    if !a.state.is_empty() && a.state != "pending" {
+        if is_unrouted(&a.state) {
+            s.record_unrouted(UnroutedApproval {
+                intervention_id: a.id.clone(),
+                outcome: a.state.clone(),
+                kind: a.kind.clone(),
+                agent_id: a.agent_id.clone(),
+                session_id: a.session_id.clone(),
+                summary: a.tool_name.clone(),
+                rule: a.rule.clone(),
+                beneficiary: a.beneficiary.clone(),
+                detail: a.detail.clone(),
+                resolved_at: chrono::Utc::now().to_rfc3339(),
+            });
+        }
+        s.pending_hitl.retain(|h| h.intervention_id != a.id);
+        return;
+    }
+    let expires_at = if a.expires_at_unix_ms > 0 {
+        chrono::DateTime::from_timestamp_millis(a.expires_at_unix_ms)
+            .map(|d| d.to_rfc3339())
+            .unwrap_or_default()
+    } else {
+        String::new()
+    };
+    // A kernel without the addressed hub sends no rule: every streamed item was
+    // the operator's to answer, as before.
+    let answerable = a.rule.is_empty() || a.answerable;
+    if let Some(h) = s.pending_hitl.iter_mut().find(|h| h.intervention_id == a.id) {
+        h.proposed_action.extend(action);
+        if !a.kind.is_empty() {
+            h.kind = a.kind.clone();
+        }
+        if h.agent_id.is_empty() {
+            h.agent_id = a.agent_id.clone();
+        }
+        h.rule = a.rule.clone();
+        h.answerable = answerable;
+        h.beneficiary = a.beneficiary.clone();
+        h.allow_standing = a.allow_standing;
+        h.expires_at = expires_at;
+        return;
+    }
+    s.pending_hitl.push(HITLIntervention {
+        intervention_id: a.id.clone(),
+        agent_id: a.agent_id.clone(),
+        reason: a.tool_name.clone(),
+        nature: if a.is_destructive { "destructive_command".into() } else { "approval_request".into() },
+        proposed_action: action,
+        raised_at: chrono::Utc::now().to_rfc3339(),
+        kind: a.kind.clone(),
+        rule: a.rule.clone(),
+        answerable,
+        beneficiary: a.beneficiary.clone(),
+        allow_standing: a.allow_standing,
+        expires_at,
+        ..Default::default()
+    });
+}
+
 pub(crate) fn ts_iso(ts: &Option<::prost_types::Timestamp>) -> String {
     match ts {
         Some(t) => chrono::DateTime::from_timestamp(t.seconds, t.nanos as u32)
@@ -152,6 +232,10 @@ pub struct SessionSummary {
     pub plan_count: i32,
     pub agent_mix: Vec<String>,
     pub cost: f64,
+    /// SessionStateOp.parent_id: the session this one was spawned under (empty
+    /// for a root). Lets a sub-session nest under its parent instead of sitting
+    /// beside it as an unrelated task.
+    pub parent_id: String,
 }
 
 impl Default for SessionSummary {
@@ -165,6 +249,7 @@ impl Default for SessionSummary {
             plan_count: 0,
             agent_mix: vec![],
             cost: 0.0,
+            parent_id: String::new(),
         }
     }
 }
@@ -227,6 +312,27 @@ pub struct HITLIntervention {
     pub intended_action: Option<HashMap<String, serde_json::Value>>,
     pub reason: String,
     pub raised_at: String,
+    /// The task session the raise was published under (`OperatorEvent.session_id`);
+    /// empty for a dangerous-tool approval, which the hub raises without one.
+    pub session_id: String,
+    /// "" = a tool / step approval; "skill_access" = an agent asking for a skill
+    /// outside its effective set. The feed's `HITLRaisedOp` has no kind field, so
+    /// it is derived from the hub's own convention: a skill-access request is
+    /// raised with description "skill:<name>" and is_destructive=false
+    /// (cambrian-core domain/approval_hub.go). The addressed hub (ADR-0142 D11)
+    /// adds machine_consent, choose_machine, account_confirm and publish.
+    pub kind: String,
+    /// ADR-0142 D11: who may answer, e.g. "self | operator", "role:compliance".
+    /// Empty from a kernel without capability "addressed-approvals".
+    pub rule: String,
+    /// The logged-in person satisfies the rule (WatchToolApprovals sets it).
+    pub answerable: bool,
+    /// The person the action is for ("user:alice"; "" = none).
+    pub beneficiary: String,
+    /// An approver may answer with a standing approval.
+    pub allow_standing: bool,
+    /// RFC 3339 expiry of the approval window ("" = unknown).
+    pub expires_at: String,
 }
 
 impl Default for HITLIntervention {
@@ -241,6 +347,13 @@ impl Default for HITLIntervention {
             intended_action: None,
             reason: String::new(),
             raised_at: String::new(),
+            session_id: String::new(),
+            kind: String::new(),
+            rule: String::new(),
+            answerable: true,
+            beneficiary: String::new(),
+            allow_standing: false,
+            expires_at: String::new(),
         }
     }
 }
@@ -720,10 +833,143 @@ pub struct PluginPanel {
 
 /// The full projection pushed to the webview. Struct fields MUST match
 /// `src/ipc/types.ts` `StateOfRecord` exactly.
+/// An approval resolved as `needs_hierarchy` or `unroutable` (ADR-0142 D11).
+#[derive(Clone, Serialize, Default, Debug, PartialEq)]
+pub struct UnroutedApproval {
+    pub intervention_id: String,
+    pub outcome: String,
+    pub kind: String,
+    pub agent_id: String,
+    pub session_id: String,
+    /// What it asked for (tool name / description), when the console saw it raised.
+    pub summary: String,
+    pub rule: String,
+    pub beneficiary: String,
+    pub detail: String,
+    pub resolved_at: String,
+}
+
+pub(crate) const UNROUTED_MAX: usize = 50;
+
+/// True for the terminal states in which nobody answered because nobody could.
+pub(crate) fn is_unrouted(outcome: &str) -> bool {
+    outcome == "needs_hierarchy" || outcome == "unroutable"
+}
+
+impl StateOfRecord {
+    /// Record an unrouted resolution, taking what the pending card knew.
+    pub(crate) fn record_unrouted(&mut self, mut u: UnroutedApproval) {
+        if let Some(h) = self.pending_hitl.iter().find(|h| h.intervention_id == u.intervention_id) {
+            if u.summary.is_empty() {
+                u.summary = h.reason.clone();
+            }
+            if u.rule.is_empty() {
+                u.rule = h.rule.clone();
+            }
+            if u.beneficiary.is_empty() {
+                u.beneficiary = h.beneficiary.clone();
+            }
+            if u.kind.is_empty() {
+                u.kind = h.kind.clone();
+            }
+            if u.session_id.is_empty() {
+                u.session_id = h.session_id.clone();
+            }
+        }
+        // The feed's HITLResolvedOp and the approvals stream both report the same
+        // resolution; the second must not erase what the first knew.
+        if let Some(prev) = self.unrouted_approvals.iter().find(|x| x.intervention_id == u.intervention_id) {
+            for (mine, theirs) in [
+                (&mut u.summary, &prev.summary),
+                (&mut u.rule, &prev.rule),
+                (&mut u.beneficiary, &prev.beneficiary),
+                (&mut u.kind, &prev.kind),
+                (&mut u.detail, &prev.detail),
+                (&mut u.session_id, &prev.session_id),
+                (&mut u.agent_id, &prev.agent_id),
+            ] {
+                if mine.is_empty() {
+                    *mine = theirs.clone();
+                }
+            }
+        }
+        self.unrouted_approvals.retain(|x| x.intervention_id != u.intervention_id);
+        self.unrouted_approvals.push(u);
+        if self.unrouted_approvals.len() > UNROUTED_MAX {
+            let drop = self.unrouted_approvals.len() - UNROUTED_MAX;
+            self.unrouted_approvals.drain(0..drop);
+        }
+    }
+}
+
+/// Who is signed in (ADR-0142 D1). Display data only — never a token.
+///
+/// `role_source` is honest about where the plane role came from: `kernel` when
+/// the kernel said so (LoginResponse), `probe` when the console inferred it
+/// from which RPCs the kernel lets this bearer call — the operator plane has no
+/// WhoAmI yet (T-20261106-operator-plane-has-no-whoami-an-oidc-signed-in).
+#[derive(Clone, Serialize, Default, Debug, PartialEq)]
+pub struct Identity {
+    /// "password" | "oidc"
+    pub method: String,
+    /// The registry person ("user:<id>") when the kernel reported it; "" otherwise.
+    pub principal: String,
+    /// What to call the person: the IdP's name claim, else username / email / sub.
+    pub display_name: String,
+    pub username: String,
+    pub email: String,
+    /// The OIDC subject and issuer (empty for a password session).
+    pub subject: String,
+    pub issuer: String,
+    /// The person's full role SET when the kernel reported it (password login).
+    pub roles: Vec<String>,
+    /// "kernel" | "probe"
+    pub role_source: String,
+    /// When the access token expires (OIDC; 0 for a password session). The Rust
+    /// core refreshes before this; the webview shows it, never the token.
+    pub expires_at_unix_ms: i64,
+}
+
+impl Identity {
+    pub fn from_password_login(username: &str, r: &pb::LoginResponse) -> Self {
+        Self {
+            method: "password".into(),
+            principal: r.principal.clone(),
+            display_name: username.to_string(),
+            username: username.to_string(),
+            roles: r.roles.clone(),
+            role_source: "kernel".into(),
+            ..Default::default()
+        }
+    }
+
+    pub fn from_oidc(s: &crate::oidc::OidcSession) -> Self {
+        let c = &s.claims;
+        let display = [&c.name, &c.preferred_username, &c.email, &c.sub]
+            .into_iter()
+            .find(|v| !v.is_empty())
+            .cloned()
+            .unwrap_or_default();
+        Self {
+            method: "oidc".into(),
+            display_name: display,
+            username: c.preferred_username.clone(),
+            email: c.email.clone(),
+            subject: c.sub.clone(),
+            issuer: s.issuer.clone(),
+            role_source: "probe".into(),
+            expires_at_unix_ms: s.tokens.expires_at * 1000,
+            ..Default::default()
+        }
+    }
+}
+
 #[derive(Clone, Serialize, Default)]
 pub struct StateOfRecord {
     pub connection: ConnectionState,
     pub role: Option<String>,
+    /// ADR-0142 D1: who is signed in, for display. None when signed out.
+    pub identity: Option<Identity>,
     pub kernel_version: String,
     pub contract_version: String,
     pub capabilities: Vec<String>,
@@ -738,6 +984,13 @@ pub struct StateOfRecord {
     pub sessions: Vec<SessionSummary>,
     pub audit_tail: Vec<AuditEntry>,
     pub pending_hitl: Vec<HITLIntervention>,
+    /// ADR-0142 D11: approvals that ended WITHOUT an answer because nobody could
+    /// be addressed — `needs_hierarchy` (a supervisor rule with no manager in
+    /// the hierarchy) and `unroutable` (no eligible approver is reachable).
+    /// Removing them from the pending set silently made a blocked action look
+    /// like nothing happened; the Inbox lists these with the reason. Bounded,
+    /// newest last; kept across a resync (no snapshot carries them).
+    pub unrouted_approvals: Vec<UnroutedApproval>,
     // UI-IMPL-21a: subsystem caches (projected from snapshots/events)
     pub agents: Vec<AgentSummary>,
     pub tools: Vec<ToolSummary>,
@@ -765,6 +1018,9 @@ pub struct StateOfRecord {
     /// lane so navigating away from chat and back mid-turn does not lose the
     /// indicator for a turn that is still running.
     pub conversation_progress: HashMap<String, ConversationProgress>,
+    /// Live MCP integration health by server id (OperatorEvent.integration_health,
+    /// capability "integrations"). Absolute state per server: the latest wins.
+    pub integration_health: HashMap<String, crate::integrations::IntegrationHealth>,
     /// Retention/compaction passes seen on the feed (`RetentionRunOp`, contract
     /// 0084, ADR-0102 A1), newest last.
     ///
@@ -1080,6 +1336,9 @@ impl StateOfRecord {
                     .find(|x| x.session_id == st.session_id)
                 {
                     existing.state = st.status.clone();
+                    if !st.parent_id.is_empty() {
+                        existing.parent_id = st.parent_id.clone();
+                    }
                     if !st.goal.is_empty() {
                         existing.title = st.goal.clone();
                     }
@@ -1096,9 +1355,14 @@ impl StateOfRecord {
                         state: st.status.clone(),
                         created_at: created,
                         last_activity_at: updated,
+                        parent_id: st.parent_id.clone(),
                         ..Default::default()
                     });
                 }
+            }
+            Payload::IntegrationHealth(h) => {
+                self.integration_health
+                    .insert(h.server_id.clone(), crate::integrations::health(h.clone()));
             }
             Payload::SessionDormant(s) => {
                 self.set_session_state(&s.session_id, "dormant");
@@ -1110,6 +1374,7 @@ impl StateOfRecord {
                     .iter()
                     .any(|x| x.intervention_id == h.intervention_id)
                 {
+                    let skill_access = !h.is_destructive && h.description.starts_with("skill:");
                     self.pending_hitl.push(HITLIntervention {
                         intervention_id: h.intervention_id.clone(),
                         agent_id: h.agent_id.clone(),
@@ -1119,11 +1384,48 @@ impl StateOfRecord {
                         } else {
                             "approval_request".into()
                         },
+                        // The raise time is the event's own timestamp. It was left
+                        // empty, so every card said "waiting 0s" forever.
+                        raised_at: ts_iso(&ev.ts),
+                        session_id: if h.session_id.is_empty() {
+                            ev.session_id.clone()
+                        } else {
+                            h.session_id.clone()
+                        },
+                        kind: if skill_access { "skill_access".into() } else { String::new() },
                         ..Default::default()
                     });
                 }
             }
+            // ADR-0142 D11: every resolution (approved, denied, expired,
+            // withdrawn, needs_hierarchy, unroutable) leaves the pending set on
+            // every console — the dead-approval gap of
+            // T-20261106-withdrawn-or-timed-out-tool-approvals-publish.
+            Payload::HitlResolved(r) => {
+                if is_unrouted(&r.outcome) {
+                    self.record_unrouted(UnroutedApproval {
+                        intervention_id: r.intervention_id.clone(),
+                        outcome: r.outcome.clone(),
+                        kind: r.kind.clone(),
+                        agent_id: r.agent_id.clone(),
+                        session_id: r.session_id.clone(),
+                        detail: r.detail.clone(),
+                        resolved_at: ts_iso(&ev.ts),
+                        ..Default::default()
+                    });
+                }
+                self.pending_hitl
+                    .retain(|h| h.intervention_id != r.intervention_id);
+            }
             Payload::Audit(a) if !self.audit_tail.iter().any(|x| x.entry_id == a.id) => {
+                // A HITL resolved by ANY operator (or any console) leaves the
+                // pending set here. The feed has no "resolved" event of its own;
+                // the audit record of `resolve_hitl` is the only signal, and
+                // without this the pending set only ever shrank by this console's
+                // own optimistic removal, so the inbox badge drifted upward.
+                if a.action_type == "resolve_hitl" {
+                    self.pending_hitl.retain(|h| h.intervention_id != a.target_id);
+                }
                 self.audit_tail.push(AuditEntry {
                     entry_id: a.id.clone(),
                     actor_id: a.actor.clone(),
@@ -1674,6 +1976,220 @@ mod tests {
         s.fold(&plan_state(1, "p3", "completed", true, vec![]));
         s.fold(&plan_state(2, "p3", "completed", true, vec![]));
         assert_eq!(s.completed_plans.len(), 1);
+    }
+
+    fn ev(seq: u64, payload: pb::operator_event::Payload) -> pb::OperatorEvent {
+        pb::OperatorEvent {
+            seq,
+            ts: Some(::prost_types::Timestamp { seconds: 1_700_000_000, nanos: 0 }),
+            session_id: "task-1".into(),
+            payload: Some(payload),
+        }
+    }
+
+    fn hitl(seq: u64, id: &str, description: &str, destructive: bool) -> pb::OperatorEvent {
+        ev(
+            seq,
+            pb::operator_event::Payload::HitlRaised(pb::HitlRaisedOp {
+                intervention_id: id.into(),
+                session_id: String::new(),
+                agent_id: "agent-a".into(),
+                description: description.into(),
+                is_destructive: destructive,
+            }),
+        )
+    }
+
+    #[test]
+    fn a_hitl_resolved_anywhere_leaves_the_pending_set() {
+        let mut s = StateOfRecord::default();
+        s.fold(&hitl(1, "appr-1", "shell_exec", true));
+        s.fold(&hitl(2, "appr-2", "shell_exec", true));
+        assert_eq!(s.pending_hitl.len(), 2);
+        // Another operator resolved appr-1: only the audit record says so.
+        s.fold(&ev(
+            3,
+            pb::operator_event::Payload::Audit(pb::AuditOp {
+                id: "aud-1".into(),
+                action_type: "resolve_hitl".into(),
+                target_type: "intervention".into(),
+                target_id: "appr-1".into(),
+                ..Default::default()
+            }),
+        ));
+        assert_eq!(s.pending_hitl.len(), 1);
+        assert_eq!(s.pending_hitl[0].intervention_id, "appr-2");
+    }
+
+    #[test]
+    fn a_needs_hierarchy_resolution_is_kept_with_its_reason_not_dropped_silently() {
+        let mut s = StateOfRecord::default();
+        s.fold(&hitl(1, "appr-7", "send_payment", true));
+        merge_approval(&mut s, &pb::ApprovalOp {
+            id: "appr-7".into(),
+            tool_name: "send_payment".into(),
+            rule: "relationship:supervisor".into(),
+            beneficiary: "user:bob".into(),
+            state: "pending".into(),
+            ..Default::default()
+        });
+        s.fold(&ev(
+            2,
+            pb::operator_event::Payload::HitlResolved(pb::HitlResolvedOp {
+                intervention_id: "appr-7".into(),
+                outcome: "needs_hierarchy".into(),
+                detail: "no manager for user:bob".into(),
+                ..Default::default()
+            }),
+        ));
+        assert!(s.pending_hitl.is_empty());
+        assert_eq!(s.unrouted_approvals.len(), 1);
+        let u = &s.unrouted_approvals[0];
+        assert_eq!(u.outcome, "needs_hierarchy");
+        assert_eq!(u.rule, "relationship:supervisor", "taken from the pending card");
+        assert_eq!(u.beneficiary, "user:bob");
+        assert_eq!(u.summary, "send_payment");
+        assert_eq!(u.detail, "no manager for user:bob");
+
+        // An answered approval is NOT unrouted.
+        s.fold(&hitl(3, "appr-8", "shell_exec", true));
+        s.fold(&ev(
+            4,
+            pb::operator_event::Payload::HitlResolved(pb::HitlResolvedOp {
+                intervention_id: "appr-8".into(),
+                outcome: "approved".into(),
+                ..Default::default()
+            }),
+        ));
+        assert_eq!(s.unrouted_approvals.len(), 1);
+
+        // The stream's terminal state lands the same way, de-duplicated by id.
+        merge_approval(&mut s, &pb::ApprovalOp {
+            id: "appr-7".into(),
+            state: "needs_hierarchy".into(),
+            ..Default::default()
+        });
+        assert_eq!(s.unrouted_approvals.len(), 1);
+        assert_eq!(s.unrouted_approvals[0].rule, "relationship:supervisor", "kept across the duplicate");
+        merge_approval(&mut s, &pb::ApprovalOp { id: "appr-9".into(), state: "unroutable".into(), ..Default::default() });
+        assert_eq!(s.unrouted_approvals.len(), 2);
+        // Bounded.
+        for i in 0..(UNROUTED_MAX + 5) {
+            merge_approval(&mut s, &pb::ApprovalOp { id: format!("x-{i}"), state: "unroutable".into(), ..Default::default() });
+        }
+        assert_eq!(s.unrouted_approvals.len(), UNROUTED_MAX);
+    }
+
+    #[test]
+    fn a_skill_access_raise_is_tagged_and_carries_time_and_session() {
+        let mut s = StateOfRecord::default();
+        s.fold(&hitl(1, "appr-9", "skill:web-research", false));
+        let h = &s.pending_hitl[0];
+        assert_eq!(h.kind, "skill_access");
+        assert_eq!(h.session_id, "task-1");
+        assert!(!h.raised_at.is_empty());
+        // A non-destructive raise that is not a skill is not mislabelled.
+        s.fold(&hitl(2, "x:0", "delete the table", false));
+        assert_eq!(s.pending_hitl[1].kind, "");
+    }
+
+    #[test]
+    fn an_approval_stream_record_enriches_the_feed_raise() {
+        let mut s = StateOfRecord::default();
+        s.fold(&hitl(1, "appr-3", "shell_exec", true));
+        merge_approval(&mut s, &pb::ApprovalOp {
+            id: "appr-3".into(),
+            agent_id: "agent-a".into(),
+            tool_name: "shell_exec".into(),
+            args_preview: "rm -rf /tmp/x".into(),
+            is_destructive: true,
+            kind: String::new(),
+            ..Default::default()
+        });
+        assert_eq!(s.pending_hitl.len(), 1);
+        assert_eq!(
+            s.pending_hitl[0].proposed_action.get("args_preview").and_then(|v| v.as_str()),
+            Some("rm -rf /tmp/x")
+        );
+        // Stream first, feed second: still one entry.
+        merge_approval(&mut s, &pb::ApprovalOp {
+            id: "appr-4".into(),
+            tool_name: "skill:web".into(),
+            kind: "skill_access".into(),
+            ..Default::default()
+        });
+        s.fold(&hitl(2, "appr-4", "skill:web", false));
+        assert_eq!(s.pending_hitl.len(), 2);
+        assert_eq!(s.pending_hitl[1].kind, "skill_access");
+    }
+
+    // ADR-0142 D11: the addressed hub's fields land on the card, and a resolved
+    // op (or the feed's HITLResolvedOp) removes it.
+    #[test]
+    fn addressed_approval_carries_rule_and_leaves_on_resolution() {
+        let mut s = StateOfRecord::default();
+        merge_approval(&mut s, &pb::ApprovalOp {
+            id: "apr-1".into(),
+            tool_name: "local:laptop/write_file".into(),
+            kind: "machine_consent".into(),
+            rule: "self".into(),
+            answerable: false,
+            beneficiary: "user:bob".into(),
+            state: "pending".into(),
+            allow_standing: true,
+            ..Default::default()
+        });
+        assert_eq!(s.pending_hitl.len(), 1);
+        assert_eq!(s.pending_hitl[0].rule, "self");
+        assert!(!s.pending_hitl[0].answerable);
+        assert!(s.pending_hitl[0].allow_standing);
+        merge_approval(&mut s, &pb::ApprovalOp {
+            id: "apr-1".into(),
+            state: "expired".into(),
+            ..Default::default()
+        });
+        assert!(s.pending_hitl.is_empty());
+        merge_approval(&mut s, &pb::ApprovalOp { id: "apr-2".into(), tool_name: "t".into(), ..Default::default() });
+        assert!(s.pending_hitl[0].answerable, "a pre-hub kernel's items stay answerable");
+        s.fold(&pb::OperatorEvent {
+            seq: 9,
+            payload: Some(pb::operator_event::Payload::HitlResolved(pb::HitlResolvedOp {
+                intervention_id: "apr-2".into(),
+                outcome: "withdrawn".into(),
+                ..Default::default()
+            })),
+            ..Default::default()
+        });
+        assert!(s.pending_hitl.is_empty());
+    }
+
+    #[test]
+    fn integration_health_is_folded_latest_wins() {
+        let mut s = StateOfRecord::default();
+        let h = |state: &str| ev(1, pb::operator_event::Payload::IntegrationHealth(pb::IntegrationHealthOp {
+            server_id: "brave".into(),
+            state: state.into(),
+            ..Default::default()
+        }));
+        assert!(s.fold(&h("starting")));
+        s.fold(&h("ready"));
+        assert_eq!(s.integration_health.len(), 1);
+        assert_eq!(s.integration_health["brave"].state, "ready");
+    }
+
+    #[test]
+    fn session_state_keeps_the_parent_id() {
+        let mut s = StateOfRecord::default();
+        s.fold(&ev(
+            1,
+            pb::operator_event::Payload::SessionState(pb::SessionStateOp {
+                session_id: "child".into(),
+                status: "active".into(),
+                parent_id: "root".into(),
+                ..Default::default()
+            }),
+        ));
+        assert_eq!(s.sessions[0].parent_id, "root");
     }
 
     #[test]

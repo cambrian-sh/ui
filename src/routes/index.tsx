@@ -1,9 +1,11 @@
-import { createFileRoute } from '@tanstack/react-router';
-import { NowConsole } from '@/screens/now/NowConsole';
+import { createFileRoute, redirect } from '@tanstack/react-router';
 
-// `/` used to redirect to Sessions. Sessions answers "what am I working on",
-// which is narrower than the question the console is actually opened with —
-// "is anything wrong, and does anything need me". Now answers that one.
+// `/` lands in Chat: it is where an end user asks for work and watches it run,
+// and the old Now dashboard duplicated the Inbox and Tasks while reading spend
+// and breaker state the Rust fold never populates (deleted 2026-11-06, see
+// cambrian-knowledge/investigations/2026-11-06-operator-console-redesign.md).
 export const Route = createFileRoute('/')({
-  component: NowConsole,
+  beforeLoad: () => {
+    throw redirect({ to: '/chat' });
+  },
 });

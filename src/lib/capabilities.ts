@@ -69,7 +69,32 @@ const KNOWN: Record<string, Omit<CapabilitySurface, 'capability'>> = {
     surface: 'Runtime › Tools',
     consequence: 'granting and revoking tools',
   },
-  'skills-read': { surface: 'Runtime › Skills', consequence: 'the skill catalogue' },
+  'skills-read': { surface: 'Skills › Catalog', consequence: 'the skill catalogue' },
+  // ── ADR-0139 (contract 0101) ────────────────────────────────────────────
+  'skills-lifecycle': {
+    surface: 'Skills › Proposals, Ledger; Inbox',
+    consequence: 'agent-proposed skills, the skill ledger with rollback, and locks',
+    gatesSurface: true,
+  },
+  'skill-grants': {
+    surface: 'Skills › Grants; Inbox',
+    consequence: 'per-agent skill grants and timed-out skill-access requests',
+    gatesSurface: true,
+  },
+  'memory-notes': {
+    surface: 'Memory › Notes',
+    consequence: 'principal and org memory notes, with budgets',
+    gatesSurface: true,
+  },
+  'step-output-stream': {
+    surface: 'Chat, Tasks (live output)',
+    consequence: "each step's live output, by lease",
+  },
+  integrations: {
+    surface: 'Integrations',
+    consequence: 'the integration catalog: connect, credentials, health, test',
+    gatesSurface: true,
+  },
   'tool-exec': { surface: 'Runtime', consequence: 'operator-initiated tool execution' },
   'tool-approvals': { surface: 'Inbox', consequence: 'the HITL approval lane' },
 

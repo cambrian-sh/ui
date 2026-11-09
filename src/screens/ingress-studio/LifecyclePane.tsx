@@ -4,6 +4,7 @@ import { Checkbox } from '@/design-system/components/ui/checkbox';
 import { useMutation } from '@/lib/useMutation';
 import { ipc } from '@/ipc';
 import type { StudioAck, StudioStatus } from '@/ipc/types';
+import { AccountPicker } from './AccountPicker';
 
 /**
  * Revision inputs travel as i32 over the plane. Anything that does not parse
@@ -327,6 +328,8 @@ function CredentialList({
               <span className="text-[var(--status-warn)]">not configured — deliveries answer 503</span>
             )}
           </div>
+          {/* ADR-0141: an outbound credential may come from an org account instead (inbound secrets stay here). */}
+          <AccountPicker ingressId={ingressId} slot={c.name} readOnly={readOnly} />
           {!readOnly && (
             <div className="flex items-center gap-2">
               <Input

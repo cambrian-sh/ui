@@ -16,6 +16,7 @@ Read `../CONTEXT.md` for the project overview. Wire types are in
 | `build.rs` | `tonic-build` codegen — generates `OperatorConsole` client from `../proto/operator.proto`. |
 | `src/pb.rs` | `tonic::include_proto!("cambrian")` + `PINNED_CONTRACT_VERSION` (currently `0085`) + plugin skew table. |
 | `src/links.rs` | Identity plane review lane (contract 0098): candidates, confirm, retract. |
+| `src/accounts.rs` | Premium AccountsAdmin plane (ADR-0141, capability `accounts`): personal accounts (start/poll/list/disconnect/confirm), operator ListAccounts/RevokeAccount, org accounts + grants, provider OAuth clients. Metadata only; the sign-in `start_url` is opened in the system browser by `op_start_account_connect` (http/https only, `openable_url`) and never returned to the webview. |
 | `src/state.rs` | `StateOfRecord` — idempotent absolute-state fold (last-writer-wins by id). |
 | `src/transport.rs` | gRPC client + `AuthInterceptor` (bearer), login, feed loop (`run_feed`/`drain`/`backoff`). |
 | `src/lib.rs` | Tauri bridge: managed `Transport` state + `op_*` commands + `run()`. |

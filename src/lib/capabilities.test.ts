@@ -40,6 +40,12 @@ const KERNEL_ADVERTISES = [
   'memory-event-time',
   // conditional: contract 0100
   'upload-replace',
+  // conditional: contract 0101 (ADR-0139 + integrations), each when its store is wired
+  'skills-lifecycle',
+  'skill-grants',
+  'memory-notes',
+  'step-output-stream',
+  'integrations',
   // conditional
   'llm-exchange',
   'memory-answer',

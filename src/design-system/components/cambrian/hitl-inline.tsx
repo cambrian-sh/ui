@@ -5,7 +5,14 @@ import {
   useReasonGate,
 } from "@/design-system/components/cambrian/reason-field";
 import { cn } from "@/design-system/lib/utils";
-import { consequenceOf, formatIdle, idleSeconds, NATURE_LABEL, NATURE_TONE } from "@/lib/hitl";
+import {
+  consequenceOf,
+  duplicateNoticeOf,
+  formatIdle,
+  idleSeconds,
+  NATURE_LABEL,
+  NATURE_TONE,
+} from "@/lib/hitl";
 import type { HITLIntervention } from "@/ipc/types";
 
 export interface HITLInlineProps {
@@ -43,6 +50,7 @@ export function HITLInline({
   const [mode, setMode] = React.useState<"idle" | "approve" | "reject" | "edit">("idle");
 
   const consequence = consequenceOf(intervention);
+  const duplicate = duplicateNoticeOf(intervention);
   const tone = NATURE_TONE[intervention.nature];
   const toneVar = tone === "err" ? "var(--status-err)" : "var(--status-warn)";
   const idle = idleSeconds(intervention);
@@ -80,6 +88,17 @@ export function HITLInline({
         <p className="text-[13.5px] leading-[1.55] text-[var(--fg-primary)]">
           {consequence.sentence}
         </p>
+
+        {duplicate && (
+          <p
+            role="note"
+            aria-label="Possible duplicate"
+            className="rounded-md px-2.5 py-2 text-[12px] leading-[1.5] text-[var(--fg-primary)] tint-wash tint-ring"
+            style={{ "--tint": "var(--status-warn)" } as React.CSSProperties}
+          >
+            {duplicate}
+          </p>
+        )}
 
         {/* Never hidden, only folded. The operator must always be able to reach
             the exact thing they are approving. */}

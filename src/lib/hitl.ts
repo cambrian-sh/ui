@@ -57,6 +57,37 @@ export interface Consequence {
 export function consequenceOf(intervention: HITLIntervention): Consequence {
   const action = intervention.proposed_action ?? {};
 
+  // A skill-access request (decisions/skill-access-grants.md): approving GRANTS
+  // the skill to the agent durably, until revoked — say so, it is not one call.
+  if (intervention.kind === 'skill_access') {
+    const raw = asString(action.tool_name) ?? intervention.reason;
+    const skill = raw.startsWith('skill:') ? raw.slice(6) : raw;
+    const who = intervention.agent_id || 'An agent';
+    return {
+      sentence: `${who} asks to use the skill ${skill}. Approving grants it to that agent until revoked.`,
+      derived: true,
+    };
+  }
+
+  // A recurring-task proposal (kind "schedule"): approving CREATES a schedule that
+  // runs unattended as the person named in the preview — say so.
+  if (intervention.kind === 'schedule') {
+    const preview = asString(action.args_preview) ?? intervention.reason;
+    const who = intervention.agent_id || 'An assistant';
+    return {
+      sentence: `${who} proposes a recurring task ${preview}. Approving creates it; it then runs unattended as that person until paused or deleted.`,
+      derived: true,
+    };
+  }
+
+  // A dangerous-tool approval enriched by WatchToolApprovals: the call itself.
+  const preview = asString(action.args_preview);
+  const toolName = asString(action.tool_name);
+  if (preview && toolName) {
+    const who = intervention.agent_id || 'An agent';
+    return { sentence: `${who} wants to run ${toolName} with ${preview}`, derived: true };
+  }
+
   const tool = pick(action, ['tool', 'tool_name', 'name', 'command']);
   const target = pick(action, ['path', 'file', 'target', 'url', 'resource', 'table']);
   const operation = pick(action, ['operation', 'op', 'verb', 'method', 'action']);
@@ -88,6 +119,19 @@ export function consequenceOf(intervention: HITLIntervention): Consequence {
     sentence: intervention.reason || 'This step is waiting for your decision.',
     derived: false,
   };
+}
+
+/**
+ * The kernel's "possible duplicate" notice for a side-effecting call, or null.
+ *
+ * Set when an earlier call of the same conversation matches this one (identical
+ * arguments, or the same recipient/target and subject), in the kernel's words:
+ * "Possible duplicate of create_issue (approval apr-…) — done at … UTC, ids: …".
+ * A hint for the approver, never a refusal: the same reminder may be sent twice
+ * on purpose. T-20261107-approver-is-not-told-that-an-identical-side.
+ */
+export function duplicateNoticeOf(intervention: HITLIntervention): string | null {
+  return asString(intervention.proposed_action?.duplicate_notice);
 }
 
 /** How long this has been blocked, in seconds. Idle time is the cost of waiting. */

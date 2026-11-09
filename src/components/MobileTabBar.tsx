@@ -1,8 +1,10 @@
 import { Link, useRouterState } from '@tanstack/react-router';
-import { Activity, Inbox, LayoutGrid, MessagesSquare, Search } from 'lucide-react';
+import { Database, Inbox, LayoutGrid, MessagesSquare, Network } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { cn } from '@/design-system/lib/utils';
 import { badgeCount } from '@/lib/format';
+import { routeAllowedForRole } from '@/lib/roleGate';
+import type { Role } from '@/ipc/types';
 
 interface Tab {
   path: string;
@@ -13,21 +15,18 @@ interface Tab {
 }
 
 const TABS: readonly Tab[] = [
-  { path: '/', label: 'Now', icon: Activity },
+  { path: '/chat', label: 'Chat', icon: MessagesSquare },
   { path: '/inbox', label: 'Inbox', icon: Inbox },
-  { path: '/tasks', label: 'Tasks', icon: MessagesSquare, matches: ['/chat'] },
-  { path: '/memory', label: 'Ask', icon: Search },
-  {
-    path: '/agents',
-    label: 'Runtime',
-    icon: LayoutGrid,
-    matches: ['/tools', '/mcp', '/watch', '/verifier', '/lifecycle'],
-  },
+  { path: '/tasks', label: 'Tasks', icon: Network },
+  { path: '/memory', label: 'Memory', icon: Database },
+  { path: '/agents', label: 'Runtime', icon: LayoutGrid, matches: ['/tools', '/mcp', '/watch', '/skills'] },
 ];
 
 export interface MobileTabBarProps {
-  /** `pending_hitl.length` — the same count the desktop header shows. */
+  /** Every pending decision (useInbox) — the same count the rail shows. */
   needsYouCount: number;
+  /** ADR-0142: a member sees only the tabs their role can reach. */
+  role?: Role | null;
 }
 
 /**
@@ -38,16 +37,13 @@ export interface MobileTabBarProps {
  * approve something irreversible, and an unlabelled icon row is where mis-taps
  * come from.
  */
-export function MobileTabBar({ needsYouCount }: MobileTabBarProps) {
+export function MobileTabBar({ needsYouCount, role = null }: MobileTabBarProps) {
   const routerState = useRouterState();
   const path = routerState.location.pathname;
   const count = badgeCount(needsYouCount);
 
   const isActive = (tab: Tab) =>
-    tab.path === '/'
-      ? path === '/'
-      : path.startsWith(tab.path) ||
-        (tab.matches?.some((m) => path.startsWith(m)) ?? false);
+    path.startsWith(tab.path) || (tab.matches?.some((m) => path.startsWith(m)) ?? false);
 
   return (
     <nav
@@ -55,7 +51,7 @@ export function MobileTabBar({ needsYouCount }: MobileTabBarProps) {
       className="flex flex-none items-stretch bg-[color-mix(in_srgb,var(--bg-surface)_94%,transparent)] shadow-[inset_0_1px_0_var(--border-subtle)] backdrop-blur"
       style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
     >
-      {TABS.map((tab) => {
+      {TABS.filter((tab) => routeAllowedForRole(tab.path, role)).map((tab) => {
         const active = isActive(tab);
         const Icon = tab.icon;
         return (

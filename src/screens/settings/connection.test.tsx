@@ -195,6 +195,7 @@ describe('ConnectionSettings', () => {
     vi.mocked(ipc.savedConnection).mockResolvedValue({
       endpoint: 'http://saved:50051',
       username: 'ops',
+      method: 'password',
     });
     projectionStore.getState().hydrate(disconnectedState());
     render(<ConnectionSettings />);

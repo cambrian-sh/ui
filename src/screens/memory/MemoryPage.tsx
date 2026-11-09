@@ -9,20 +9,9 @@ import { useVocabulary } from '@/screens/scope/useVocabulary';
 import { cn } from '@/design-system/lib/utils';
 import { useBreakpoint } from '@/lib/useBreakpoint';
 import { MobileCapture } from './MobileCapture';
+import { NotesPane } from './NotesPane';
 
 type LeftTab = 'ingest' | 'inspect';
-
-const CONNECTION_LABEL: Record<string, string> = {
-  live: 'live',
-  reconnecting: 'reconnecting',
-  down: 'down',
-};
-
-const CONNECTION_CLASS: Record<string, string> = {
-  live: 'text-[var(--status-ok)]',
-  reconnecting: 'text-[var(--status-warn)]',
-  down: 'text-[var(--status-err)]',
-};
 
 export function MemoryPage() {
   const projection = useStore(projectionStore);
@@ -32,6 +21,8 @@ export function MemoryPage() {
   // On a phone the two-pane console does not fit and does not make sense: Ask is
   // what the tab bar points at, and Capture is a separate, much smaller job.
   const [mobileTab, setMobileTab] = useState<'ask' | 'capture'>('ask');
+  // ADR-0139 D14: principal memory notes, a second section beside documents.
+  const [section, setSection] = useState<'documents' | 'notes'>('documents');
 
   const memoryWritten = state?.memory_written ?? [];
   const { rows, enqueue, enqueueFile } = useIngestQueue(memoryWritten);
@@ -61,23 +52,43 @@ export function MemoryPage() {
   // the corpus. Absent the plugin this reports "not configured" and the picker
   // correctly falls back to free entry.
   const vocabulary = useVocabulary(capabilities.includes('access-policy'));
+  const hasNotes = capabilities.includes('memory-notes');
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <header className="flex items-center justify-between border-b border-[var(--border-subtle)] px-3 py-2">
+      {/* The connection and kernel version used to be repeated here; the app
+          header already carries both, so this header carries only what is
+          specific to Memory. */}
+      <header className="flex items-center gap-3 border-b border-[var(--border-subtle)] px-3 py-2">
         <h1 className="text-sm font-semibold tracking-tight">Memory</h1>
-        <div className="flex items-center gap-2 font-mono text-[10px] text-[var(--fg-muted)]">
-          <span className={CONNECTION_CLASS[connection]}>
-            ● {CONNECTION_LABEL[connection]}
-          </span>
-          <span aria-hidden="true">·</span>
-          <span>
-            kernel {state?.kernel_version || '—'} · {state?.contract_version || '—'}
-          </span>
-        </div>
+        {hasNotes && (
+          <div role="tablist" aria-label="Memory section" className="flex items-center gap-1">
+            {(['documents', 'notes'] as const).map((t) => (
+              <button
+                key={t}
+                type="button"
+                role="tab"
+                aria-selected={section === t}
+                onClick={() => setSection(t)}
+                className={cn(
+                  'rounded-sm px-2 py-0.5 text-[12px] capitalize focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)]',
+                  section === t
+                    ? 'bg-[var(--bg-elevated)] text-[var(--fg-primary)]'
+                    : 'text-[var(--fg-muted)] hover:text-[var(--fg-primary)]',
+                )}
+              >
+                {t}
+              </button>
+            ))}
+          </div>
+        )}
       </header>
 
-      {isMobile ? (
+      {hasNotes && section === 'notes' ? (
+        <div className="min-h-0 flex-1">
+          <NotesPane />
+        </div>
+      ) : isMobile ? (
         <div className="flex min-h-0 flex-1 flex-col">
           <div
             role="tablist"

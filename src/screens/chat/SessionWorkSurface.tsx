@@ -16,6 +16,8 @@ import { cn } from '@/design-system/lib/utils';
 import { Composer, type ComposerMode } from './Composer';
 import { ExecutionPlanBlock } from './ExecutionPlanBlock';
 import { StepInspector } from './StepInspector';
+import { LiveOutput, useStepRuns } from '@/screens/run/LiveOutput';
+import { Link } from '@tanstack/react-router';
 import { useDraftPersistence } from './useDraftPersistence';
 
 export interface SessionWorkSurfaceProps {
@@ -66,9 +68,18 @@ export function SessionWorkSurface({
     [plans],
   );
   const pendingHitl = useMemo(
-    () => (state?.pending_hitl ?? []).filter((h) => sessionPlanIds.has(h.plan_id)),
-    [state?.pending_hitl, sessionPlanIds],
+    () =>
+      (state?.pending_hitl ?? []).filter(
+        (h) => sessionPlanIds.has(h.plan_id) || (h.session_id !== undefined && h.session_id === sessionId),
+      ),
+    [state?.pending_hitl, sessionPlanIds, sessionId],
   );
+  // Sub-sessions spawned under this one (SessionStateOp.parent_id).
+  const children = useMemo(
+    () => (state?.sessions ?? []).filter((s) => s.parent_id === sessionId),
+    [state?.sessions, sessionId],
+  );
+  const liveRuns = useStepRuns(sessionId);
 
   // The step index lives in the URL when the host route provides it, so a
   // selection is deep-linkable and the palette can jump straight to it. The
@@ -142,7 +153,7 @@ export function SessionWorkSurface({
   const selectedStepData =
     stepIndex != null ? selectedSteps.find((s) => s.index === stepIndex) ?? null : null;
 
-  const isEmpty = plans.length === 0 && pendingHitl.length === 0;
+  const isEmpty = plans.length === 0 && pendingHitl.length === 0 && liveRuns.length === 0;
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -183,6 +194,26 @@ export function SessionWorkSurface({
                 />
               </div>
             ))}
+
+            <LiveOutput taskSessionId={sessionId} plan={activePlan} />
+
+            {children.length > 0 && (
+              <section aria-label="Sub-tasks" className="flex max-w-[820px] flex-col gap-1">
+                <h3 className="font-mono text-[10px] uppercase tracking-[0.12em] text-[var(--fg-muted)]">
+                  Sub-tasks
+                </h3>
+                {children.map((c) => (
+                  <Link
+                    key={c.session_id}
+                    to="/tasks/$taskId"
+                    params={{ taskId: c.session_id }}
+                    className="ml-3 border-l-2 border-[var(--border-strong)] pl-3 text-[12.5px] hover:text-[var(--fg-primary)]"
+                  >
+                    {c.title || c.session_id} <span className="font-mono text-[10.5px] text-[var(--fg-muted)]">{c.state}</span>
+                  </Link>
+                ))}
+              </section>
+            )}
 
             {pendingHitl.map((h) => (
               <div key={`hitl-${h.intervention_id}`} className="flex-none">

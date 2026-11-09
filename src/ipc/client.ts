@@ -13,8 +13,15 @@
 
 import { invoke } from '@tauri-apps/api/core';
 import * as t from './types';
+import { accountsClient } from './accounts-client';
+import { hierarchyClient } from './hierarchy-client';
 
 export const ipc = {
+  // Accounts plane (ADR-0141, capability `accounts`): ipc/accounts-client.ts.
+  ...accountsClient,
+  // ADR-0142 stage 2 (premium, capability org-directory): src-tauri/src/org.rs.
+  ...hierarchyClient,
+
   // ----- 9 existing Tauri commands (per ui/src-tauri/src/lib.rs) -----
 
   login: (
@@ -24,6 +31,22 @@ export const ipc = {
     remember: boolean,
   ): Promise<t.LoginResponse> =>
     invoke<t.LoginResponse>('op_login', { endpoint, username, password, remember }),
+
+  /**
+   * ADR-0142 D1: which sign-in methods the kernel at `endpoint` offers
+   * (DescribeAuth, unauthenticated). An older kernel answers "password only".
+   */
+  describeAuth: (endpoint: string): Promise<t.AuthMethods> =>
+    invoke<t.AuthMethods>('op_describe_auth', { endpoint }),
+
+  /**
+   * ADR-0142 D1: single sign-on — authorization code + PKCE in the SYSTEM
+   * browser (loopback redirect). Resolves once the person finishes at the
+   * identity provider, or rejects after the 5-minute flow timeout. No token,
+   * code or URL ever reaches the webview.
+   */
+  loginOidc: (endpoint: string, remember: boolean): Promise<t.LoginResponse> =>
+    invoke<t.LoginResponse>('op_login_oidc', { endpoint, remember }),
 
   /** Reconnect from the OS-keychain-saved connection (launch auto-connect). */
   loginSaved: (): Promise<t.LoginResponse> => invoke<t.LoginResponse>('op_login_saved'),
@@ -86,6 +109,16 @@ export const ipc = {
 
   resolveHITL: (params: t.ResolveHITLParams): Promise<t.CommandAck> =>
     invoke<t.CommandAck>('op_resolve_hitl', { ...params }),
+
+  // ADR-0142 D11 (capability 'addressed-approvals').
+  answerApproval: (params: t.AnswerApprovalParams): Promise<t.AnswerApprovalResult> =>
+    invoke<t.AnswerApprovalResult>('op_answer_approval', { ...params }),
+
+  listStandingApprovals: (includeInactive = false): Promise<t.StandingApproval[]> =>
+    invoke<t.StandingApproval[]>('op_list_standing_approvals', { include_inactive: includeInactive }),
+
+  revokeStandingApproval: (id: string, reason: string): Promise<t.CommandAck> =>
+    invoke<t.CommandAck>('op_revoke_standing_approval', { id, reason }),
 
   setToolGrant: (params: t.SetToolGrantParams): Promise<t.CommandAck> =>
     invoke<t.CommandAck>('op_set_tool_grant', { ...params }),
@@ -161,6 +194,85 @@ export const ipc = {
 
   listSkills: (): Promise<t.SkillSummary[]> =>
     invoke<t.SkillSummary[]>('op_list_skills'),
+
+  // ── ADR-0139 D13 skill lifecycle + skill grants (src-tauri/src/skills.rs) ──
+  // Every mutation's command_id is minted in the Rust core; `reason` is mandatory.
+
+  listSkillsFull: (includeArchived = false): Promise<t.SkillRecord[]> =>
+    invoke<t.SkillRecord[]>('op_list_skills_full', { include_archived: includeArchived }),
+
+  listSkillProposals: (state = 'pending', skillName = ''): Promise<t.SkillProposal[]> =>
+    invoke<t.SkillProposal[]>('op_list_skill_proposals', { state, skill_name: skillName }),
+
+  decideSkillProposal: (p: t.DecideSkillProposalParams): Promise<t.SkillProposalDecision> =>
+    invoke<t.SkillProposalDecision>('op_decide_skill_proposal', { ...p }),
+
+  setSkillLock: (p: { skill_name: string; locked: boolean; reason: string }): Promise<t.CommandAck> =>
+    invoke<t.CommandAck>('op_set_skill_lock', { ...p }),
+
+  listSkillLedger: (skillName = ''): Promise<t.SkillLedgerEntry[]> =>
+    invoke<t.SkillLedgerEntry[]>('op_list_skill_ledger', { skill_name: skillName }),
+
+  rollbackSkill: (p: { skill_name: string; ledger_entry_id: string; reason: string }): Promise<t.SkillRollback> =>
+    invoke<t.SkillRollback>('op_rollback_skill', { ...p }),
+
+  listSkillGrants: (p: t.ListSkillGrantsParams = {}): Promise<t.SkillGrants> =>
+    invoke<t.SkillGrants>('op_list_skill_grants', { ...p }),
+
+  grantSkill: (p: t.SkillGrantParams): Promise<t.CommandAck> =>
+    invoke<t.CommandAck>('op_grant_skill', { ...p }),
+
+  revokeSkillGrant: (p: t.SkillGrantParams): Promise<t.CommandAck> =>
+    invoke<t.CommandAck>('op_revoke_skill_grant', { ...p }),
+
+  // ── Integrations (capability "integrations"; src-tauri/src/integrations.rs) ──
+  // Secrets go out on install / setIntegrationSecret and never come back.
+
+  listIntegrationCatalog: (): Promise<t.IntegrationCatalog> =>
+    invoke<t.IntegrationCatalog>('op_list_integration_catalog'),
+
+  listIntegrations: (): Promise<t.Integrations> => invoke<t.Integrations>('op_list_integrations'),
+
+  installIntegration: (p: t.InstallIntegrationParams): Promise<t.IntegrationMutation> =>
+    invoke<t.IntegrationMutation>('op_install_integration', { ...p }),
+
+  updateIntegration: (p: { id: string; settings: Record<string, string>; reason: string }): Promise<t.IntegrationMutation> =>
+    invoke<t.IntegrationMutation>('op_update_integration', { ...p }),
+
+  setIntegrationSecret: (p: { id: string; name: string; value: string; reason: string }): Promise<t.IntegrationMutation> =>
+    invoke<t.IntegrationMutation>('op_set_integration_secret', { ...p }),
+
+  clearIntegrationSecret: (p: { id: string; name: string; reason: string }): Promise<t.IntegrationMutation> =>
+    invoke<t.IntegrationMutation>('op_clear_integration_secret', { ...p }),
+
+  setIntegrationEnabled: (p: { id: string; enabled: boolean; reason: string }): Promise<t.IntegrationMutation> =>
+    invoke<t.IntegrationMutation>('op_set_integration_enabled', { ...p }),
+
+  testIntegration: (p: { id: string; call_probe?: boolean }): Promise<t.IntegrationTestResult> =>
+    invoke<t.IntegrationTestResult>('op_test_integration', { ...p }),
+
+  removeIntegration: (p: { id: string; keep_secrets?: boolean; reason: string }): Promise<t.IntegrationMutation> =>
+    invoke<t.IntegrationMutation>('op_remove_integration', { ...p }),
+
+  revertIntegrationToFile: (p: { id: string; reason: string }): Promise<t.IntegrationMutation> =>
+    invoke<t.IntegrationMutation>('op_revert_integration_to_file', { ...p }),
+
+  // ── ADR-0139 D14 memory notes (src-tauri/src/notes.rs) ─────────────────────
+
+  listMemoryNotes: (p: { scope?: string; owner_id?: string } = {}): Promise<t.NotesSummary[]> =>
+    invoke<t.NotesSummary[]>('op_list_memory_notes', { ...p }),
+
+  getMemoryNotes: (p: { scope: string; owner_id: string }): Promise<t.NotesDocument> =>
+    invoke<t.NotesDocument>('op_get_memory_notes', { ...p }),
+
+  setMemoryNotes: (p: t.SetMemoryNotesParams): Promise<t.NotesWriteResult> =>
+    invoke<t.NotesWriteResult>('op_set_memory_notes', { ...p }),
+
+  deleteMemoryNotes: (p: { scope: string; owner_id: string; reason: string }): Promise<t.CommandAck> =>
+    invoke<t.CommandAck>('op_delete_memory_notes', { ...p }),
+
+  setMemoryNotesBudget: (p: t.SetMemoryNotesBudgetParams): Promise<t.CommandAck> =>
+    invoke<t.CommandAck>('op_set_memory_notes_budget', { ...p }),
 
   // ── Reactive: six RPCs that were on the contract but unwired ────────────
   // No kernel change was needed for any of these; see report.md §2b.

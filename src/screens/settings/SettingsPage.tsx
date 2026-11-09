@@ -9,8 +9,8 @@ import { KeyboardSettings } from './KeyboardSettings';
 import { ProvidersSettings } from './ProvidersSettings';
 import { DispatchSettings } from './DispatchSettings';
 import { EmbeddingSettings } from './EmbeddingSettings';
-import { IntegrationsSettings } from './IntegrationsSettings';
 import { TelemetrySettings } from './TelemetrySettings';
+import { ProviderClientsSettings } from './ProviderClientsSettings';
 
 type Section =
   | 'connection'
@@ -19,8 +19,8 @@ type Section =
   | 'providers'
   | 'embedding'
   | 'dispatch'
-  | 'integrations'
   | 'telemetry'
+  | 'oauth'
   | 'storage';
 
 interface SectionSpec {
@@ -30,6 +30,8 @@ interface SectionSpec {
   kernel: boolean;
   /** Rendered as present-but-unreachable when not built yet. */
   planned?: boolean;
+  /** Listed only when the kernel advertises this capability and the role is Operator. */
+  requiresOperatorCapability?: string;
 }
 
 /**
@@ -51,8 +53,9 @@ const SECTIONS: SectionSpec[] = [
   // state are the same list, and a second pane would drift from it.
   { id: 'embedding', label: 'Embedding', kernel: true },
   { id: 'dispatch', label: 'Dispatch & retrieval', kernel: true },
-  { id: 'integrations', label: 'Integrations', kernel: true },
   { id: 'telemetry', label: 'Telemetry', kernel: true },
+  // ADR-0141 D8: the one writer of a provider's OAuth client (Operator-only RPCs).
+  { id: 'oauth', label: 'OAuth providers', kernel: true, requiresOperatorCapability: 'accounts' },
   { id: 'storage', label: 'Storage & database', kernel: true, planned: true },
 ];
 
@@ -64,7 +67,11 @@ export function SettingsPage() {
   const role = projection.state?.role ?? null;
   const endpoint = projection.state?.connection.endpoint ?? null;
 
-  const spec = SECTIONS.find((s) => s.id === section)!;
+  const capabilities = projection.state?.capabilities ?? [];
+  const visible = SECTIONS.filter(
+    (s) => !s.requiresOperatorCapability || (role === 'operator' && capabilities.includes(s.requiresOperatorCapability)),
+  );
+  const spec = visible.find((s) => s.id === section) ?? visible[0];
   // A config form backed by nothing is worse than no form.
   const unreachable = spec.kernel && !connected;
 
@@ -79,7 +86,7 @@ export function SettingsPage() {
             <Item
               key={s.id}
               spec={s}
-              active={section === s.id}
+              active={spec.id === s.id}
               disabled={false}
               onSelect={() => setSection(s.id)}
             />
@@ -87,11 +94,11 @@ export function SettingsPage() {
         </Group>
 
         <Group label="This kernel">
-          {SECTIONS.filter((s) => s.kernel).map((s) => (
+          {visible.filter((s) => s.kernel).map((s) => (
             <Item
               key={s.id}
               spec={s}
-              active={section === s.id}
+              active={spec.id === s.id}
               disabled={!connected}
               onSelect={() => setSection(s.id)}
             />
@@ -113,16 +120,14 @@ export function SettingsPage() {
             </p>
           ) : (
             <>
-              {section === 'connection' && <ConnectionSettings />}
-              {section === 'appearance' && <AppearanceSettings />}
-              {section === 'keyboard' && <KeyboardSettings />}
-              {section === 'providers' && <ProvidersSettings canMutate={role === 'operator'} />}
-              {section === 'dispatch' && <DispatchSettings canMutate={role === 'operator'} />}
-              {section === 'embedding' && <EmbeddingSettings canMutate={role === 'operator'} />}
-              {section === 'telemetry' && <TelemetrySettings canMutate={role === 'operator'} />}
-              {section === 'integrations' && (
-                <IntegrationsSettings capabilities={projection.state?.capabilities ?? []} />
-              )}
+              {spec.id === 'connection' && <ConnectionSettings />}
+              {spec.id === 'appearance' && <AppearanceSettings />}
+              {spec.id === 'keyboard' && <KeyboardSettings />}
+              {spec.id === 'providers' && <ProvidersSettings canMutate={role === 'operator'} />}
+              {spec.id === 'dispatch' && <DispatchSettings canMutate={role === 'operator'} />}
+              {spec.id === 'embedding' && <EmbeddingSettings canMutate={role === 'operator'} />}
+              {spec.id === 'telemetry' && <TelemetrySettings canMutate={role === 'operator'} />}
+              {spec.id === 'oauth' && <ProviderClientsSettings />}
               {spec.planned && <Planned label={spec.label} />}
             </>
           )}

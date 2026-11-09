@@ -16,7 +16,7 @@ function linkFor(a: LogAttr): { to: string; search?: Record<string, unknown> } |
     case 'session_id':
       return { to: '/tasks', search: { focus: a.value } };
     case 'plan_id':
-      return { to: '/plans', search: {} };
+      return { to: '/tasks', search: {} };
     case 'agent_id':
     case 'agent':
       return { to: '/agents', search: { focus: a.value } };

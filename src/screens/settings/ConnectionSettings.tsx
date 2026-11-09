@@ -9,6 +9,9 @@ import { signOut, takeSignOutNote } from '@/lib/signOut';
 import { describeCapabilities, missingCapabilities } from '@/lib/capabilities';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/design-system/components';
 import { cn } from '@/design-system/lib/utils';
+import { expiresIn, loginMethods } from '@/lib/loginMethods';
+import { roleSummary } from '@/lib/roleGate';
+import type { AuthMethods } from '@/ipc/types';
 
 /**
  * The connection panel: one Cambrian instance at a time.
@@ -143,6 +146,7 @@ function Field({
 export function ConnectionSettings() {
   const projection = useStore(projectionStore);
   const state = projection.state;
+  const identity = state?.identity ?? null;
   const connection = state?.connection;
   const status = connection?.status ?? 'down';
 
@@ -156,6 +160,59 @@ export function ConnectionSettings() {
 
   const isConnected = status !== 'down';
 
+  // ADR-0142 D1: the kernel says how to sign in (DescribeAuth, unauthenticated).
+  // Asked when the endpoint settles; the answer decides which methods render.
+  const [methods, setMethods] = useState<AuthMethods | null>(null);
+  const [checking, setChecking] = useState(false);
+  const [describeError, setDescribeError] = useState<string | null>(null);
+  const [ssoBusy, setSsoBusy] = useState(false);
+  useEffect(() => {
+    if (isConnected || !endpoint.trim()) {
+      setMethods(null);
+      setDescribeError(null);
+      return;
+    }
+    let cancelled = false;
+    setChecking(true);
+    const timer = setTimeout(() => {
+      Promise.resolve()
+        .then(() => ipc.describeAuth(endpoint.trim()))
+        .then((m) => {
+          if (cancelled) return;
+          setMethods(m);
+          setDescribeError(null);
+        })
+        .catch((err) => {
+          if (cancelled) return;
+          setMethods(null);
+          setDescribeError(errorMessage(err));
+        })
+        .finally(() => {
+          if (!cancelled) setChecking(false);
+        });
+    }, 400);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [endpoint, isConnected]);
+  const view = loginMethods({ endpoint, checking, methods, error: describeError });
+  const showPassword = view.kind !== 'known' || view.password;
+  const sso = view.kind === 'known' ? view.oidc : null;
+
+  const onSso = async () => {
+    setError(null);
+    setSsoBusy(true);
+    try {
+      await ipc.loginOidc(endpoint.trim(), remember);
+      saveRemembered({ endpoint, username });
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setSsoBusy(false);
+    }
+  };
+
   // The saved-connection login is attempted at LAUNCH by the Shell, not here — otherwise it
   // only ran once the operator navigated to this screen. This panel just reflects the
   // outcome: prefill the fields it recovered, and surface why it failed if it did.
@@ -167,7 +224,7 @@ export function ConnectionSettings() {
     void autoConnectOnce().then((result) => {
       if (cancelled || !result.saved) return;
       setEndpoint(result.saved.endpoint);
-      setUsername(result.saved.username);
+      if (result.saved.username) setUsername(result.saved.username);
       if (result.error) setError(result.error);
     });
     return () => {
@@ -244,8 +301,48 @@ export function ConnectionSettings() {
             <dt className="text-[var(--fg-muted)]">Endpoint</dt>
             <dd className="font-mono break-all">{connection?.endpoint || '—'}</dd>
 
+            <dt className="text-[var(--fg-muted)]">Signed in as</dt>
+            <dd>
+              {identity ? (
+                <span className="flex flex-col">
+                  <span className="text-[var(--fg-primary)]">{identity.display_name || '—'}</span>
+                  <span className="font-mono text-[10.5px] text-[var(--fg-muted)]">
+                    {[identity.email, identity.principal].filter(Boolean).join(' · ') || null}
+                  </span>
+                </span>
+              ) : (
+                '—'
+              )}
+            </dd>
+
+            <dt className="text-[var(--fg-muted)]">Sign-in</dt>
+            <dd>
+              {identity?.method === 'oidc'
+                ? `Single sign-on · ${identity.issuer}${identity.expires_at_unix_ms ? ` · token renews before it expires (in ${expiresIn(identity.expires_at_unix_ms)})` : ''}`
+                : identity?.method === 'password'
+                  ? 'Local account (password)'
+                  : '—'}
+            </dd>
+
             <dt className="text-[var(--fg-muted)]">Role</dt>
-            <dd className="font-mono">{state?.role ?? '—'}</dd>
+            <dd>
+              <span className="font-mono">{state?.role ?? '—'}</span>
+              {state?.role && (
+                <span className="ml-2 text-[11px] text-[var(--fg-muted)]">{roleSummary(state.role)}</span>
+              )}
+              {identity?.role_source === 'probe' && (
+                <span className="block text-[10.5px] text-[var(--fg-muted)]">
+                  Inferred from what the kernel lets this sign-in do; the kernel does not report it yet.
+                </span>
+              )}
+            </dd>
+
+            {identity && identity.roles.length > 0 && (
+              <>
+                <dt className="text-[var(--fg-muted)]">Roles</dt>
+                <dd className="font-mono">{identity.roles.join(', ')}</dd>
+              </>
+            )}
 
             <dt className="text-[var(--fg-muted)]">Kernel</dt>
             <dd className="font-mono">
@@ -259,7 +356,7 @@ export function ConnectionSettings() {
             <dd className="font-mono">{state?.plugins?.length ?? 0} registered</dd>
 
             <dt className="text-[var(--fg-muted)]">Token</dt>
-            <dd>kept in the OS keychain, never in this webview</dd>
+            <dd>held by the app's native core, never in this webview</dd>
           </dl>
 
           {/* A count answers nothing. The question an operator arrives with is
@@ -360,21 +457,59 @@ export function ConnectionSettings() {
                 onChange={setEndpoint}
                 placeholder="localhost:50051 · cambrian.example.com"
               />
-              <Field
-                id="username"
-                label="Username"
-                value={username}
-                onChange={setUsername}
-                autoComplete="username"
-              />
-              <Field
-                id="password"
-                label="Password"
-                type="password"
-                value={password}
-                onChange={setPassword}
-                autoComplete="current-password"
-              />
+              {/* ADR-0142 D1: the methods this kernel offers, from DescribeAuth. */}
+              <div aria-live="polite" className="text-[11px] text-[var(--fg-muted)]">
+                {view.kind === 'checking' && 'Asking the kernel how to sign in…'}
+                {view.kind === 'failed' &&
+                  `Could not ask the kernel how to sign in (${view.error}). Password sign-in is shown; single sign-on appears once the kernel answers.`}
+                {view.kind === 'known' && view.legacy && 'This kernel predates single sign-on: password only.'}
+                {view.kind === 'known' && view.none &&
+                  'This kernel accepts no sign-in method (no local accounts and no identity provider). An administrator must configure one.'}
+              </div>
+
+              {sso && (
+                <div className="flex flex-col gap-1">
+                  <button
+                    type="button"
+                    onClick={onSso}
+                    disabled={ssoBusy || busy}
+                    className="self-start rounded-sm bg-[var(--button-primary-bg)] px-3 py-1 text-xs font-medium text-[var(--button-primary-fg)] hover:bg-[var(--button-primary-bg-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)] disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {ssoBusy ? 'Waiting for the browser…' : `Sign in with ${sso.issuerHost}`}
+                  </button>
+                  <p className="text-[11px] text-[var(--fg-muted)]">
+                    {ssoBusy
+                      ? 'Finish signing in in the browser window that opened. This console never sees your password.'
+                      : 'Opens your system browser at your organisation’s sign-in page.'}
+                  </p>
+                </div>
+              )}
+
+              {sso && showPassword && (
+                <div role="separator" className="my-1 text-center text-[10px] uppercase tracking-[0.12em] text-[var(--fg-muted)]">
+                  or with a local account
+                </div>
+              )}
+
+              {showPassword && (
+                <>
+                  <Field
+                    id="username"
+                    label="Username"
+                    value={username}
+                    onChange={setUsername}
+                    autoComplete="username"
+                  />
+                  <Field
+                    id="password"
+                    label="Password"
+                    type="password"
+                    value={password}
+                    onChange={setPassword}
+                    autoComplete="current-password"
+                  />
+                </>
+              )}
 
               <label className="flex items-center gap-2 text-[11px] text-[var(--fg-primary)]">
                 <input
@@ -382,23 +517,34 @@ export function ConnectionSettings() {
                   checked={remember}
                   onChange={(e) => setRemember(e.target.checked)}
                 />
-                Remember this instance (store credentials in the OS keychain)
+                Remember this instance (keep the sign-in in the OS keychain)
               </label>
 
               {error && (
                 <ErrorState
                   reason={error}
-                  whatToDo="Check the endpoint and that the kernel has an operator account. A kernel with no accounts rejects every login by design."
+                  whatToDo={
+                    sso
+                      ? 'Check the endpoint. For single sign-on, finish within 5 minutes in the browser; if the kernel refuses the token, an administrator must add the console client id to its audience.'
+                      : 'Check the endpoint and that the kernel has an operator account. A kernel with no accounts rejects every login by design.'
+                  }
                 />
               )}
 
-              <button
-                type="submit"
-                disabled={busy}
-                className="self-start rounded-sm bg-[var(--button-primary-bg)] px-3 py-1 text-xs font-medium text-[var(--button-primary-fg)] hover:bg-[var(--button-primary-bg-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)] disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {busy ? 'Connecting…' : 'Connect'}
-              </button>
+              {showPassword && (
+                <button
+                  type="submit"
+                  disabled={busy || ssoBusy}
+                  className={cn(
+                    'self-start rounded-sm px-3 py-1 text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)] disabled:cursor-not-allowed disabled:opacity-50',
+                    sso
+                      ? 'border border-[var(--border-strong)] bg-[var(--bg-elevated)] text-[var(--fg-primary)] hover:bg-[var(--bg-surface)]'
+                      : 'bg-[var(--button-primary-bg)] text-[var(--button-primary-fg)] hover:bg-[var(--button-primary-bg-hover)]',
+                  )}
+                >
+                  {busy ? 'Connecting…' : 'Connect'}
+                </button>
+              )}
             </form>
           </CardContent>
         </Card>

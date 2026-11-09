@@ -7,11 +7,12 @@ import {
   ToggleGroup,
   ToggleGroupItem,
 } from '@/design-system/components';
-import { shellStore } from '@/store/shell';
+import { shellStore, type ThemePreference } from '@/store/shell';
 import { useStore } from '@/store/useStore';
-import type { Density, Theme } from '@/design-system';
+import type { Density } from '@/design-system';
 
-const THEMES: { value: Theme; label: string }[] = [
+const THEMES: { value: ThemePreference; label: string }[] = [
+  { value: 'system', label: 'System' },
   { value: 'dark', label: 'Dark' },
   { value: 'light', label: 'Light' },
 ];
@@ -50,8 +51,8 @@ export function AppearanceSettings() {
           <span className="text-[12.5px] text-[var(--fg-secondary)]">Theme</span>
           <ToggleGroup
             type="single"
-            value={shell.theme}
-            onValueChange={(v) => v && shellStore.getState().setTheme(v as Theme)}
+            value={shell.themePreference}
+            onValueChange={(v) => v && shellStore.getState().setTheme(v as ThemePreference)}
             aria-label="Theme"
             className="self-start"
           >

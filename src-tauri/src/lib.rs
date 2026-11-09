@@ -4,11 +4,18 @@
 //! owns the client-side state of record (`state`), the Operator Transport Plane
 //! client (`transport`), and the Tauri command/event bridge to the webview.
 
+pub mod accounts;
+pub mod attention;
 mod ingress_studio;
+pub mod integrations;
 pub mod links;
 pub mod logs;
+pub mod notes;
+pub mod oidc;
+pub mod org;
 pub mod pb;
 pub mod policy;
+pub mod skills;
 pub mod state;
 pub mod substrate;
 mod telegram;
@@ -56,10 +63,57 @@ pub struct CommandAck {
     pub deduped: bool,
 }
 
+/// ADR-0142 D11: the kernel's answer to AnswerApproval.
+#[derive(serde::Serialize)]
+pub struct AnswerApprovalResult {
+    pub ok: bool,
+    pub deduped: bool,
+    pub state: String,
+    pub refusal: String,
+    pub standing_id: String,
+}
+
+/// ADR-0142: one standing approval, as the webview renders it.
+#[derive(serde::Serialize)]
+pub struct StandingApproval {
+    pub id: String,
+    pub action_class: String,
+    pub resource: String,
+    pub scope: String,
+    pub beneficiary: String,
+    pub granted_by: String,
+    pub granted_at_unix_ms: i64,
+    pub expires_at_unix_ms: i64,
+    pub revoked_at_unix_ms: i64,
+    pub use_count: i32,
+    pub active: bool,
+}
+
+impl From<pb::StandingApprovalOp> for StandingApproval {
+    fn from(s: pb::StandingApprovalOp) -> Self {
+        Self {
+            id: s.id,
+            action_class: s.action_class,
+            resource: s.resource,
+            scope: s.scope,
+            beneficiary: s.beneficiary,
+            granted_by: s.granted_by,
+            granted_at_unix_ms: s.granted_at_unix_ms,
+            expires_at_unix_ms: s.expires_at_unix_ms,
+            revoked_at_unix_ms: s.revoked_at_unix_ms,
+            use_count: s.use_count,
+            active: s.active,
+        }
+    }
+}
+
 #[derive(serde::Serialize)]
 pub struct SavedConnection {
     pub endpoint: String,
+    /// Empty for a remembered single-sign-on session.
     pub username: String,
+    /// "password" | "oidc" (ADR-0142 D1).
+    pub method: String,
 }
 
 // ---- Tauri command bridge (webview → core → kernel) ---------------------
@@ -90,21 +144,59 @@ async fn op_login(
 /// reconnects using the stored password without it ever crossing the IPC bridge.
 #[tauri::command(rename_all = "snake_case")]
 async fn op_saved_connection() -> Result<Option<SavedConnection>, String> {
-    Ok(Transport::saved_connection()
-        .map(|(endpoint, username, _password)| SavedConnection { endpoint, username }))
+    // A remembered OIDC sign-in wins: saving one clears the password one and
+    // vice versa, so at most one is present. Neither secret crosses the bridge.
+    if let Some((endpoint, ..)) = transport::session_auth_saved_oidc() {
+        return Ok(Some(SavedConnection { endpoint, username: String::new(), method: "oidc".into() }));
+    }
+    Ok(Transport::saved_connection().map(|(endpoint, username, _password)| SavedConnection {
+        endpoint,
+        username,
+        method: "password".into(),
+    }))
 }
 
-/// Reconnect using the credentials saved in the OS keychain (launch auto-connect).
-/// Fails if nothing is saved.
+/// Reconnect using what the OS keychain holds (launch auto-connect): a
+/// remembered OIDC sign-in is resumed with its refresh token, a password one
+/// logs in again. Fails if nothing is saved.
 #[tauri::command(rename_all = "snake_case")]
 async fn op_login_saved(
     app: AppHandle,
     transport: State<'_, Transport>,
 ) -> Result<LoginResponse, String> {
+    let t = transport.inner().clone();
+    if transport::session_auth_saved_oidc().is_some() {
+        let role = t.login_oidc_saved(&app).await?;
+        return Ok(LoginResponse { role });
+    }
     let (endpoint, username, password) =
         Transport::saved_connection().ok_or_else(|| "no saved connection".to_string())?;
-    let t = transport.inner().clone();
     let role = t.login(&app, endpoint, username, password, true).await?;
+    Ok(LoginResponse { role })
+}
+
+/// ADR-0142 D1: which sign-in methods the kernel at `endpoint` offers (its
+/// unauthenticated DescribeAuth). An older kernel answers "password only".
+#[tauri::command(rename_all = "snake_case")]
+async fn op_describe_auth(
+    transport: State<'_, Transport>,
+    endpoint: String,
+) -> Result<transport::AuthMethods, String> {
+    transport.inner().clone().describe_auth(&endpoint).await
+}
+
+/// ADR-0142 D1: sign in with the kernel's OIDC issuer — authorization code +
+/// PKCE in the SYSTEM browser with a loopback redirect. Resolves when the person
+/// has finished at the IdP (or the 5-minute flow times out). Tokens stay in the
+/// Rust core; the webview gets the role, and the identity on `kernel://state`.
+#[tauri::command(rename_all = "snake_case")]
+async fn op_login_oidc(
+    app: AppHandle,
+    transport: State<'_, Transport>,
+    endpoint: String,
+    remember: bool,
+) -> Result<LoginResponse, String> {
+    let role = transport.inner().clone().login_oidc(&app, endpoint, remember).await?;
     Ok(LoginResponse { role })
 }
 
@@ -291,6 +383,40 @@ async fn op_resolve_hitl(
         .clone()
         .resolve_hitl(intervention_id, approve, reason)
         .await?;
+    Ok(CommandAck { deduped })
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_answer_approval(
+    transport: State<'_, Transport>,
+    id: String,
+    approve: bool,
+    standing: bool,
+    standing_ttl_seconds: i64,
+    reason: String,
+) -> Result<AnswerApprovalResult, String> {
+    transport
+        .inner()
+        .clone()
+        .answer_approval(id, approve, standing, standing_ttl_seconds, reason)
+        .await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_list_standing_approvals(
+    transport: State<'_, Transport>,
+    include_inactive: bool,
+) -> Result<Vec<StandingApproval>, String> {
+    transport.inner().clone().list_standing_approvals(include_inactive).await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_revoke_standing_approval(
+    transport: State<'_, Transport>,
+    id: String,
+    reason: String,
+) -> Result<CommandAck, String> {
+    let deduped = transport.inner().clone().revoke_standing_approval(id, reason).await?;
     Ok(CommandAck { deduped })
 }
 
@@ -1902,6 +2028,723 @@ async fn op_links_retract(
     Ok(CommandAck { deduped })
 }
 
+
+// -- ADR-0139 D13/D14 + skill grants (contract 0101) --------------------------
+//
+// Skill lifecycle, per-agent skill grants and principal memory notes. Plain
+// OperatorConsole RPCs; every mutation's command_id is generated in skills.rs /
+// notes.rs, never by the webview, and carries the caller's mandatory reason.
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_list_skills_full(
+    transport: State<'_, Transport>,
+    include_archived: Option<bool>,
+) -> Result<Vec<skills::SkillRecord>, String> {
+    transport.inner().clone().list_skills_full(include_archived.unwrap_or(false)).await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_list_skill_proposals(
+    transport: State<'_, Transport>,
+    state: Option<String>,
+    skill_name: Option<String>,
+) -> Result<Vec<skills::SkillProposal>, String> {
+    transport
+        .inner()
+        .clone()
+        .list_skill_proposals(state.unwrap_or_default(), skill_name.unwrap_or_default())
+        .await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_decide_skill_proposal(
+    transport: State<'_, Transport>,
+    proposal_id: String,
+    approve: bool,
+    lock_after_approve: Option<bool>,
+    reason: String,
+) -> Result<skills::SkillProposalDecision, String> {
+    transport
+        .inner()
+        .clone()
+        .decide_skill_proposal(proposal_id, approve, lock_after_approve.unwrap_or(false), reason)
+        .await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_set_skill_lock(
+    transport: State<'_, Transport>,
+    skill_name: String,
+    locked: bool,
+    reason: String,
+) -> Result<CommandAck, String> {
+    let deduped = transport.inner().clone().set_skill_lock(skill_name, locked, reason).await?;
+    Ok(CommandAck { deduped })
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_list_skill_ledger(
+    transport: State<'_, Transport>,
+    skill_name: Option<String>,
+) -> Result<Vec<skills::SkillLedgerEntry>, String> {
+    transport.inner().clone().list_skill_ledger(skill_name.unwrap_or_default()).await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_rollback_skill(
+    transport: State<'_, Transport>,
+    skill_name: String,
+    ledger_entry_id: String,
+    reason: String,
+) -> Result<skills::SkillRollback, String> {
+    transport.inner().clone().rollback_skill(skill_name, ledger_entry_id, reason).await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_list_skill_grants(
+    transport: State<'_, Transport>,
+    agent_id: Option<String>,
+    skill_name: Option<String>,
+    include_revoked: Option<bool>,
+    request_state: Option<String>,
+) -> Result<skills::SkillGrants, String> {
+    transport
+        .inner()
+        .clone()
+        .list_skill_grants(
+            agent_id.unwrap_or_default(),
+            skill_name.unwrap_or_default(),
+            include_revoked.unwrap_or(false),
+            request_state.unwrap_or_default(),
+        )
+        .await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_grant_skill(
+    transport: State<'_, Transport>,
+    agent_id: String,
+    skill_name: String,
+    reason: String,
+) -> Result<CommandAck, String> {
+    let deduped = transport.inner().clone().grant_skill(agent_id, skill_name, reason).await?;
+    Ok(CommandAck { deduped })
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_revoke_skill_grant(
+    transport: State<'_, Transport>,
+    agent_id: String,
+    skill_name: String,
+    reason: String,
+) -> Result<CommandAck, String> {
+    let deduped = transport.inner().clone().revoke_skill_grant(agent_id, skill_name, reason).await?;
+    Ok(CommandAck { deduped })
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_list_memory_notes(
+    transport: State<'_, Transport>,
+    scope: Option<String>,
+    owner_id: Option<String>,
+) -> Result<Vec<notes::NotesSummary>, String> {
+    transport
+        .inner()
+        .clone()
+        .list_memory_notes(scope.unwrap_or_default(), owner_id.unwrap_or_default())
+        .await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_get_memory_notes(
+    transport: State<'_, Transport>,
+    scope: String,
+    owner_id: String,
+) -> Result<notes::NotesDocument, String> {
+    transport.inner().clone().get_memory_notes(scope, owner_id).await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_set_memory_notes(
+    transport: State<'_, Transport>,
+    scope: String,
+    owner_id: String,
+    content: String,
+    if_match: Option<String>,
+    override_injection_flag: Option<bool>,
+    reason: String,
+) -> Result<notes::NotesWriteResult, String> {
+    transport
+        .inner()
+        .clone()
+        .set_memory_notes(
+            scope,
+            owner_id,
+            content,
+            if_match.unwrap_or_default(),
+            override_injection_flag.unwrap_or(false),
+            reason,
+        )
+        .await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_delete_memory_notes(
+    transport: State<'_, Transport>,
+    scope: String,
+    owner_id: String,
+    reason: String,
+) -> Result<CommandAck, String> {
+    let deduped = transport.inner().clone().delete_memory_notes(scope, owner_id, reason).await?;
+    Ok(CommandAck { deduped })
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_set_memory_notes_budget(
+    transport: State<'_, Transport>,
+    scope: String,
+    owner_id: Option<String>,
+    budget_chars: i32,
+    clear_override: Option<bool>,
+    reason: String,
+) -> Result<CommandAck, String> {
+    let deduped = transport
+        .inner()
+        .clone()
+        .set_memory_notes_budget(
+            scope,
+            owner_id.unwrap_or_default(),
+            budget_chars,
+            clear_override.unwrap_or(false),
+            reason,
+        )
+        .await?;
+    Ok(CommandAck { deduped })
+}
+
+
+// -- Integrations (capability "integrations"; integrations.rs) -----------------
+// Secrets travel webview -> core -> kernel only; nothing returns one.
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_list_integration_catalog(
+    transport: State<'_, Transport>,
+) -> Result<integrations::IntegrationCatalog, String> {
+    transport.inner().clone().list_integration_catalog().await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_list_integrations(transport: State<'_, Transport>) -> Result<integrations::Integrations, String> {
+    transport.inner().clone().list_integrations().await
+}
+
+#[allow(clippy::too_many_arguments)]
+#[tauri::command(rename_all = "snake_case")]
+async fn op_install_integration(
+    transport: State<'_, Transport>,
+    catalog_id: Option<String>,
+    id: Option<String>,
+    settings: Option<std::collections::HashMap<String, String>>,
+    secrets: Option<std::collections::HashMap<String, String>>,
+    enabled: bool,
+    custom: Option<integrations::IntegrationCustomSpec>,
+    reason: String,
+) -> Result<integrations::IntegrationMutation, String> {
+    transport
+        .inner()
+        .clone()
+        .install_integration(
+            catalog_id.unwrap_or_default(),
+            id.unwrap_or_default(),
+            settings.unwrap_or_default(),
+            secrets.unwrap_or_default(),
+            enabled,
+            custom,
+            reason,
+        )
+        .await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_update_integration(
+    transport: State<'_, Transport>,
+    id: String,
+    settings: std::collections::HashMap<String, String>,
+    reason: String,
+) -> Result<integrations::IntegrationMutation, String> {
+    transport.inner().clone().update_integration(id, settings, reason).await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_set_integration_secret(
+    transport: State<'_, Transport>,
+    id: String,
+    name: String,
+    value: String,
+    reason: String,
+) -> Result<integrations::IntegrationMutation, String> {
+    transport.inner().clone().set_integration_secret(id, name, value, reason).await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_clear_integration_secret(
+    transport: State<'_, Transport>,
+    id: String,
+    name: String,
+    reason: String,
+) -> Result<integrations::IntegrationMutation, String> {
+    transport.inner().clone().clear_integration_secret(id, name, reason).await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_set_integration_enabled(
+    transport: State<'_, Transport>,
+    id: String,
+    enabled: bool,
+    reason: String,
+) -> Result<integrations::IntegrationMutation, String> {
+    transport.inner().clone().set_integration_enabled(id, enabled, reason).await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_test_integration(
+    transport: State<'_, Transport>,
+    id: String,
+    call_probe: Option<bool>,
+) -> Result<integrations::IntegrationTestResult, String> {
+    transport.inner().clone().test_integration(id, call_probe.unwrap_or(false)).await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_remove_integration(
+    transport: State<'_, Transport>,
+    id: String,
+    keep_secrets: Option<bool>,
+    reason: String,
+) -> Result<integrations::IntegrationMutation, String> {
+    transport.inner().clone().remove_integration(id, keep_secrets.unwrap_or(false), reason).await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_revert_integration_to_file(
+    transport: State<'_, Transport>,
+    id: String,
+    reason: String,
+) -> Result<integrations::IntegrationMutation, String> {
+    transport.inner().clone().revert_integration_to_file(id, reason).await
+}
+
+// -- Accounts (premium plane AccountsAdmin, capability "accounts"; accounts.rs) --
+// ADR-0141. The sign-in start URL is opened in the SYSTEM browser here and
+// never returned to the webview; no message carries a token.
+
+
+// ---- ADR-0142 stage 2: the org-directory plane (src/org.rs) ---------------
+// Capability `org-directory`. The messages are the generated proto types
+// (serde-derived in build.rs). A SCIM bearer crosses ONCE, in the create/rotate
+// answer, for the show-once dialog.
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_org_list_units(
+    transport: State<'_, Transport>,
+) -> Result<Vec<pb::org::OrgUnit>, String> {
+    transport.inner().clone().list_org_units().await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_org_list_people(
+    transport: State<'_, Transport>,
+    unit_id: String, query: String, include_inactive: bool,
+) -> Result<Vec<pb::org::OrgPerson>, String> {
+    transport.inner().clone().list_org_people(unit_id, query, include_inactive).await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_org_list_directory_groups(
+    transport: State<'_, Transport>,
+) -> Result<Vec<pb::org::DirectoryGroup>, String> {
+    transport.inner().clone().list_directory_groups().await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_org_get_chain(
+    transport: State<'_, Transport>,
+    principal_id: String,
+) -> Result<pb::org::OrgChain, String> {
+    transport.inner().clone().get_org_chain(principal_id).await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_org_list_mapping_rules(
+    transport: State<'_, Transport>,
+) -> Result<Vec<pb::org::MappingRule>, String> {
+    transport.inner().clone().list_mapping_rules().await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_org_preview_mapping_rules(
+    transport: State<'_, Transport>,
+    upsert: Option<pb::org::MappingRule>, delete_id: String,
+) -> Result<pb::org::MappingReport, String> {
+    transport.inner().clone().preview_mapping_rules(upsert, delete_id).await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_org_get_approval_settings(
+    transport: State<'_, Transport>,
+) -> Result<pb::org::ApprovalSettings, String> {
+    transport.inner().clone().get_approval_settings().await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_org_list_scim_connections(
+    transport: State<'_, Transport>,
+) -> Result<Vec<pb::org::ScimConnection>, String> {
+    transport.inner().clone().list_scim_connections().await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_org_get_reconcile_status(
+    transport: State<'_, Transport>,
+) -> Result<pb::org::ReconcileStatus, String> {
+    transport.inner().clone().get_reconcile_status().await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_org_save_unit(
+    transport: State<'_, Transport>,
+    unit: pb::org::OrgUnit, reason: String,
+) -> Result<pb::org::OrgUnit, String> {
+    transport.inner().clone().save_org_unit(unit, reason).await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_org_delete_unit(
+    transport: State<'_, Transport>,
+    id: String, reason: String,
+) -> Result<pb::org::OrgAck, String> {
+    transport.inner().clone().delete_org_unit(id, reason).await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_org_save_person(
+    transport: State<'_, Transport>,
+    person: pb::org::OrgPerson, reason: String,
+) -> Result<pb::org::OrgPerson, String> {
+    transport.inner().clone().save_org_person(person, reason).await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_org_set_person_active(
+    transport: State<'_, Transport>,
+    principal_id: String, active: bool, reason: String,
+) -> Result<pb::org::OrgPerson, String> {
+    transport.inner().clone().set_org_person_active(principal_id, active, reason).await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_org_save_mapping_rule(
+    transport: State<'_, Transport>,
+    rule: pb::org::MappingRule, reason: String,
+) -> Result<pb::org::SaveMappingRuleResponse, String> {
+    transport.inner().clone().save_mapping_rule(rule, reason).await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_org_delete_mapping_rule(
+    transport: State<'_, Transport>,
+    id: String, reason: String,
+) -> Result<pb::org::MappingReport, String> {
+    transport.inner().clone().delete_mapping_rule(id, reason).await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_org_apply_mapping_rules(
+    transport: State<'_, Transport>,
+    reason: String,
+) -> Result<pb::org::MappingReport, String> {
+    transport.inner().clone().apply_mapping_rules(reason).await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_org_create_scim_connection(
+    transport: State<'_, Transport>,
+    name: String, oidc_issuer: String, reason: String,
+) -> Result<pb::org::ScimConnectionSecret, String> {
+    transport.inner().clone().create_scim_connection(name, oidc_issuer, reason).await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_org_rotate_scim_token(
+    transport: State<'_, Transport>,
+    id: String, reason: String,
+) -> Result<pb::org::ScimConnectionSecret, String> {
+    transport.inner().clone().rotate_scim_token(id, reason).await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_org_revoke_scim_connection(
+    transport: State<'_, Transport>,
+    id: String, reason: String,
+) -> Result<pb::org::ScimConnection, String> {
+    transport.inner().clone().revoke_scim_connection(id, reason).await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_org_run_reconcile_now(
+    transport: State<'_, Transport>,
+    reason: String,
+) -> Result<pb::org::ReconcileStatus, String> {
+    transport.inner().clone().run_reconcile_now(reason).await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_start_account_connect(
+    app: AppHandle,
+    transport: State<'_, Transport>,
+    server_id: String,
+) -> Result<accounts::AccountConnectStart, String> {
+    use tauri_plugin_opener::OpenerExt;
+    let (mut start, url) = transport.inner().clone().start_account_connect(server_id).await?;
+    match accounts::openable_url(&url) {
+        Ok(()) => match app.opener().open_url(url, None::<&str>) {
+            Ok(()) => start.opened = true,
+            Err(e) => start.open_error = format!("could not open the system browser: {e}"),
+        },
+        Err(e) => start.open_error = e,
+    }
+    Ok(start)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_get_account_connect_flow(
+    transport: State<'_, Transport>,
+    flow_id: String,
+) -> Result<accounts::AccountConnectFlow, String> {
+    transport.inner().clone().get_account_connect_flow(flow_id).await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_list_my_accounts(transport: State<'_, Transport>) -> Result<accounts::AccountList, String> {
+    transport.inner().clone().list_my_accounts().await
+}
+
+/// ADR-0141 D3: consumers (ingresses) stopped by an unusable account, addressed
+/// to the caller (attention.rs).
+#[tauri::command(rename_all = "snake_case")]
+async fn op_list_my_attention(transport: State<'_, Transport>) -> Result<Vec<attention::AttentionItem>, String> {
+    transport.inner().clone().list_my_attention().await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_disconnect_my_account(
+    transport: State<'_, Transport>,
+    server_id: String,
+    reason: Option<String>,
+) -> Result<accounts::AccountMutation, String> {
+    transport.inner().clone().disconnect_my_account(server_id, reason.unwrap_or_default()).await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_list_accounts(
+    transport: State<'_, Transport>,
+    server_id: Option<String>,
+    principal_id: Option<String>,
+) -> Result<accounts::AccountList, String> {
+    transport
+        .inner()
+        .clone()
+        .list_accounts(server_id.unwrap_or_default(), principal_id.unwrap_or_default())
+        .await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_revoke_account(
+    transport: State<'_, Transport>,
+    server_id: String,
+    principal_id: String,
+    reason: String,
+) -> Result<accounts::AccountMutation, String> {
+    transport.inner().clone().revoke_account(server_id, principal_id, reason).await
+}
+
+// Phase 2 (ADR-0141): confirmation, org accounts, provider OAuth clients.
+// Secrets (org keys, client secrets) travel webview -> core -> kernel once.
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_confirm_my_account(
+    transport: State<'_, Transport>,
+    server_id: String,
+    account: String,
+) -> Result<accounts::AccountMutation, String> {
+    transport.inner().clone().confirm_my_account(server_id, account).await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_list_org_accounts(
+    transport: State<'_, Transport>,
+    provider: Option<String>,
+    consumer_id: Option<String>,
+) -> Result<Vec<accounts::OrgAccount>, String> {
+    transport
+        .inner()
+        .clone()
+        .list_org_accounts(provider.unwrap_or_default(), consumer_id.unwrap_or_default())
+        .await
+}
+
+#[allow(clippy::too_many_arguments)]
+#[tauri::command(rename_all = "snake_case")]
+async fn op_create_org_account(
+    transport: State<'_, Transport>,
+    provider: String,
+    external_account: String,
+    display_name: String,
+    secret: String,
+    grants: Option<Vec<accounts::AccountGrant>>,
+    scopes: Option<Vec<String>>,
+    reason: String,
+) -> Result<accounts::OrgAccountMutation, String> {
+    transport
+        .inner()
+        .clone()
+        .create_org_account(
+            provider,
+            external_account,
+            display_name,
+            secret,
+            grants.unwrap_or_default(),
+            scopes.unwrap_or_default(),
+            reason,
+        )
+        .await
+}
+
+/// Organisation OAuth install (ADR-0141, Operator): the kernel's single-use
+/// start URL is opened in the SYSTEM browser here and never reaches the
+/// webview, exactly like a personal sign-in.
+#[tauri::command(rename_all = "snake_case")]
+async fn op_start_org_account_install(
+    app: AppHandle,
+    transport: State<'_, Transport>,
+    provider: String,
+    account_id: Option<String>,
+    consumers: Option<Vec<accounts::AccountGrant>>,
+    reason: String,
+) -> Result<accounts::AccountConnectStart, String> {
+    use tauri_plugin_opener::OpenerExt;
+    let (mut start, url) = transport
+        .inner()
+        .clone()
+        .start_org_account_install(provider, account_id.unwrap_or_default(), consumers.unwrap_or_default(), reason)
+        .await?;
+    match accounts::openable_url(&url) {
+        Ok(()) => match app.opener().open_url(url, None::<&str>) {
+            Ok(()) => start.opened = true,
+            Err(e) => start.open_error = format!("could not open the system browser: {e}"),
+        },
+        Err(e) => start.open_error = e,
+    }
+    Ok(start)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_list_systems(transport: State<'_, Transport>) -> Result<accounts::SystemList, String> {
+    transport.inner().clone().list_systems().await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_list_account_consumers(
+    transport: State<'_, Transport>,
+    account_id: String,
+) -> Result<accounts::AccountConsumers, String> {
+    transport.inner().clone().list_account_consumers(account_id).await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_update_org_account(
+    transport: State<'_, Transport>,
+    account_id: String,
+    display_name: String,
+    reason: String,
+) -> Result<accounts::OrgAccountMutation, String> {
+    transport.inner().clone().update_org_account(account_id, display_name, reason).await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_rotate_org_account(
+    transport: State<'_, Transport>,
+    account_id: String,
+    secret: String,
+    reason: String,
+) -> Result<accounts::OrgAccountMutation, String> {
+    transport.inner().clone().rotate_org_account(account_id, secret, reason).await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_revoke_org_account(
+    transport: State<'_, Transport>,
+    account_id: String,
+    reason: String,
+) -> Result<accounts::OrgAccountMutation, String> {
+    transport.inner().clone().revoke_org_account(account_id, reason).await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_bind_org_account(
+    transport: State<'_, Transport>,
+    account_id: String,
+    grant: accounts::AccountGrant,
+    reason: String,
+) -> Result<accounts::OrgAccountMutation, String> {
+    transport.inner().clone().bind_org_account(account_id, grant, reason).await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_unbind_org_account(
+    transport: State<'_, Transport>,
+    account_id: String,
+    purpose: String,
+    consumer_id: String,
+    slot: String,
+    reason: String,
+) -> Result<accounts::OrgAccountMutation, String> {
+    transport
+        .inner()
+        .clone()
+        .unbind_org_account(account_id, purpose, consumer_id, slot, reason)
+        .await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_list_provider_clients(transport: State<'_, Transport>) -> Result<accounts::ProviderClients, String> {
+    transport.inner().clone().list_provider_clients().await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_set_provider_client(
+    transport: State<'_, Transport>,
+    provider: String,
+    client_id: String,
+    client_secret: Option<String>,
+    reason: String,
+) -> Result<accounts::ProviderClientMutation, String> {
+    transport
+        .inner()
+        .clone()
+        .set_provider_client(provider, client_id, client_secret.unwrap_or_default(), reason)
+        .await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_clear_provider_client(
+    transport: State<'_, Transport>,
+    provider: String,
+    reason: String,
+) -> Result<accounts::ProviderClientMutation, String> {
+    transport.inner().clone().clear_provider_client(provider, reason).await
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -1914,6 +2757,28 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             op_login,
             op_login_saved,
+            op_describe_auth,
+            op_login_oidc,
+            op_org_list_units,
+            op_org_list_people,
+            op_org_list_directory_groups,
+            op_org_get_chain,
+            op_org_list_mapping_rules,
+            op_org_preview_mapping_rules,
+            op_org_get_approval_settings,
+            op_org_list_scim_connections,
+            op_org_get_reconcile_status,
+            op_org_save_unit,
+            op_org_delete_unit,
+            op_org_save_person,
+            op_org_set_person_active,
+            op_org_save_mapping_rule,
+            op_org_delete_mapping_rule,
+            op_org_apply_mapping_rules,
+            op_org_create_scim_connection,
+            op_org_rotate_scim_token,
+            op_org_revoke_scim_connection,
+            op_org_run_reconcile_now,
             op_logout,
             op_saved_connection,
             op_disconnect,
@@ -1929,6 +2794,9 @@ pub fn run() {
             op_pause_session,
             op_resume_session,
             op_resolve_hitl,
+            op_answer_approval,
+            op_list_standing_approvals,
+            op_revoke_standing_approval,
             op_set_tool_grant,
             op_set_scope,
             op_register_mcp,
@@ -2052,6 +2920,51 @@ pub fn run() {
             op_links_candidates,
             op_links_confirm,
             op_links_retract,
+            op_list_skills_full,
+            op_list_skill_proposals,
+            op_decide_skill_proposal,
+            op_set_skill_lock,
+            op_list_skill_ledger,
+            op_rollback_skill,
+            op_list_skill_grants,
+            op_grant_skill,
+            op_revoke_skill_grant,
+            op_list_memory_notes,
+            op_get_memory_notes,
+            op_set_memory_notes,
+            op_delete_memory_notes,
+            op_set_memory_notes_budget,
+            op_list_integration_catalog,
+            op_list_integrations,
+            op_install_integration,
+            op_update_integration,
+            op_set_integration_secret,
+            op_clear_integration_secret,
+            op_set_integration_enabled,
+            op_test_integration,
+            op_remove_integration,
+            op_revert_integration_to_file,
+            op_start_account_connect,
+            op_get_account_connect_flow,
+            op_list_my_accounts,
+            op_list_my_attention,
+            op_disconnect_my_account,
+            op_list_accounts,
+            op_revoke_account,
+            op_confirm_my_account,
+            op_list_org_accounts,
+            op_create_org_account,
+            op_update_org_account,
+            op_rotate_org_account,
+            op_revoke_org_account,
+            op_bind_org_account,
+            op_unbind_org_account,
+            op_list_provider_clients,
+            op_set_provider_client,
+            op_clear_provider_client,
+            op_start_org_account_install,
+            op_list_systems,
+            op_list_account_consumers,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

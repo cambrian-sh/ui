@@ -52,6 +52,47 @@ pub mod substrate {
     tonic::include_proto!("cambrian.premium.substrate");
 }
 
+/// The premium accounts plane (ADR-0141) — personal accounts for per-user
+/// integrations: connect my account (OAuth sign-in hosted by the kernel),
+/// list / disconnect / confirm mine, and operator list / revoke. It replaced
+/// the six ADR-0140 RPCs that were briefly on `OperatorConsole`. Phase 2
+/// (additive, vendored 2026-11-06): org accounts (List/Create/Update/Rotate/
+/// Revoke/Bind/UnbindOrgAccount), provider OAuth clients
+/// (List/Set/ClearProviderClient) and ConfirmMyAccount. Org OAuth install +
+/// system catalog (additive, vendored 2026-11-06): StartOrgAccountInstall,
+/// ListSystems, ListAccountConsumers, per-grant scope verdicts — gated on
+/// [`ACCOUNTS_SYSTEMS_CAPABILITY`].
+///
+/// Compiled in unconditionally like every premium plane here; the console
+/// surface is gated on [`ACCOUNTS_CAPABILITY`]. Called by `accounts.rs`
+/// (Tauri commands `op_*account*`, ADR-0141 phase 4).
+pub mod accounts {
+    tonic::include_proto!("cambrian.premium.accounts");
+}
+
+/// The capability the kernel advertises when the accounts plugin is active.
+pub const ACCOUNTS_CAPABILITY: &str = "accounts";
+
+/// The capability the kernel advertises when the accounts plugin serves the
+/// system catalog and org OAuth install (ListSystems et al.). Without it the
+/// console derives systems itself (an older kernel).
+pub const ACCOUNTS_SYSTEMS_CAPABILITY: &str = "accounts-systems";
+
+/// The premium organisation-hierarchy plane (ADR-0142 stage 2): org units,
+/// people and manager edges (the built-in editor's backend), directory groups,
+/// mapping rules with a dry-run preview, approval escalation settings, SCIM
+/// connections (token shown once) and the Keycloak reconcile status. Vendored
+/// 2026-11-06 from `cambrian-premium/api/proto/org/org_directory.proto`.
+///
+/// Compiled in unconditionally like every premium plane here; the console
+/// surface is gated on [`ORG_DIRECTORY_CAPABILITY`].
+pub mod org {
+    tonic::include_proto!("cambrian.premium.org");
+}
+
+/// The capability the kernel advertises when the org-directory plugin is active.
+pub const ORG_DIRECTORY_CAPABILITY: &str = "org-directory";
+
 /// The capability the kernel advertises when the access-policy plugin is active.
 /// The UI renders the policy console only when the handshake carries it
 /// (ADR-0082 D2: the kernel forwards plugin capabilities without interpreting

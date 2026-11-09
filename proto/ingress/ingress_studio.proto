@@ -228,8 +228,18 @@ message IngressSummary {
   string ingress_id = 1;
   string display_name = 2;
   string state = 3;
+  // health: ok | degraded | error | paused_credentials. paused_credentials
+  // (ADR-0141 D3): the ingress's outbound ACCOUNT is unusable; it stopped
+  // fetching, raised an attention item (AccountsAdmin.ListMyAttention) and
+  // resumes by itself once the account works again. Not a lifecycle state:
+  // `state` stays what it was (e.g. ARMED).
   string health = 4;
   string pinned_release = 5;
+  // health_reason says why health is not ok, when known
+  // ("account_reconnect_needed: credential \"token\" (owner:google) — …").
+  string health_reason = 6;
+  // health_since_unix_ms is when health last changed value (0 = unknown).
+  int64 health_since_unix_ms = 7;
 }
 
 message IngressStatus {
