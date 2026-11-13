@@ -48,8 +48,8 @@ export function formatCell(value: unknown): string {
 export function GuaranteeLabel({ guarantee }: { guarantee: string }) {
   if (!guarantee) return null;
   return (
-    <p className="text-[12px] italic text-[var(--fg-muted)]">
-      <span className="not-italic font-medium text-[var(--fg-secondary)]">Guarantee: </span>
+    <p className="text-[12.5px] text-[var(--fg-muted)]">
+      <span className="font-medium text-[var(--fg-secondary)]">Guarantee: </span>
       {guarantee}
     </p>
   );
@@ -73,12 +73,12 @@ export function RowTable({
   }
   const columns = columnsOf(rows);
   return (
-    <div className="overflow-x-auto rounded-[8px] border border-[var(--border-default)]">
-      <table className="w-full text-[12.5px]" aria-label={ariaLabel}>
+    <div className="overflow-x-auto rounded-[var(--radius-lg)] border border-[var(--card-border)] bg-[var(--bg-surface)]">
+      <table className="w-full text-[13px]" aria-label={ariaLabel}>
         <thead>
-          <tr className="border-b border-[var(--border-default)] bg-[var(--bg-inset)] text-left">
+          <tr className="border-b border-[var(--border-subtle)] bg-[var(--bg-canvas)] text-left">
             {columns.map((c) => (
-              <th key={c} className="px-3 py-1.5 font-medium text-[var(--fg-secondary)]">
+              <th key={c} className="px-3 py-2 font-mono text-[11.5px] font-medium text-[var(--fg-muted)]">
                 {c}
               </th>
             ))}
@@ -88,17 +88,17 @@ export function RowTable({
           {rows.map((row, i) => (
             <tr
               key={i}
-              className={cn('border-b border-[var(--border-default)] last:border-b-0 align-top')}
+              className={cn('border-b border-[var(--border-subtle)] last:border-b-0 align-top hover:bg-[var(--list-row-bg-hover)]')}
             >
               {columns.map((c) => {
                 const v = row[c];
                 if (c === 'evidence_id' && typeof v === 'string' && v !== '' && onOpenReceipt) {
                   return (
-                    <td key={c} className="px-3 py-1.5">
+                    <td key={c} className="px-3 py-2">
                       <button
                         type="button"
                         onClick={() => onOpenReceipt(v)}
-                        className="font-mono text-[11.5px] text-[var(--accent-fg)] underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)]"
+                        className="font-mono text-[12px] text-[var(--color-accent-500)] underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)]"
                       >
                         {v.length > 14 ? `${v.slice(0, 14)}…` : v}
                       </button>
@@ -106,7 +106,7 @@ export function RowTable({
                   );
                 }
                 return (
-                  <td key={c} className="px-3 py-1.5 text-[var(--fg-primary)]">
+                  <td key={c} className="px-3 py-2 tabular-nums text-[var(--fg-primary)]">
                     {formatCell(v)}
                   </td>
                 );

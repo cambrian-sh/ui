@@ -34,7 +34,7 @@ export function ErrorState({ reason, whatToDo, deepLink, className }: ErrorState
           <line x1="8" y1="5" x2="8" y2="9" />
           <line x1="8" y1="11" x2="8" y2="11.01" />
         </svg>
-        <span className="text-xs font-medium uppercase tracking-wide text-[var(--status-err)]">
+        <span className="type-status font-medium text-[var(--status-err)]">
           Error
         </span>
       </div>

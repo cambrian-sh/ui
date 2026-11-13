@@ -42,7 +42,6 @@ export function Shell() {
   const [shortcutOpen, setShortcutOpen] = useState(false);
   const breakpoint = useBreakpoint();
   const inspector = useInspectorHost();
-
   useEffect(() => {
     let cancelled = false;
     let unlisten: (() => void) | undefined;
@@ -149,10 +148,10 @@ export function Shell() {
     >
       {isHydrating ? (
         <div className="flex h-full items-center justify-center">
-          <span className="text-sm text-[var(--fg-muted)]">Connecting to kernel…</span>
+          <span className="text-sm text-[var(--fg-muted)]">Connecting to the kernel…</span>
         </div>
       ) : (
-        <ErrorBoundary>
+        <ErrorBoundary resetKey={pathname}>
           {routeAllowed ? (
             <Outlet />
           ) : (
@@ -176,19 +175,6 @@ export function Shell() {
     <div className="flex h-full flex-col bg-[var(--bg-canvas)] text-[var(--fg-primary)]">
       <a href="#main" className="cambrian-skip-link">Skip to main content</a>
 
-      <HeaderBar
-        connection={connection}
-        cursor={state?.cursor ?? 0}
-        kernelVersion={state?.kernel_version ?? ''}
-        contractVersion={state?.contract_version ?? ''}
-        contractSkew={state?.contract_skew ?? 0}
-        needsYouCount={needsYouCount}
-        role={role}
-        identityName={state?.identity?.display_name ?? null}
-        compact={isMobile}
-        onSignOut={canSignOut ? onSignOut : undefined}
-      />
-
       <div className="flex min-h-0 flex-1">
         {!isMobile && (
           <NavRail
@@ -201,16 +187,34 @@ export function Shell() {
           />
         )}
 
-        {main}
-
-        {/* Mounted only when a screen is inspecting something. */}
-        {!isMobile && inspector.active && (
-          <aside
-            ref={inspector.ref}
-            className="flex-none bg-[var(--bg-surface)] shadow-[inset_1px_0_0_var(--border-subtle)]"
-            style={{ width: 'var(--inspector-w)' }}
+        <div className="flex min-w-0 flex-1 flex-col">
+          <HeaderBar
+            connection={connection}
+            cursor={state?.cursor ?? 0}
+            endpoint={state?.connection.endpoint ?? ''}
+            kernelVersion={state?.kernel_version ?? ''}
+            contractVersion={state?.contract_version ?? ''}
+            contractSkew={state?.contract_skew ?? 0}
+            needsYouCount={needsYouCount}
+            role={role}
+            identityName={state?.identity?.display_name ?? null}
+            compact={isMobile}
+            onSignOut={canSignOut ? onSignOut : undefined}
           />
-        )}
+
+          <div className="flex min-h-0 flex-1">
+            {main}
+
+            {/* Mounted only when a screen is inspecting something. */}
+            {!isMobile && inspector.active && (
+              <aside
+                ref={inspector.ref}
+                className="flex-none bg-[var(--bg-surface)] shadow-[inset_1px_0_0_var(--border-subtle)]"
+                style={{ width: 'var(--inspector-w)' }}
+              />
+            )}
+          </div>
+        </div>
       </div>
 
       {isMobile && <MobileTabBar needsYouCount={needsYouCount} role={role} />}

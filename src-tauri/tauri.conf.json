@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Cambrian",
+  "productName": "Cambrian Studio",
   "version": "0.1.0",
   "identifier": "com.cambrian.ui",
   "build": {
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "Cambrian",
+        "title": "Cambrian Studio",
         "width": 1440,
         "height": 900,
         "minWidth": 1024,
@@ -35,7 +35,7 @@
       "icons/icon.ico"
     ],
     "category": "DeveloperTool",
-    "shortDescription": "Cambrian Web UI — operator console for the Cambrian agent OS.",
-    "longDescription": "Mission-control for the Cambrian runtime. Chat with sessions, watch plans form, inspect the LTM, configure the runtime."
+    "shortDescription": "Cambrian Studio — the desktop app for running and governing a Cambrian kernel.",
+    "longDescription": "Cambrian Studio connects to a Cambrian kernel. Start tasks, watch plans run, approve decisions, explore memory, and configure agents, access, and integrations."
   }
 }

@@ -110,8 +110,8 @@ function StudioSurfaces() {
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex-none px-6 pt-5 pb-3">
-        <h1 className="text-[18px] font-semibold text-[var(--fg-primary)]">Ingress Studio</h1>
-        <p className="text-[12px] text-[var(--fg-muted)]">
+        <h1 className="type-page-title text-[var(--fg-primary)]">Ingress Studio</h1>
+        <p className="type-page-description">
           Describe a source, capture its shape, confirm the mapping, dry-run against real traffic —
           then arm. Three of those are human gates, on purpose, and the order is enforced by the
           kernel rather than by this screen.
@@ -141,7 +141,7 @@ function StudioSurfaces() {
                with a way back. */
             <div className="flex h-full min-h-0 flex-col">
               <div className="flex flex-none items-center gap-3 border-b border-[var(--border-subtle)] px-5 py-3">
-                <h2 className="text-[15px] font-medium">
+                <h2 className="type-section-title">
                   {SIDE_PANELS.find((p) => p.id === panel)?.label}
                 </h2>
                 <span className="font-mono text-[11px] text-[var(--fg-muted)]">

@@ -40,8 +40,8 @@ export function EmbeddingSettings({ canMutate }: { canMutate: boolean }) {
   return (
     <div className="flex flex-col gap-5">
       <div>
-        <h2 className="text-[17px] font-medium leading-[1.25] tracking-[-0.01em]">Embedding</h2>
-        <p className="mt-1 max-w-[660px] text-[12.5px] leading-[1.6] text-[var(--fg-muted)]">
+        <h2 className="type-page-title">Embedding</h2>
+        <p className="type-page-description mt-1 max-w-[660px]">
           What turns text into the vectors retrieval searches. Changing it is not like changing
           a threshold.
         </p>
@@ -49,7 +49,7 @@ export function EmbeddingSettings({ canMutate }: { canMutate: boolean }) {
 
       {/* Current state. */}
       <section className="flex flex-col gap-2.5 rounded-[var(--radius-lg)] bg-[var(--bg-surface)] p-3.5 shadow-[var(--elevation-1)]">
-        <h3 className="font-mono text-[9.5px] uppercase tracking-[0.14em] text-[var(--fg-muted)]">
+        <h3 className="type-label text-[var(--fg-muted)]">
           Current
         </h3>
         {schema.error ? (
@@ -79,8 +79,8 @@ export function EmbeddingSettings({ canMutate }: { canMutate: boolean }) {
       <section className="flex flex-col gap-2 rounded-[var(--radius-lg)] bg-[var(--bg-surface)] p-3.5 shadow-[var(--elevation-1)]">
         <h3 className="text-[13.5px] font-medium">
           Query prefix
-          <span className="ml-2 font-mono text-[10px] uppercase tracking-[0.1em] text-[var(--status-live)]">
-            safe to change
+          <span className="type-status ml-2 text-[var(--status-live)]">
+            Safe to change
           </span>
         </h3>
         <Input
@@ -103,8 +103,8 @@ export function EmbeddingSettings({ canMutate }: { canMutate: boolean }) {
         style={{ '--tint': 'var(--status-err)' } as React.CSSProperties}
       >
         <div>
-          <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-[var(--status-err)]">
-            CHANGING THE MODEL INVALIDATES EVERY STORED VECTOR
+          <span className="type-status text-[var(--status-err)]">
+            Changing the model invalidates every stored vector
           </span>
           <p className="mt-1 text-[12.5px] leading-[1.55] text-[var(--fg-primary)]">
             Every vector in the store was produced by the current model. Under a different model
@@ -116,7 +116,7 @@ export function EmbeddingSettings({ canMutate }: { canMutate: boolean }) {
         </div>
 
         <div>
-          <div className="mb-1 font-mono text-[9.5px] uppercase tracking-[0.14em] text-[var(--fg-muted)]">
+          <div className="type-label mb-1 text-[var(--fg-muted)]">
             If you change it
           </div>
           <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-[12px]">

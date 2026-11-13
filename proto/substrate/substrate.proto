@@ -87,6 +87,16 @@ service SubstrateLane {
   // declarations would refuse if written now (a query, not a table), fenced
   // to what the caller may read.
   rpc ListOntologyViolations(ListOntologyViolationsRequest) returns (ListOntologyViolationsResponse);
+
+  // GetOntologyDraft returns an agent-drafted ontology change in full, for the
+  // person deciding its ontology_change approval (whose object is the draft
+  // id; the approval itself carries only a bounded preview): every spec of the
+  // change next to the spec declared now under the same name, the
+  // classification against the base version, the proposer and reason, its
+  // state, and a dry run against the current declarations by the same body an
+  // approval runs. Operator-only read; writes nothing. NotFound for an unknown
+  // id.
+  rpc GetOntologyDraft(GetOntologyDraftRequest) returns (GetOntologyDraftResponse);
 }
 
 message GetOntologyRequest {
@@ -143,6 +153,54 @@ message ListOntologyViolationsResponse {
   int64 version = 1;
   repeated OntologyViolation violations = 2;
   bool truncated = 3;
+}
+
+message GetOntologyDraftRequest {
+  string draft_id = 1; // the ontology_change approval's object
+}
+
+// One kind or relation spec the draft declares, next to what is declared now.
+message OntologyDraftSpec {
+  string type = 1; // kind | relation
+  string name = 2;
+  // The spec as drafted, in the GetOntology JSON shape (a KindSpec or a
+  // RelationSpec).
+  string new_json = 3;
+  // The spec declared under name NOW; "" = the name is new.
+  string current_json = 4;
+}
+
+message GetOntologyDraftResponse {
+  string draft_id = 1;
+  string namespace = 2;
+  string proposer = 3; // "agent:<id>"
+  string reason = 4;
+  int64 created_at_unix_ms = 5;
+  // The classification as drafted, against base_version.
+  int64 base_version = 6;
+  string class = 7; // additive | tightening
+  repeated OntologyChange changes = 8;
+  // The whole change as drafted, in the GetOntology JSON shape.
+  string change_json = 9;
+  repeated OntologyDraftSpec specs = 10;
+  // pending | applied | rejected | expired | superseded, who moved it there,
+  // why, and the version an applied draft became.
+  string state = 11;
+  string state_by = 12;
+  string detail = 13;
+  int64 applied_version = 14;
+  string approval_id = 15;
+  // The namespace's declarations version now (≠ base_version: it moved since
+  // the draft).
+  int64 current_version = 16;
+  // A dry run against the current declarations, with the approval's
+  // still-as-drafted check; present only while the draft is pending.
+  // dry_run_refusal says why approving now would apply nothing ("" = it would
+  // apply as drafted).
+  bool dry_run_ran = 17;
+  string dry_run_class = 18;
+  repeated OntologyChange dry_run_changes = 19;
+  string dry_run_refusal = 20;
 }
 
 message AskKnowledgeRequest {

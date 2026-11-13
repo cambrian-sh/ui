@@ -11,12 +11,12 @@ import { cn } from "@/design-system/lib/utils";
  * separate `warn` from `err` by hue.
  */
 const badgeVariants = cva(
-  "inline-flex items-center gap-1 rounded-sm px-1.5 py-0.5 font-mono text-[10px] leading-none whitespace-nowrap",
+  "inline-flex items-center gap-1.5 rounded-full px-2 py-[3px] text-[11.5px] font-medium leading-none whitespace-nowrap",
   {
     variants: {
       variant: {
         /** running · live · connected */
-        live: "text-[var(--color-accent-400)] tint-fill tint-ring",
+        live: "text-[var(--status-live)] tint-fill tint-ring",
         /** waiting on you · degraded · blocked */
         warn: "text-[var(--status-warn)] tint-fill tint-ring",
         /** failed · down · denied */
@@ -41,16 +41,24 @@ const TINTS: Record<string, string> = {
 
 export interface BadgeProps
   extends React.HTMLAttributes<HTMLSpanElement>,
-    VariantProps<typeof badgeVariants> {}
+    VariantProps<typeof badgeVariants> {
+  /** Lead with a status dot — for a state ("Running"), not a tag ("finance"). */
+  dot?: boolean;
+}
 
-function Badge({ className, variant, style, ...props }: BadgeProps) {
+function Badge({ className, variant, style, dot, children, ...props }: BadgeProps) {
   const tint = TINTS[variant ?? "neutral"];
   return (
     <span
       className={cn(badgeVariants({ variant }), className)}
       style={tint ? ({ "--tint": tint, ...style } as React.CSSProperties) : style}
       {...props}
-    />
+    >
+      {dot && (
+        <span aria-hidden="true" className="size-1.5 shrink-0 rounded-full bg-current" />
+      )}
+      {children}
+    </span>
   );
 }
 

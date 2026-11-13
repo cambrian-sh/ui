@@ -10,6 +10,7 @@ import { cn } from '@/design-system/lib/utils';
 import { useBreakpoint } from '@/lib/useBreakpoint';
 import { MobileCapture } from './MobileCapture';
 import { NotesPane } from './NotesPane';
+import { PageHeader } from '@/design-system/components';
 
 type LeftTab = 'ingest' | 'inspect';
 
@@ -59,9 +60,11 @@ export function MemoryPage() {
       {/* The connection and kernel version used to be repeated here; the app
           header already carries both, so this header carries only what is
           specific to Memory. */}
-      <header className="flex items-center gap-3 border-b border-[var(--border-subtle)] px-3 py-2">
-        <h1 className="text-sm font-semibold tracking-tight">Memory</h1>
-        {hasNotes && (
+      <PageHeader
+        divider
+        title="Memory"
+        description="Add documents, then ask questions that are answered from them, with every claim linked to its source."
+        actions={hasNotes ? (
           <div role="tablist" aria-label="Memory section" className="flex items-center gap-1">
             {(['documents', 'notes'] as const).map((t) => (
               <button
@@ -81,8 +84,8 @@ export function MemoryPage() {
               </button>
             ))}
           </div>
-        )}
-      </header>
+        ) : undefined}
+      />
 
       {hasNotes && section === 'notes' ? (
         <div className="min-h-0 flex-1">
@@ -105,7 +108,7 @@ export function MemoryPage() {
                 className={cn(
                   'min-h-[36px] rounded-md px-3 text-[13px] capitalize',
                   mobileTab === t
-                    ? 'bg-[color-mix(in_srgb,var(--accent-bg)_13%,transparent)] font-medium text-[var(--fg-primary)]'
+                    ? 'bg-[var(--bg-elevated)] font-medium text-[var(--fg-primary)]'
                     : 'text-[var(--fg-muted)]',
                 )}
               >
@@ -130,12 +133,12 @@ export function MemoryPage() {
           </div>
         </div>
       ) : (
-      <div className="grid flex-1 min-h-0 grid-cols-1 lg:grid-cols-[380px_1fr]">
-        <aside className="flex min-h-0 flex-col border-r border-[var(--border-subtle)]">
+      <div className="grid flex-1 min-h-0 grid-cols-1 lg:grid-cols-[400px_1fr]">
+        <aside className="flex min-h-0 flex-col border-r border-[var(--border-subtle)] bg-[var(--bg-surface)]">
           <div
             role="tablist"
             aria-label="Memory left pane"
-            className="flex items-center gap-1 border-b border-[var(--border-subtle)] px-2 py-1"
+            className="flex items-center gap-4 border-b border-[var(--border-subtle)] px-[var(--page-gutter)]"
           >
             {(['ingest', 'inspect'] as LeftTab[]).map((t) => (
               <button
@@ -145,17 +148,17 @@ export function MemoryPage() {
                 aria-selected={tab === t}
                 onClick={() => setTab(t)}
                 className={cn(
-                  'rounded-sm px-2 py-0.5 text-[11px] capitalize',
+                  '-mb-px border-b-2 py-2.5 text-[13px] font-medium capitalize transition-colors',
                   tab === t
-                    ? 'bg-[var(--bg-elevated)] text-[var(--fg-primary)]'
-                    : 'text-[var(--fg-muted)] hover:text-[var(--fg-primary)]',
+                    ? 'border-[var(--button-primary-bg)] text-[var(--fg-primary)]'
+                    : 'border-transparent text-[var(--fg-muted)] hover:text-[var(--fg-primary)]',
                 )}
               >
                 {t}
               </button>
             ))}
           </div>
-          <div className="flex-1 overflow-y-auto p-3">
+          <div className="flex-1 overflow-y-auto px-[var(--page-gutter)] py-4">
             {tab === 'ingest' ? (
               <IngestPane
                 rows={rows}

@@ -2,7 +2,9 @@ import { useState } from 'react';
 import { Link } from '@tanstack/react-router';
 import {
   Button,
+  Badge,
   EmptyState,
+  PageHeader,
   ErrorState,
   HITLInline,
   ReasonField,
@@ -89,17 +91,23 @@ export function InboxConsole() {
 
   return (
     <div className="flex h-full flex-col">
-      <header className="flex-none px-[26px] pb-3.5 pt-4 shadow-[inset_0_-1px_0_var(--border-subtle)]">
-        <h1 className="text-[19px] font-medium leading-[1.25] tracking-[-0.01em]">Inbox</h1>
-        <p className="mt-1 text-[12.5px] text-[var(--fg-muted)]" aria-live="polite">
-          {inbox.count === 0
-            ? 'Nothing is waiting on a decision.'
-            : `${inbox.count} decision${inbox.count === 1 ? '' : 's'} waiting · longest waiting first`}
-        </p>
-      </header>
+      <ScrollArea className="flex-1">
+        <div className={COLUMN}>
+      <div aria-live="polite">
+        <PageHeader
+          className="px-0 pt-0"
+          title="Inbox"
+          meta={inbox.count > 0 ? <Badge variant="warn">{inbox.count} waiting</Badge> : undefined}
+          description={
+            inbox.count === 0
+              ? 'Nothing is waiting on a decision.'
+              : `${inbox.count} decision${inbox.count === 1 ? '' : 's'} waiting · longest waiting first`
+          }
+        />
+      </div>
 
       {(resolve.error || answer.error || refusal || inbox.error) && (
-        <div className="px-[26px] pt-3">
+        <div className="pb-3">
           <ErrorState
             reason={(resolve.error ?? answer.error ?? refusal ?? inbox.error) as string}
             whatToDo="Nothing was decided. Try again; the item stays here until the kernel confirms it."
@@ -109,12 +117,12 @@ export function InboxConsole() {
 
       {inbox.count === 0 ? (
         <EmptyState
+          className="mt-4 rounded-[var(--radius-lg)] border border-dashed border-[var(--border-subtle)]"
           title="Nothing is waiting on you"
           body="Tool approvals, skill-access requests and skill proposals appear here as soon as an agent raises them."
         />
       ) : (
-        <ScrollArea className="flex-1">
-          <ul className="flex max-w-[860px] flex-col gap-3 px-[26px] py-[22px]">
+          <ul className="flex flex-col gap-5">
             {inbox.items.map((item) => (
               <li key={item.key}>
                 {item.hitl ? (
@@ -148,12 +156,13 @@ export function InboxConsole() {
               </li>
             ))}
           </ul>
-        </ScrollArea>
       )}
 
       <UnroutedApprovals items={unrouted} />
 
       {addressed && <StandingApprovals />}
+        </div>
+      </ScrollArea>
 
       {/* Irreversible actions get the whole screen and a slide on a phone. */}
       {selected?.hitl && selected.hitl.nature === 'destructive_command' && (
@@ -189,6 +198,9 @@ export function InboxConsole() {
     </div>
   );
 }
+
+/** Reading screens sit in one centred column (Studio redesign). */
+const COLUMN = 'mx-auto flex w-full max-w-[880px] flex-col px-[var(--page-gutter)] pb-12 pt-7';
 
 function ItemMeta({ item }: { item: InboxItem }) {
   const session = item.hitl?.session_id;
@@ -416,7 +428,7 @@ export function StandingApprovals() {
   const rows = list.data ?? [];
   if (list.error || rows.length === 0) return null;
   return (
-    <section aria-labelledby="standing-h" className="max-w-[860px] px-[26px] pb-[22px]">
+    <section aria-labelledby="standing-h" className="pt-6">
       <h2 id="standing-h" className="mb-2 text-[13px] font-medium">
         Standing approvals
       </h2>

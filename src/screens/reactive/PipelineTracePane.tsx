@@ -65,10 +65,10 @@ export function PipelineTracePane({
       <div className="flex flex-col gap-4 p-4 pb-10">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h1 className="text-[19px] font-medium leading-[1.25] tracking-[-0.01em]">
+            <h1 className="type-page-title">
               What came through
             </h1>
-            <p className="mt-1 max-w-[620px] text-[12.5px] leading-[1.6] text-[var(--fg-muted)]">
+            <p className="type-page-description mt-1 max-w-[620px]">
               <span className="font-mono text-[11.5px] text-[var(--fg-secondary)]">
                 {pipeline.name || pipeline.pipeline_id}
               </span>{" "}
@@ -268,7 +268,7 @@ function Logs({
               {formatWhen(new Date(r.at_unix_ms).toISOString())}
             </span>
             <span
-              className="font-mono text-[10px] uppercase"
+              className="type-label"
               style={{ color: levelTone(r.level) }}
             >
               {r.level}

@@ -29,7 +29,7 @@ function StepDot({ status }: { status: PlanStepStatus }) {
     return (
       <span
         aria-hidden="true"
-        className="cambrian-halo size-[7px] shrink-0 rounded-full bg-[var(--accent-bg)]"
+        className="cambrian-halo size-[7px] shrink-0 rounded-full bg-[var(--status-live)]"
       />
     );
   }
@@ -86,7 +86,7 @@ function stepMeta(step: PlanStep): { text: string; tone?: string } | null {
     const waits = step.depends_on?.filter((d) => d !== step.index) ?? [];
     if (waits.length > 0) {
       return {
-        text: `waits on ${waits.map((d) => String(d).padStart(2, '0')).join(', ')}`,
+        text: `waits on step ${waits.map((d) => d + 1).join(', ')}`,
       };
     }
     return null;
@@ -110,11 +110,11 @@ const STATUS_TAG: Record<
   PlanStepStatus,
   { label: string; variant: 'live' | 'warn' | 'err' | 'neutral' | 'outline' }
 > = {
-  pending: { label: 'pending', variant: 'neutral' },
-  running: { label: 'running', variant: 'live' },
-  done: { label: 'done', variant: 'neutral' },
-  failed: { label: 'failed', variant: 'err' },
-  skipped: { label: 'skipped', variant: 'neutral' },
+  pending: { label: 'Pending', variant: 'neutral' },
+  running: { label: 'Running', variant: 'live' },
+  done: { label: 'Done', variant: 'neutral' },
+  failed: { label: 'Failed', variant: 'err' },
+  skipped: { label: 'Skipped', variant: 'neutral' },
 };
 
 export function PlanStepList({
@@ -141,15 +141,14 @@ export function PlanStepList({
         const meta = stepMeta(s);
         const tag = STATUS_TAG[s.status];
         return (
-          <li key={s.step_id}>
+          <li key={s.step_id} className="border-b border-[var(--border-subtle)] last:border-b-0">
             <button
               type="button"
               onClick={() => onSelectStep(s.index)}
               aria-pressed={isSelected}
               className={cn(
-                'cambrian-stepin flex w-full items-center gap-2.5 px-3.5 py-[9px] text-left transition-colors',
-                'shadow-[inset_0_-1px_0_color-mix(in_srgb,var(--fg-primary)_6%,transparent)]',
-                'hover:bg-[color-mix(in_srgb,var(--fg-primary)_4%,transparent)]',
+                'cambrian-stepin flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors',
+                'hover:bg-[var(--list-row-bg-hover)]',
                 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--focus-ring)]',
                 isSelected &&
                   'bg-[color-mix(in_srgb,var(--accent-bg)_13%,transparent)] shadow-[inset_2px_0_0_var(--accent-bg)]',
@@ -157,20 +156,20 @@ export function PlanStepList({
             >
               <span
                 className={cn(
-                  'w-[22px] shrink-0 font-mono text-[10.5px]',
+                  'w-[18px] shrink-0 text-right text-[12px] tabular-nums',
                   s.status === 'running'
-                    ? 'text-[var(--color-accent-400)]'
+                    ? 'font-medium text-[var(--status-live)]'
                     : 'text-[var(--fg-muted)]',
                 )}
               >
-                {String(s.index).padStart(2, '0')}
+                {s.index + 1}
               </span>
 
               <StepDot status={s.status} />
 
               <span
                 className={cn(
-                  'flex-1 truncate text-[12.5px]',
+                  'flex-1 truncate text-[13.5px]',
                   s.status === 'running' && 'font-medium text-[var(--fg-primary)]',
                   s.status === 'done' && 'text-[var(--fg-primary)] opacity-60',
                   s.status === 'pending' && 'text-[var(--fg-primary)] opacity-[0.42]',
@@ -183,7 +182,7 @@ export function PlanStepList({
 
               {meta && (
                 <span
-                  className="shrink-0 truncate font-mono text-[10.5px] text-[var(--fg-muted)]"
+                  className="shrink-0 truncate text-[12px] text-[var(--fg-muted)]"
                   style={meta.tone ? { color: meta.tone } : undefined}
                 >
                   {meta.text}

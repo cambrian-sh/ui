@@ -36,7 +36,7 @@ function DispatchPanel({ dispatch }: { dispatch: DispatchTrace }) {
   return (
     <section className="flex flex-col gap-3">
       <div className="flex items-baseline justify-between gap-2">
-        <h3 className="font-mono text-[9.5px] uppercase tracking-[0.14em] text-[var(--fg-muted)]">
+        <h3 className="type-label text-[var(--fg-muted)]">
           Dispatch
         </h3>
         <span className="font-mono text-[10.5px] text-[var(--color-accent-400)]">
@@ -45,7 +45,7 @@ function DispatchPanel({ dispatch }: { dispatch: DispatchTrace }) {
       </div>
 
       <div>
-        <div className="font-mono text-[9.5px] uppercase tracking-[0.14em] text-[var(--fg-muted)]">
+        <div className="type-label text-[var(--fg-muted)]">
           Required capability
         </div>
         <div className="mt-1 flex flex-wrap gap-1">
@@ -62,7 +62,7 @@ function DispatchPanel({ dispatch }: { dispatch: DispatchTrace }) {
 
       {/* The ladder, drawn as the chain it is, with the rung that matched lit. */}
       <div>
-        <div className="mb-1.5 font-mono text-[9.5px] uppercase tracking-[0.14em] text-[var(--fg-muted)]">
+        <div className="type-label mb-1.5 text-[var(--fg-muted)]">
           Resolution
         </div>
         <ol className="flex flex-col gap-1">
@@ -123,8 +123,8 @@ function NoCandidate({ dispatch }: { dispatch: DispatchTrace }) {
       className="flex flex-col gap-2 rounded-md p-2.5 tint-wash tint-ring"
       style={{ '--tint': 'var(--status-err)' } as React.CSSProperties}
     >
-      <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-[var(--status-err)]">
-        NO CANDIDATE
+      <span className="type-status text-[var(--status-err)]">
+        No candidate
       </span>
       <p className="text-[12.5px] leading-[1.55] text-[var(--fg-primary)]">
         Nothing registered carries{' '}
@@ -135,7 +135,7 @@ function NoCandidate({ dispatch }: { dispatch: DispatchTrace }) {
 
       {dispatch.vocabulary && dispatch.vocabulary.length > 0 && (
         <div>
-          <div className="mb-1 font-mono text-[9.5px] uppercase tracking-[0.14em] text-[var(--fg-muted)]">
+          <div className="type-label mb-1 text-[var(--fg-muted)]">
             Compared against ({dispatch.vocabulary.length})
           </div>
           <div className="flex flex-wrap gap-1">
@@ -164,7 +164,7 @@ function MeritRanking({ dispatch }: { dispatch: DispatchTrace }) {
   return (
     <div>
       <div className="mb-1.5 flex items-baseline justify-between gap-2">
-        <span className="font-mono text-[9.5px] uppercase tracking-[0.14em] text-[var(--fg-muted)]">
+        <span className="type-label text-[var(--fg-muted)]">
           Merit ranking
         </span>
         <span className="text-[11px] text-[var(--fg-muted)]">
@@ -269,7 +269,7 @@ export function StepInspector({
       )}
 
       <div className="flex min-h-0 flex-1 flex-col">
-        <div className="mb-1.5 font-mono text-[9.5px] uppercase tracking-[0.14em] text-[var(--fg-muted)]">
+        <div className="type-label mb-1.5 text-[var(--fg-muted)]">
           Output so far
         </div>
         <pre className="min-h-0 flex-1 overflow-auto rounded-md bg-[var(--bg-canvas)] p-2.5 font-mono text-[11px] leading-[1.6] whitespace-pre-wrap break-words text-[var(--fg-secondary)]">
@@ -310,7 +310,7 @@ function Field({
 }) {
   return (
     <div>
-      <div className="font-mono text-[9.5px] uppercase tracking-[0.14em] text-[var(--fg-muted)]">
+      <div className="type-label text-[var(--fg-muted)]">
         {label}
       </div>
       <div

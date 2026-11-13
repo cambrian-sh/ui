@@ -60,8 +60,8 @@ export function SurfaceRegistryPane({ onGo }: SurfaceRegistryPaneProps) {
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex-none px-4 pb-3 pt-4">
-        <h2 className="text-[17px] font-medium leading-[1.25] tracking-[-0.01em]">Surfaces</h2>
-        <p className="mt-1 max-w-[640px] text-[12.5px] leading-[1.6] text-[var(--fg-muted)]">
+        <h2 className="type-page-title">Surfaces</h2>
+        <p className="type-page-description mt-1 max-w-[640px]">
           Where the outside world enters. Each row joins what registers the surface, the daemon
           serving it, and the policy bounding it.
           {faulted > 0 && (
@@ -171,7 +171,7 @@ function SurfaceRowView({
       </div>
 
       {row.problems.length > 0 && (
-        <span className="font-mono text-[10px] uppercase tracking-[0.1em]" style={{ color: tone }}>
+        <span className="type-label" style={{ color: tone }}>
           {row.problems.map((p) => PROBLEM_COPY[p].kicker).join(' · ')}
         </span>
       )}
@@ -189,7 +189,7 @@ function SurfaceDetail({
   return (
     <div className="flex flex-col gap-4 p-4">
       <div>
-        <div className="font-mono text-[9.5px] uppercase tracking-[0.14em] text-[var(--fg-muted)]">
+        <div className="type-label text-[var(--fg-muted)]">
           Surface
         </div>
         <p className="mt-1 break-all font-mono text-[13px] text-[var(--fg-primary)]">{row.id}</p>
@@ -230,7 +230,7 @@ function SurfaceDetail({
       </Field>
 
       <div>
-        <div className="mb-1.5 font-mono text-[9.5px] uppercase tracking-[0.14em] text-[var(--fg-muted)]">
+        <div className="type-label mb-1.5 text-[var(--fg-muted)]">
           Policies linked here ({row.policies.length})
         </div>
         {row.policies.length === 0 ? (
@@ -269,7 +269,7 @@ function SurfaceDetail({
             style={{ '--tint': tone } as React.CSSProperties}
           >
             <span
-              className="font-mono text-[10px] uppercase tracking-[0.1em]"
+              className="type-label"
               style={{ color: tone }}
             >
               {copy.kicker}
@@ -306,7 +306,7 @@ function SurfaceDetail({
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <div className="font-mono text-[9.5px] uppercase tracking-[0.14em] text-[var(--fg-muted)]">
+      <div className="type-label text-[var(--fg-muted)]">
         {label}
       </div>
       <p className="mt-0.5 text-[12.5px] text-[var(--fg-primary)]">{children}</p>

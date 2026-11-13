@@ -273,7 +273,7 @@ export function AccessPolicyConsole() {
 
               {unscopedPrincipals.length > 0 && (
                 <div className="border-t border-[var(--border-subtle)] p-3">
-                  <h3 className="font-mono text-[9.5px] uppercase tracking-[0.14em] text-[var(--fg-muted)]">
+                  <h3 className="type-label text-[var(--fg-muted)]">
                     Not agents — {unscopedPrincipals.length}
                   </h3>
                   <p className="mt-1 text-[11.5px] leading-[1.5] text-[var(--fg-muted)]">

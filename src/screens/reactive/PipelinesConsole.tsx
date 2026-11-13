@@ -144,7 +144,7 @@ export function PipelinesConsole() {
         <div className="flex items-start justify-between gap-4">
           <div>
             <div className="flex flex-wrap items-baseline gap-2.5">
-              <h1 className="text-[19px] font-medium leading-[1.25] tracking-[-0.01em]">
+              <h1 className="type-page-title">
                 Reactive
               </h1>
               <span className="font-mono text-[11px] text-[var(--fg-muted)]">
@@ -203,7 +203,7 @@ export function PipelinesConsole() {
             {/* Column headers, because the row is read as a table: the
                 reviewing glance and the arming decision want different
                 columns of the same line. */}
-            <div className="flex items-baseline gap-3 px-4 text-[10px] uppercase tracking-[0.1em] text-[var(--fg-muted)]">
+            <div className="type-label flex items-baseline gap-3 px-4 text-[var(--fg-muted)]">
               <span className="flex-1">Pipeline · trigger</span>
               <span className="w-[70px]">State</span>
               <span className="w-[110px]">Can touch world</span>
@@ -342,7 +342,7 @@ function BudgetCard({
       )}
       style={tone ? ({ "--tint": tone } as React.CSSProperties) : undefined}
     >
-      <div className="font-mono text-[9.5px] uppercase tracking-[0.14em] text-[var(--fg-muted)]">
+      <div className="type-label text-[var(--fg-muted)]">
         {label}
       </div>
       <div
@@ -450,7 +450,7 @@ function PipelineRow({
 
           {/* 2 — state. */}
           <span
-            className="w-[70px] shrink-0 font-mono text-[10px] uppercase tracking-[0.1em]"
+            className="type-label w-[70px] shrink-0"
             style={{ color: copy.tone }}
           >
             {copy.label}

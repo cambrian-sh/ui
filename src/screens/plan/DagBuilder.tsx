@@ -420,7 +420,7 @@ function StepInspectorPanel({
   return (
     <aside className="flex h-fit flex-col gap-4 rounded-[var(--radius-lg)] bg-[var(--bg-surface)] p-3.5 shadow-[var(--elevation-1)]">
       <div className="flex items-center gap-2">
-        <div className="font-mono text-[9.5px] uppercase tracking-[0.14em] text-[var(--fg-muted)]">
+        <div className="type-label text-[var(--fg-muted)]">
           Step {pad(index)}
         </div>
         <div className="ml-auto flex gap-1.5">
@@ -620,7 +620,7 @@ function StepInspectorPanel({
             is advisory. Kept editable rather than removed so an authored plan that already
             carries a value round-trips instead of silently losing it. */}
         <div className="rounded-md p-2 shadow-[inset_0_0_0_1px_var(--border-subtle)]">
-          <div className="font-mono text-[9.5px] uppercase tracking-[0.14em] text-[var(--fg-muted)]">
+          <div className="type-label text-[var(--fg-muted)]">
             Inherits the router role
           </div>
           <div className="mt-0.5 font-mono text-[11px] text-[var(--fg-secondary)]">
@@ -636,11 +636,11 @@ function StepInspectorPanel({
           ) : null}
         </div>
         <div className="mt-1.5 flex items-center gap-1.5">
-          <span className="rounded px-1 py-px font-mono text-[9px] uppercase tracking-[0.14em] text-[var(--fg-muted)] shadow-[inset_0_0_0_1px_var(--border-subtle)]">
+          <span className="type-label rounded px-1 py-px text-[var(--fg-muted)] shadow-[inset_0_0_0_1px_var(--border-subtle)]">
             Advisory
           </span>
-          <span className="font-mono text-[9.5px] uppercase tracking-[0.14em] text-[var(--fg-muted)]">
-            recorded, not applied
+          <span className="type-label text-[var(--fg-muted)]">
+            Recorded, not applied
           </span>
         </div>
         <Input

@@ -188,7 +188,7 @@ export function StudioColumn({
       {/* ── Header ─────────────────────────────────────────────────── */}
       <header className="flex flex-none flex-wrap items-center gap-3 border-b border-[var(--border-subtle)] px-5 py-3">
         <div className="flex items-baseline gap-2.5">
-          <h2 className="text-[17px] font-medium tracking-[-0.01em]">
+          <h2 className="type-page-title">
             {summary.display_name || ingressId}
           </h2>
           <span className="font-mono text-[11px] text-[var(--fg-muted)]">

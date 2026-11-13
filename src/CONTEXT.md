@@ -24,7 +24,7 @@ the TanStack router Vite plugin (`bun run build` / `bun run dev`) — never hand
 | `ipc/` | Tauri client: `invoke(...)` intents and `listen(...)` projection events. The ONLY way the webview reaches the runtime. |
 | `store/` | Zustand projection store hydrated from `kernel://state`. A cache, not the state of record. Re-hydrates via `op_get_state` on mount/reload. |
 | `screens/` | One screen per PRD surface. The plan view is the centre of gravity when a plan runs. |
-| `design-system/` | Tokens, components, utilities. Dark-mode-first, dense, keyboard-friendly, accessible. |
+| `design-system/` | Tokens, components, utilities. Light, dark (default follows the OS) and Nocturne themes; dense, keyboard-friendly, accessible. Text roles are `type-*` utilities in `styles/type.css` (page title, description, section title, label, status, figure) — use them instead of hand-sized text, and keep labels sentence case. Screen building blocks: `PageHeader`, `SectionHeader`, `Stat`, `Callout`, `KeyValue`, `EmptyState`, `Card` (`tone`, `interactive`), `Badge` (`dot`). |
 | `lib/queryClient.ts` | TanStack Query — imperative edges only (mutations + request/response reads not on the feed). Every automatic refetch disabled. Nothing on `kernel://state` may be cached here. |
 
 ---
@@ -42,9 +42,24 @@ React screens ──invoke('op_*')──> Rust core ──gRPC──> kernel
 
 ---
 
+## Themes
+
+`data-theme` on `<html>` selects `light`, `dark` or `nocturne`; the operator's
+preference (`system` | `light` | `dark` | `nocturne`) lives in `shellStore`,
+is saved to `localStorage` (`cambrian-studio:theme`, `cambrian-studio:density`),
+and is applied before React mounts by `public/theme-boot.js`. `system` follows
+the OS. Fonts (Inter, Geist Mono) are bundled via `@fontsource-variable/*` — no
+remote font fetch. Base styles are in `@layer base` so Tailwind utilities win.
+
+---
+
 ## Shell Composition
 
-Header, grouped nav rail, routed main pane, and an **inspector slot**
+Full-height sidebar (brand, search, then the Work / Knowledge / Automate / Admin
+groups below — Inbox is a Work entry with its badge — and Settings, role and the
+collapse toggle at the foot), a header in the main column (breadcrumb, version
+alert, connection popover, identity, sign-out), the routed main pane, and an
+**inspector slot**
 (`InspectorSlot.tsx`) mounted only while a screen is inspecting something.
 No screen renders its own permanent aside. No bottom status strip.
 

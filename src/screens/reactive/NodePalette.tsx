@@ -56,7 +56,7 @@ export function NodePalette({
             return (
               <section key={family} className="flex flex-col gap-1.5">
                 <h3
-                  className="font-mono text-[9.5px] uppercase tracking-[0.1em]"
+                  className="type-label"
                   style={{ color: FAMILY_TONE[family] }}
                 >
                   {FAMILY_LABEL[family]}

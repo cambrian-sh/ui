@@ -9,6 +9,8 @@ import {
   ListChecks,
   MessagesSquare,
   Network,
+  PanelLeftClose,
+  PanelLeftOpen,
   Plug,
   Radio,
   ScrollText,
@@ -137,6 +139,20 @@ export function entryAvailable(
   return true;
 }
 
+/** Where a path sits in the navigation — for the header's breadcrumb. */
+export function navLocation(pathname: string): { group?: string; label: string } | null {
+  if (pathname === "/settings" || pathname.startsWith("/settings/")) return { label: "Settings" };
+  for (const group of NAV_GROUPS) {
+    for (const entry of group.entries) {
+      const paths = [entry.path, ...(entry.matches ?? [])];
+      if (paths.some((p) => pathname === p || pathname.startsWith(p + "/"))) {
+        return { group: group.label, label: entry.label };
+      }
+    }
+  }
+  return null;
+}
+
 export interface NavRailProps {
   collapsed: boolean;
   onToggle: () => void;
@@ -149,39 +165,99 @@ export interface NavRailProps {
   onOpenPalette: () => void;
 }
 
+const rowBase =
+  "group relative flex h-8 items-center gap-2.5 rounded-[var(--radius-nav)] px-2 text-[13px] transition-colors " +
+  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--focus-ring)]";
+const rowIdle =
+  "text-[var(--fg-secondary)] hover:bg-[var(--nav-item-hover)] hover:text-[var(--fg-primary)]";
+const rowActive = "bg-[var(--nav-item-active)] font-medium text-[var(--fg-primary)]";
+
+function RowIcon({ icon: Icon, active }: { icon: LucideIcon; active?: boolean }) {
+  return (
+    <Icon
+      aria-hidden="true"
+      size={16}
+      strokeWidth={1.75}
+      className={cn(
+        "shrink-0",
+        active
+          ? "text-[var(--fg-primary)]"
+          : "text-[var(--fg-muted)] group-hover:text-[var(--fg-primary)]",
+      )}
+    />
+  );
+}
+
 export function NavRail({ collapsed, onToggle, counts, capabilities = [], role = null, onOpenPalette }: NavRailProps) {
   const routerState = useRouterState();
   const currentPath = routerState.location.pathname;
 
+  const matchesPath = (path: string) => currentPath === path || currentPath.startsWith(path + "/");
   const isActive = (entry: NavEntry) =>
-    currentPath === entry.path ||
-    currentPath.startsWith(entry.path + "/") ||
-    (entry.matches?.some((m) => currentPath === m || currentPath.startsWith(m + "/")) ?? false);
+    matchesPath(entry.path) || (entry.matches?.some(matchesPath) ?? false);
+  const settingsActive = matchesPath("/settings");
 
   return (
     <nav
       aria-label="Primary"
-      className="flex h-full flex-none flex-col bg-[var(--bg-surface)] shadow-[inset_-1px_0_0_var(--border-subtle)]"
+      className="flex h-full flex-none flex-col bg-[var(--bg-sidebar)] shadow-[inset_-1px_0_0_var(--border-subtle)]"
       style={{ width: collapsed ? "var(--nav-rail-collapsed-w)" : "var(--nav-rail-w)" }}
     >
-      <div className="flex-1 overflow-y-auto px-2 py-3">
-        <div className="flex flex-col gap-4">
+      {/* Brand — same height as the header beside it, so the two read as one bar. */}
+      <div
+        className={cn(
+          "flex h-[var(--header-h)] flex-none items-center gap-2.5",
+          collapsed ? "justify-center px-0" : "px-4",
+        )}
+      >
+        <img src="/cambrian-mark.svg" alt="" aria-hidden="true" className="size-5 flex-none" />
+        {!collapsed && (
+          <span className="truncate text-[14px] font-semibold tracking-[-0.01em] text-[var(--fg-primary)]">
+            Cambrian <span className="font-normal text-[var(--fg-muted)]">Studio</span>
+          </span>
+        )}
+      </div>
+
+      <div className="flex-1 overflow-y-auto px-2 pb-3">
+        <button
+          type="button"
+          onClick={onOpenPalette}
+          aria-label="Search and jump"
+          title={collapsed ? "Search and jump (⌘K)" : undefined}
+          className={cn(rowBase, rowIdle, "w-full", collapsed && "justify-center px-0")}
+        >
+          <RowIcon icon={Search} />
+          {!collapsed && (
+            <>
+              <span className="flex-1 text-left">Search</span>
+              <kbd className="rounded border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-1 font-mono text-[10.5px] text-[var(--fg-muted)]">
+                ⌘K
+              </kbd>
+            </>
+          )}
+        </button>
+
+        <div className="mt-4 flex flex-col gap-4">
           {NAV_GROUPS.map((group) => {
             const entries = group.entries.filter((e) => entryAvailable(e, capabilities, role));
             if (entries.length === 0) return null;
             return (
               <div key={group.label}>
-                {!collapsed && (
-                  <div className="px-2.5 pb-[7px] font-mono text-[9.5px] uppercase tracking-[0.14em] text-[var(--fg-muted)]">
+                {collapsed ? (
+                  <div aria-hidden="true" className="mx-3 mb-2 h-px bg-[var(--border-subtle)]" />
+                ) : (
+                  <div className="px-2 pb-1 text-[11.5px] font-medium text-[var(--fg-muted)]">
                     {group.label}
                   </div>
                 )}
-                <ul className="flex flex-col gap-0.5">
+                <ul className="flex flex-col gap-px">
                   {entries.map((entry) => {
                     const active = isActive(entry);
                     const count = entry.count ? counts?.[entry.count] ?? 0 : 0;
+                    // The inbox is the one row that must never be ignored: it
+                    // changes tone when something waits on the operator, and
+                    // carries no zero badge.
                     const urgent = entry.count === "inbox" && count > 0;
-                    const Icon = entry.icon;
                     return (
                       <li key={entry.path}>
                         <Link
@@ -189,31 +265,28 @@ export function NavRail({ collapsed, onToggle, counts, capabilities = [], role =
                           aria-current={active ? "page" : undefined}
                           aria-label={count > 0 ? `${entry.label}, ${count} waiting` : undefined}
                           title={collapsed ? entry.label : undefined}
-                          className={cn(
-                            "relative flex items-center gap-2 rounded-[var(--radius-nav)] px-2.5 py-[7px] text-[13px] transition-colors",
-                            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--focus-ring)]",
-                            collapsed && "justify-center px-0",
-                            active
-                              ? "bg-[color-mix(in_srgb,var(--accent-bg)_13%,transparent)] font-medium text-[var(--fg-primary)] shadow-[inset_2px_0_0_var(--accent-bg)]"
-                              : "text-[var(--fg-secondary)] hover:bg-[var(--list-row-bg-hover)] hover:text-[var(--fg-primary)]",
-                          )}
+                          className={cn(rowBase, active ? rowActive : rowIdle, collapsed && "justify-center px-0")}
                         >
-                          <Icon aria-hidden="true" size={15} strokeWidth={1.75} className="shrink-0" />
+                          <RowIcon icon={entry.icon} active={active} />
                           {!collapsed && <span className="flex-1 truncate">{entry.label}</span>}
                           {count > 0 &&
                             (urgent ? (
-                              <span
-                                aria-hidden="true"
-                                className={cn(
-                                  "flex h-[17px] min-w-[17px] items-center justify-center rounded-[9px] bg-[var(--status-warn)] px-1 font-mono text-[10px] font-semibold text-[var(--bg-canvas)]",
-                                  collapsed && "absolute right-1 top-0.5 h-[14px] min-w-[14px] text-[9px]",
-                                )}
-                              >
-                                {count > 99 ? "99+" : count}
-                              </span>
+                              collapsed ? (
+                                <span
+                                  aria-hidden="true"
+                                  className="absolute right-3 top-1.5 size-2 rounded-full bg-[var(--status-warn)]"
+                                />
+                              ) : (
+                                <span
+                                  aria-hidden="true"
+                                  className="flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-[var(--status-warn)] px-1.5 text-[11px] font-semibold text-[var(--bg-canvas)]"
+                                >
+                                  {count > 99 ? "99+" : count}
+                                </span>
+                              )
                             ) : (
                               !collapsed && (
-                                <span aria-hidden="true" className="font-mono text-[10px] text-[var(--fg-muted)]">
+                                <span aria-hidden="true" className="text-[11.5px] tabular-nums text-[var(--fg-muted)]">
                                   {count}
                                 </span>
                               )
@@ -229,51 +302,38 @@ export function NavRail({ collapsed, onToggle, counts, capabilities = [], role =
         </div>
       </div>
 
-      <div className="flex flex-none items-center gap-1.5 p-2 shadow-[inset_0_1px_0_var(--border-subtle)]">
-        <button
-          type="button"
-          onClick={onOpenPalette}
-          className={cn(
-            "flex h-[30px] flex-1 items-center gap-2 rounded-md px-2 text-[12px] transition-colors",
-            "border border-[var(--button-secondary-border)] text-[var(--fg-secondary)]",
-            "hover:bg-[var(--list-row-bg-hover)] hover:text-[var(--fg-primary)]",
-            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)]",
-            collapsed && "justify-center px-0",
-          )}
-          aria-label="Search and jump"
+      <div className="flex flex-none flex-col gap-px border-t border-[var(--border-subtle)] p-2">
+        <Link
+          to="/settings"
+          aria-current={settingsActive ? "page" : undefined}
+          aria-label="Settings"
+          title={collapsed ? "Settings" : undefined}
+          className={cn(rowBase, settingsActive ? rowActive : rowIdle, collapsed && "justify-center px-0")}
         >
-          <Search aria-hidden="true" size={14} strokeWidth={1.75} />
-          {!collapsed && (
-            <>
-              <span className="flex-1 text-left">Search &amp; jump</span>
-              <kbd className="font-mono text-[10px] text-[var(--fg-muted)]">⌘K</kbd>
-            </>
+          <RowIcon icon={Settings} active={settingsActive} />
+          {!collapsed && <span className="flex-1 truncate">Settings</span>}
+        </Link>
+        <div className={cn("flex items-center", collapsed ? "justify-center" : "justify-between pl-2")}>
+          {!collapsed && role && (
+            <span className="text-[11.5px] text-[var(--fg-muted)]" title="Your role on this kernel">
+              Signed in as <span className="capitalize">{role}</span>
+            </span>
           )}
-        </button>
-        {!collapsed && (
-          <Link
-            to="/settings"
-            aria-label="Settings"
-            className={cn(
-              "flex size-[30px] flex-none items-center justify-center rounded-md transition-colors",
-              "border border-[var(--button-secondary-border)] text-[var(--fg-secondary)]",
-              "hover:bg-[var(--list-row-bg-hover)] hover:text-[var(--fg-primary)]",
-              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)]",
-            )}
+          <button
+            type="button"
+            onClick={onToggle}
+            aria-label={collapsed ? "Expand navigation" : "Collapse navigation"}
+            title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+            className="ml-auto flex size-8 items-center justify-center rounded-[var(--radius-nav)] text-[var(--fg-muted)] transition-colors hover:bg-[var(--nav-item-hover)] hover:text-[var(--fg-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)]"
           >
-            <Settings aria-hidden="true" size={15} strokeWidth={1.75} />
-          </Link>
-        )}
+            {collapsed ? (
+              <PanelLeftOpen aria-hidden="true" size={16} strokeWidth={1.75} />
+            ) : (
+              <PanelLeftClose aria-hidden="true" size={16} strokeWidth={1.75} />
+            )}
+          </button>
+        </div>
       </div>
-
-      <button
-        type="button"
-        onClick={onToggle}
-        aria-label={collapsed ? "Expand navigation" : "Collapse navigation"}
-        className="flex-none px-2 pb-2 text-[10px] text-[var(--fg-muted)] hover:text-[var(--fg-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)]"
-      >
-        {collapsed ? "›" : "‹ Collapse"}
-      </button>
     </nav>
   );
 }

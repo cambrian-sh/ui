@@ -1,4 +1,10 @@
-# Cambrian UI — Development Rules
+# Cambrian Studio — Development Rules
+
+> **Name.** This repository (`ui/`) is **Cambrian Studio**, the desktop app. "Operator
+> UI" is retired as a product name. The *operator* role and the operator-plane gRPC
+> contract keep their names — they are kernel vocabulary. Internal identifiers stay
+> as they are so saved logins and app data survive: bundle id `com.cambrian.ui`,
+> keychain service `cambrian-ui`, crate `cambrian_ui_lib`.
 
 > **This file is canonical.** `CLAUDE.md` in this directory points here; it is not a
 > second copy. Edit this file, and never maintain the two by hand.

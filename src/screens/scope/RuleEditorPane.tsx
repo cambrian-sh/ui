@@ -101,7 +101,7 @@ export function RuleEditorPane({
       <div className="flex flex-col gap-5">
         <div className="flex items-center gap-2">
           <span
-            className="rounded-sm px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.1em]"
+            className="type-label rounded-sm px-1.5 py-0.5"
             style={{ color: chrome.tone }}
           >
             {chrome.label}
@@ -247,7 +247,7 @@ function BlastRadiusPanel({
 }) {
   return (
     <aside className="flex h-fit flex-col gap-3 rounded-[var(--radius-lg)] bg-[var(--bg-surface)] p-3.5 shadow-[var(--elevation-1)]">
-      <h3 className="font-mono text-[9.5px] uppercase tracking-[0.14em] text-[var(--fg-muted)]">
+      <h3 className="type-label text-[var(--fg-muted)]">
         Blast radius
       </h3>
 
@@ -260,8 +260,8 @@ function BlastRadiusPanel({
           className="flex flex-col gap-1.5 rounded-md p-2.5 tint-wash tint-ring"
           style={{ '--tint': 'var(--status-warn)' } as React.CSSProperties}
         >
-          <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-[var(--status-warn)]">
-            NO RADIUS TO MEASURE
+          <span className="type-status text-[var(--status-warn)]">
+            No radius to measure
           </span>
           <p className="text-[12px] leading-[1.5] text-[var(--fg-primary)]">
             {radius.unsatisfiableReason}

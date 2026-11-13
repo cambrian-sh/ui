@@ -75,20 +75,20 @@ export function MemoryDetail({ doc }: { doc: MemoryDocument }) {
         </CardHeader>
         <CardContent className="flex flex-col gap-2 text-xs">
           <div>
-            <div className="text-[10px] uppercase tracking-wide text-[var(--fg-muted)]">FACT</div>
+            <div className="type-label text-[var(--fg-muted)]">Fact</div>
             <p className="font-mono text-xs text-[var(--fg-primary)] whitespace-pre-wrap break-words">
               {doc.content_preview}
             </p>
           </div>
           <div>
-            <div className="text-[10px] uppercase tracking-wide text-[var(--fg-muted)]">SESSION &amp; TIMES</div>
+            <div className="type-label text-[var(--fg-muted)]">Session &amp; times</div>
             <p className="font-mono text-[11px] text-[var(--fg-secondary)]">
               Session {doc.session_id ?? '—'}
             </p>
             <DocumentTimes docId={doc.doc_id} />
           </div>
           <div>
-            <div className="text-[10px] uppercase tracking-wide text-[var(--fg-muted)]">Graph neighbours</div>
+            <div className="type-label text-[var(--fg-muted)]">Graph neighbours</div>
             <p className="text-[10px] text-[var(--fg-muted)]">
               Inline graph view lands when UI-012's React Flow graph ships.
             </p>

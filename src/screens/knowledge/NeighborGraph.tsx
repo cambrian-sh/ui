@@ -40,7 +40,7 @@ export function NeighborGraph({
   }
 
   return (
-    <div className="h-[300px] w-full rounded-[8px] border border-[var(--border-default)]"
+    <div className="h-[300px] w-full rounded-[var(--radius-lg)] border border-[var(--card-border)] bg-[var(--bg-surface)]"
       aria-label={`Co-participation neighborhood of ${center}`}
     >
       <ReactFlow

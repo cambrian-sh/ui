@@ -1,6 +1,6 @@
-# CONTEXT.md — Cambrian UI
+# CONTEXT.md — Cambrian Studio
 
-A **Tauri 2 + React 19 + TypeScript** desktop app. Three layers:
+**Cambrian Studio** is a **Tauri 2 + React 19 + TypeScript** desktop app. Three layers:
 
 1. **Rust core** (`src-tauri/`) — the ONLY gRPC speaker; owns the transport,
    state of record, auth, and recovery. See `src-tauri/CONTEXT.md`.
@@ -37,6 +37,9 @@ bun run build                # tsc + vite production build
 bun run test                 # vitest (~894 tests, 94 files)
 cargo check                  # Rust core type-check
 cargo tauri dev              # full Tauri dev (Rust + webview)
+bun run studio               # local kernel + Tauri dev + dev bridge: the live
+                             # session is also at http://localhost:1420 in a browser
+VITE_USE_MOCK_IPC=1 bun run dev   # webview on simulated IPC; ?scenario=populated|empty|degraded|viewer|disconnected
 ```
 
 ---

@@ -57,7 +57,7 @@ export function LogRecordInspector({
     <div className="flex flex-col gap-4 p-4">
       <div className="flex flex-wrap items-baseline gap-2">
         <span
-          className="font-mono text-[10px] uppercase tracking-[0.1em]"
+          className="type-label"
           style={{
             color:
               record.level === 'error'
@@ -92,7 +92,7 @@ export function LogRecordInspector({
 
       {record.attrs.length > 0 && (
         <div className="flex flex-col gap-1.5">
-          <div className="font-mono text-[9.5px] uppercase tracking-[0.14em] text-[var(--fg-muted)]">
+          <div className="type-label text-[var(--fg-muted)]">
             Attributes — {record.attrs.length}
           </div>
           <dl className="flex flex-col gap-1">

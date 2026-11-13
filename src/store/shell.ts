@@ -5,59 +5,67 @@ import {
   themeAttr,
   densityAttr,
   type Theme,
+  type ThemePreference,
   type Density,
 } from '@/design-system';
+
+// Shared with public/theme-boot.js, which applies the theme before React mounts.
+const THEME_KEY = 'cambrian-studio:theme';
+const DENSITY_KEY = 'cambrian-studio:density';
+
+function readPref<T extends string>(key: string, allowed: readonly T[], fallback: T): T {
+  try {
+    const v = localStorage.getItem(key);
+    return v && (allowed as readonly string[]).includes(v) ? (v as T) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function writePref(key: string, value: string) {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    // Storage can be unavailable (private mode, blocked site data); the choice
+    // still applies for this session.
+  }
+}
+
+const darkQuery =
+  typeof window !== 'undefined' && window.matchMedia
+    ? window.matchMedia('(prefers-color-scheme: dark)')
+    : null;
+
+export function resolveTheme(pref: ThemePreference): Theme {
+  if (pref !== 'system') return pref;
+  return darkQuery?.matches ? 'dark' : 'light';
+}
 
 const DEFAULT_LEFT_RAIL_W = 240;   // px (PRD-02 §3.1)
 const DEFAULT_INSPECTOR_W = 360;  // px (PRD-02 §3.1)
 const COMPACT_INSPECTOR_W = 280;  // px (PRD-02 §3.1)
 
-/** What the operator chose. `system` follows the OS (prefers-color-scheme). */
-export type ThemePreference = Theme | 'system';
-
-const STORAGE_KEY = 'cambrian.shell.appearance';
-
-function systemTheme(): Theme {
-  try {
-    return typeof window !== 'undefined' && window.matchMedia?.('(prefers-color-scheme: light)').matches
-      ? 'light'
-      : 'dark';
-  } catch {
-    return 'dark';
-  }
-}
-
-export function resolveTheme(pref: ThemePreference): Theme {
-  return pref === 'system' ? systemTheme() : pref;
-}
-
 /**
- * Appearance is a per-viewer convenience, so it lives in localStorage — it used
- * to live only in memory, and every restart came back dark. Every access is
- * guarded: storage can be absent or throw.
+ * Before the Studio redesign, appearance lived as one JSON object under this key
+ * (main's per-viewer persistence). Read it once so an operator's saved choice
+ * survives the move to the per-preference keys public/theme-boot.js reads.
  */
-function loadAppearance(): { theme: ThemePreference; density: Density } {
-  try {
-    const raw = typeof localStorage !== 'undefined' ? localStorage.getItem(STORAGE_KEY) : null;
-    if (raw) {
-      const v = JSON.parse(raw) as { theme?: string; density?: string };
-      const theme = v.theme === 'light' || v.theme === 'dark' || v.theme === 'system' ? v.theme : 'dark';
-      const density = v.density === 'default' || v.density === 'spacious' || v.density === 'compact' ? v.density : 'compact';
-      return { theme, density };
-    }
-  } catch {
-    /* fall through to defaults */
-  }
-  return { theme: 'dark', density: 'compact' };
-}
+const LEGACY_APPEARANCE_KEY = 'cambrian.shell.appearance';
 
-function saveAppearance(theme: ThemePreference, density: Density) {
+function migrateLegacyAppearance() {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ theme, density }));
+    if (localStorage.getItem(THEME_KEY) || localStorage.getItem(DENSITY_KEY)) return;
+    const raw = localStorage.getItem(LEGACY_APPEARANCE_KEY);
+    if (!raw) return;
+    const v = JSON.parse(raw) as { theme?: string; density?: string };
+    if (v.theme) writePref(THEME_KEY, v.theme);
+    if (v.density) writePref(DENSITY_KEY, v.density);
+    localStorage.removeItem(LEGACY_APPEARANCE_KEY);
   } catch {
-    /* best-effort: a private window simply forgets */
+    /* best-effort: defaults apply */
   }
 }
+migrateLegacyAppearance();
 
 export interface ShellState {
   leftRailCollapsed: boolean;
@@ -65,10 +73,10 @@ export interface ShellState {
   leftRailWidth: number;
   rightInspectorWidth: number;
   density: Density;
-  /** The resolved theme applied to the document. */
-  theme: Theme;
-  /** What the operator picked (may be `system`). */
+  /** The operator's choice. */
   themePreference: ThemePreference;
+  /** What is rendered — the preference with `system` resolved. */
+  theme: Theme;
 }
 
 export interface ShellActions {
@@ -87,8 +95,6 @@ function applyToDocument(theme: Theme, density: Density) {
   }
 }
 
-const initial = loadAppearance();
-
 export const shellStore: StoreApi<ShellState & ShellActions> = createStore<
   ShellState & ShellActions
 >((set, get) => ({
@@ -96,9 +102,15 @@ export const shellStore: StoreApi<ShellState & ShellActions> = createStore<
   rightInspectorCollapsed: false,
   leftRailWidth: DEFAULT_LEFT_RAIL_W,
   rightInspectorWidth: DEFAULT_INSPECTOR_W,
-  density: initial.density,
-  theme: resolveTheme(initial.theme),
-  themePreference: initial.theme,
+  density: readPref<Density>(DENSITY_KEY, ['compact', 'default', 'spacious'], 'compact'),
+  themePreference: readPref<ThemePreference>(
+    THEME_KEY,
+    ['system', 'light', 'dark', 'nocturne'],
+    'system',
+  ),
+  theme: resolveTheme(
+    readPref<ThemePreference>(THEME_KEY, ['system', 'light', 'dark', 'nocturne'], 'system'),
+  ),
 
   toggleLeftRail: () => set((s) => ({ leftRailCollapsed: !s.leftRailCollapsed })),
 
@@ -115,17 +127,23 @@ export const shellStore: StoreApi<ShellState & ShellActions> = createStore<
 
   setDensity: (d) => {
     set({ density: d });
+    writePref(DENSITY_KEY, d);
     applyToDocument(get().theme, d);
-    saveAppearance(get().themePreference, d);
   },
 
   setTheme: (pref) => {
-    const t = resolveTheme(pref);
-    set({ theme: t, themePreference: pref });
-    applyToDocument(t, get().density);
-    saveAppearance(pref, get().density);
+    const theme = resolveTheme(pref);
+    set({ themePreference: pref, theme });
+    writePref(THEME_KEY, pref);
+    applyToDocument(theme, get().density);
   },
 }));
+
+// Follow the OS while the preference is `system`.
+darkQuery?.addEventListener?.('change', () => {
+  const { themePreference, setTheme } = shellStore.getState();
+  if (themePreference === 'system') setTheme('system');
+});
 
 export function useShellSelector<T>(selector: (s: ShellState & ShellActions) => T): T {
   // This is a vanilla store; the React hook is wired in UI-IMPL-08 (the shell)
@@ -133,16 +151,5 @@ export function useShellSelector<T>(selector: (s: ShellState & ShellActions) => 
   return selector(shellStore.getState());
 }
 
-// Apply the stored appearance at startup, and follow the OS while `system` is chosen.
+// Apply the stored appearance at startup (theme-boot.js already did, before React mounted).
 applyToDocument(shellStore.getState().theme, shellStore.getState().density);
-try {
-  window.matchMedia?.('(prefers-color-scheme: light)').addEventListener?.('change', () => {
-    const { themePreference, density } = shellStore.getState();
-    if (themePreference !== 'system') return;
-    const t = resolveTheme('system');
-    shellStore.setState({ theme: t });
-    applyToDocument(t, density);
-  });
-} catch {
-  /* no matchMedia (tests) */
-}

@@ -14,7 +14,7 @@ const SelectTrigger = React.forwardRef<
   <SelectPrimitive.Trigger
     ref={ref}
     className={cn(
-      "flex h-9 w-full items-center justify-between rounded-sm border border-[var(--input-border)] bg-[var(--input-bg)] px-3 py-1 text-sm text-[var(--input-fg)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)] focus-visible:ring-offset-2",
+      "flex h-8 w-full rounded-[var(--radius-md)] border border-[var(--input-border)] bg-[var(--input-bg)] px-2.5 py-1 text-[13px] text-[var(--input-fg)] transition-[border-color,box-shadow] duration-150 focus-visible:outline-none focus-visible:border-[var(--input-border-focus)] focus-visible:shadow-[0_0_0_3px_color-mix(in_srgb,var(--focus-ring)_22%,transparent)] items-center justify-between focus:outline-none data-[placeholder]:text-[var(--input-placeholder)]",
       className,
     )}
     {...props}
@@ -35,7 +35,7 @@ const SelectContent = React.forwardRef<
     <SelectPrimitive.Content
       ref={ref}
       className={cn(
-        "relative z-50 max-h-96 min-w-[8rem] overflow-hidden rounded-md border border-[var(--card-border)] bg-[var(--bg-elevated)] shadow-elevation-3",
+        "relative z-50 max-h-96 min-w-[8rem] overflow-hidden rounded-[var(--radius-lg)] border border-[var(--card-border)] bg-[var(--bg-overlay)] shadow-elevation-3",
         className,
       )}
       position={position}
@@ -61,7 +61,7 @@ const SelectItem = React.forwardRef<
   <SelectPrimitive.Item
     ref={ref}
     className={cn(
-      "relative flex w-full cursor-default select-none items-center rounded-sm py-1.5 pl-8 pr-2 text-sm outline-none focus:bg-[var(--list-row-bg-hover)] data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
+      "relative flex w-full cursor-default select-none items-center rounded-[var(--radius-sm)] py-1.5 pl-8 pr-2 text-[13px] outline-none focus:bg-[var(--list-row-bg-hover)] data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
       className,
     )}
     {...props}

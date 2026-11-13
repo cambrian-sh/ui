@@ -51,7 +51,7 @@ export function LogRow({
         {clockOf(record.at_unix_ms)}
       </span>
       <span
-        className="flex-none uppercase text-[10px]"
+        className="type-label flex-none"
         style={{ color: tone, width: 44 }}
       >
         {record.level}

@@ -126,7 +126,7 @@ function Tile({
       style={tone ? ({ '--tint': tone } as React.CSSProperties) : undefined}
     >
       <div className="flex items-baseline justify-between gap-2">
-        <span className="font-mono text-[9.5px] uppercase tracking-[0.14em] text-[var(--fg-muted)]">
+        <span className="type-label text-[var(--fg-muted)]">
           {label}
         </span>
         <span

@@ -69,7 +69,7 @@ export function AuditList({
           "sticky top-0 z-10 grid items-center gap-3 bg-[var(--bg-surface)] px-[18px] py-2",
           AUDIT_GRID,
           "shadow-[inset_0_-1px_0_var(--border-subtle)]",
-          "font-mono text-[9.5px] uppercase tracking-[0.14em] text-[var(--fg-muted)]",
+          "type-label text-[var(--fg-muted)]",
         )}
       >
         <span role="columnheader">Time</span>

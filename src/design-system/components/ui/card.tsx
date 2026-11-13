@@ -1,14 +1,37 @@
 import * as React from "react";
 import { cn } from "@/design-system/lib/utils";
 
-const Card = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
-  ({ className, ...props }, ref) => (
+const TONES = {
+  warn: "var(--status-warn)",
+  err: "var(--status-err)",
+  live: "var(--status-live)",
+} as const;
+
+export interface CardProps extends React.HTMLAttributes<HTMLDivElement> {
+  /**
+   * Washes the card in a status colour, for a card whose whole point is that
+   * state ("1 of 7 documents unlabelled"). The card must also say it in words.
+   */
+  tone?: keyof typeof TONES;
+  /** Hover feedback, for a card that is itself a link or button. */
+  interactive?: boolean;
+}
+
+const Card = React.forwardRef<HTMLDivElement, CardProps>(
+  ({ className, tone, interactive, style, ...props }, ref) => (
     <div
       ref={ref}
+      data-slot="card"
       className={cn(
-        "rounded-md border border-[var(--card-border)] bg-[var(--card-bg)] text-[var(--card-fg)] p-[var(--card-padding)]",
+        "rounded-[var(--radius-lg)] border bg-[var(--card-bg)] text-[var(--card-fg)] p-[var(--card-padding)]",
+        tone
+          ? "border-[color-mix(in_srgb,var(--tint)_32%,var(--card-border))] tint-wash"
+          : "border-[var(--card-border)]",
+        interactive &&
+          "transition-colors hover:border-[var(--border-strong)] hover:bg-[var(--list-row-bg-hover)]",
         className,
       )}
+      style={tone ? ({ "--tint": TONES[tone], ...style } as React.CSSProperties) : style}
       {...props}
     />
   ),
@@ -32,7 +55,7 @@ export interface CardTitleProps extends React.HTMLAttributes<HTMLHeadingElement>
 
 const CardTitle = React.forwardRef<HTMLHeadingElement, CardTitleProps>(
   ({ className, as: Heading = "h3", ...props }, ref) => (
-    <Heading ref={ref} className={cn("text-md font-medium", className)} {...props} />
+    <Heading ref={ref} className={cn("type-section-title", className)} {...props} />
   ),
 );
 CardTitle.displayName = "CardTitle";

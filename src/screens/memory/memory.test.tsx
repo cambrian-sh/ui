@@ -94,7 +94,7 @@ describe('MemoryDetail', () => {
 
     expect(screen.getByText('mem-123')).toBeInTheDocument();
     expect(screen.getByText(/no scope/i)).toBeInTheDocument();
-    expect(screen.getByText('FACT')).toBeInTheDocument();
+    expect(screen.getByText('Fact')).toBeInTheDocument();
   });
 
   // T-20261101-ui-memory-detail-labels-a-ui-side-receipt-clock: `created_at` on a

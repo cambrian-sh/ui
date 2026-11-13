@@ -55,31 +55,32 @@ export function Composer({
   };
 
   return (
-    <div
-      className={cn(
-        'flex flex-none flex-col gap-2.5 px-[26px] pb-3.5 pt-3 shadow-[inset_0_1px_0_var(--border-subtle)]',
-        className,
-      )}
-    >
-      <div className="flex max-w-[820px] items-center gap-3">
+    <div className={cn('flex flex-none flex-col gap-2 pb-4 pt-3', className)}>
+      <div className="flex items-center gap-3">
         <ToggleGroup
           type="single"
           value={mode}
           onValueChange={(next) => next && onModeChange(next as ComposerMode)}
           aria-label="What this goes to"
         >
-          <ToggleGroupItem value="message">Message the session</ToggleGroupItem>
+          <ToggleGroupItem value="message">Message the task</ToggleGroupItem>
           <ToggleGroupItem value="inject" disabled={!planId}>
             {planId ? `Inject into plan ${planId.slice(0, 8)}` : 'Inject (no plan running)'}
           </ToggleGroupItem>
         </ToggleGroup>
 
-        <span className="ml-auto hidden text-[11px] text-[var(--fg-muted)] sm:inline">
+        <span className="ml-auto hidden text-[11.5px] text-[var(--fg-muted)] sm:inline">
           Draft saved locally · ⏎ to send, ⇧⏎ for a new line
         </span>
       </div>
 
-      <div className="flex max-w-[820px] items-end gap-2">
+      <div
+        className={cn(
+          'flex items-end gap-2 rounded-[var(--radius-xl)] border border-[var(--input-border)] bg-[var(--input-bg)] p-2 pl-3.5 transition-colors',
+          'focus-within:border-[var(--input-border-focus)] focus-within:ring-[3px] focus-within:ring-[color-mix(in_srgb,var(--input-border-focus)_22%,transparent)]',
+          disabled && 'opacity-60',
+        )}
+      >
         <textarea
           ref={ref}
           value={value}
@@ -94,33 +95,30 @@ export function Composer({
           placeholder={
             mode === 'inject'
               ? 'Correct the plan from here…'
-              : 'Message the session…'
+              : 'Message this task…'
           }
           rows={2}
           aria-label={mode === 'inject' ? 'Inject into plan' : 'Chat message'}
           className={cn(
-            'min-h-[44px] w-full resize-y rounded-md border border-[var(--input-border)] bg-[var(--input-bg)] px-3 py-2.5',
-            'text-[13.5px] leading-[1.5] text-[var(--input-fg)] placeholder:text-[var(--input-placeholder)]',
-            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)]',
-            'disabled:cursor-not-allowed disabled:opacity-50',
+            'max-h-[40vh] min-h-[44px] w-full resize-none bg-transparent py-1.5',
+            'text-[14px] leading-[1.55] text-[var(--input-fg)] placeholder:text-[var(--input-placeholder)]',
+            'focus:outline-none disabled:cursor-not-allowed',
           )}
         />
         <Button
           onClick={submit}
           disabled={disabled || !value.trim()}
-          className="size-11 shrink-0 p-0"
+          className="size-8 shrink-0 rounded-[var(--radius-md)] p-0"
           aria-label="Send"
         >
-          <ArrowUp aria-hidden="true" size={18} strokeWidth={1.75} />
+          <ArrowUp aria-hidden="true" size={16} strokeWidth={2} />
         </Button>
       </div>
 
       {/* A disabled composer with no visible reason is the same picture as a
           broken one. This used to live only in a `title` attribute. */}
       {disabled && disabledReason && (
-        <p className="max-w-[820px] text-[11.5px] text-[var(--status-warn)]">
-          {disabledReason}
-        </p>
+        <p className="text-[12px] text-[var(--status-warn)]">{disabledReason}</p>
       )}
     </div>
   );

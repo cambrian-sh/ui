@@ -99,8 +99,8 @@ export function AuditConsole() {
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex-none px-[18px] pb-3 pt-4">
-        <h1 className="text-[19px] font-medium leading-[1.25] tracking-[-0.01em]">Audit</h1>
-        <p className="mt-1 text-[12.5px] text-[var(--fg-muted)]">
+        <h1 className="type-page-title">Audit</h1>
+        <p className="type-page-description mt-1">
           Every mutating action, with the reason its actor gave. New entries arrive on the
           feed and prepend — nothing here polls.
         </p>
@@ -198,7 +198,7 @@ function AuditDetail({ entry }: { entry: AuditEntry }) {
       </dl>
 
       <div>
-        <div className="mb-1 font-mono text-[9.5px] uppercase tracking-[0.14em] text-[var(--fg-muted)]">
+        <div className="type-label mb-1 text-[var(--fg-muted)]">
           Reason
         </div>
         <p className="border-l border-[var(--border-strong)] pl-2.5 text-[12.5px] leading-[1.55] text-[var(--fg-primary)] opacity-80">
@@ -219,7 +219,7 @@ function AuditDetail({ entry }: { entry: AuditEntry }) {
 function Row({ label, value }: { label: string; value: string }) {
   return (
     <>
-      <dt className="font-mono text-[9.5px] uppercase tracking-[0.14em] text-[var(--fg-muted)]">
+      <dt className="type-label text-[var(--fg-muted)]">
         {label}
       </dt>
       <dd className="truncate font-mono text-[11.5px] text-[var(--fg-primary)]">{value}</dd>
@@ -230,7 +230,7 @@ function Row({ label, value }: { label: string; value: string }) {
 function Payload({ label, value }: { label: string; value: Record<string, unknown> }) {
   return (
     <div>
-      <div className="mb-1 font-mono text-[9.5px] uppercase tracking-[0.14em] text-[var(--fg-muted)]">
+      <div className="type-label mb-1 text-[var(--fg-muted)]">
         {label}
       </div>
       <pre className="overflow-x-auto rounded-md bg-[var(--bg-canvas)] p-2 font-mono text-[10.5px] leading-[1.5] text-[var(--fg-secondary)]">

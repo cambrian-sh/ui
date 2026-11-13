@@ -164,8 +164,8 @@ function Banner({
       data-testid={testId}
       className={
         warn
-          ? 'rounded-sm border border-[var(--status-warn)] px-2 py-1 text-[11px] text-[var(--status-warn)]'
-          : 'rounded-sm border border-[var(--border-subtle)] px-2 py-1 text-[11px] text-[var(--fg-muted)]'
+          ? 'mx-[var(--page-gutter)] mt-3 rounded-[var(--radius-md)] border border-[color-mix(in_srgb,var(--status-warn)_35%,transparent)] bg-[color-mix(in_srgb,var(--status-warn)_8%,transparent)] px-3 py-2 text-[12.5px] leading-[1.5] text-[var(--fg-primary)]'
+          : 'mx-[var(--page-gutter)] mt-3 rounded-[var(--radius-md)] bg-[var(--bg-elevated)] px-3 py-2 text-[12px] leading-[1.5] text-[var(--fg-muted)]'
       }
     >
       {children}
