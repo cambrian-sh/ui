@@ -173,6 +173,15 @@ cargo tauri dev              # full Tauri dev (Rust + webview)
   T-20261106-console-personal-ingest-binding-account-owner,
   T-20261106-no-signal-tells-a-person-their-agent-stopped. Acceptance still needs a live
   sign-in against one real provider.
+- **Dead outbox deliveries (2026-11-13, contract change in the vendored
+  `proto/ingress/ingress_studio.proto` + `proto/substrate/substrate.proto`; no
+  operator.proto / pb.rs pin change)**: Ingress Studio's Delivery failures list
+  (`screens/ingress-studio/OperationsPane.tsx`) shows a Replay button on
+  `dead_letter` rows, plus "Replay all N dead" when several, hidden when the session
+  is read-only (`op_studio_replay_dead_deliveries` → `ReplayDeadDeliveries`; the
+  kernel audits it). The knowledge overview strip shows `outbox_dead` as its own
+  "N dead — not transformed" badge; "materializing" (`outbox_pending`) no longer
+  includes dead items. Tests: `replayDead.test.tsx`, `knowledge.test.tsx`.
 - **Data flow**: Rust core streams `kernel://state` (absolute-state projection)
   → Zustand store → React screens. Writes go through `invoke('op_*')` →
   Rust core → gRPC → kernel. No polling. (The drift console and its RecordLane

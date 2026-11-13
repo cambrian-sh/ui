@@ -4,7 +4,7 @@ import { useKernelQuery } from '@/lib/useKernelQuery';
 import { useMutation } from '@/lib/useMutation';
 import { errorMessage } from '@/lib/errorMessage';
 import { ipc } from '@/ipc';
-import type { StudioAck, StudioStatus } from '@/ipc/types';
+import type { StudioAck, StudioReplayAck, StudioStatus } from '@/ipc/types';
 import { parseRevision } from './LifecyclePane';
 
 /**
@@ -33,7 +33,7 @@ export function OperationsPane({
         readOnly={readOnly}
         onChanged={onChanged}
       />
-      <FailuresSection ingressId={ingressId} />
+      <FailuresSection ingressId={ingressId} readOnly={readOnly} onChanged={onChanged} />
     </div>
   );
 }
@@ -242,13 +242,41 @@ function Stat({ label, value }: { label: string; value: number }) {
   );
 }
 
-function FailuresSection({ ingressId }: { ingressId: string }) {
+/** The outcome ListDeliveryFailures gives a delivery the evidence outbox parked dead. */
+const DEAD_LETTER = 'dead_letter';
+
+function FailuresSection({
+  ingressId,
+  readOnly,
+  onChanged,
+}: {
+  ingressId: string;
+  readOnly: boolean;
+  onChanged: () => void;
+}) {
   const failures = useKernelQuery(
     ['studio', 'failures', ingressId],
     () => ipc.studioDeliveryFailures(ingressId),
     { refetchInterval: 15_000, staleTime: 0 },
   );
   const rows = failures.data ?? [];
+  const deadCount = rows.filter((f) => f.outcome === DEAD_LETTER).length;
+  const replay = useMutation(ipc.studioReplayDeadDeliveries);
+  const [ack, setAck] = useState<StudioReplayAck | null>(null);
+  // Replay re-runs the SAME work through the kernel's ordinary outbox consumer —
+  // it is for after the cause is fixed. The kernel audits who asked and how many.
+  const runReplay = (evidenceId: string) => {
+    setAck(null);
+    void replay.mutate(ingressId, evidenceId, '').then((res) => {
+      if (res !== undefined) {
+        setAck(res);
+        if (res.ok) {
+          void failures.refetch();
+          onChanged();
+        }
+      }
+    });
+  };
   return (
     <section className="space-y-2 rounded-[var(--radius-lg)] border border-[var(--border-subtle)] p-4">
       <h3 className="text-[13px] font-medium text-[var(--fg-primary)]">Delivery failures</h3>
@@ -273,12 +301,38 @@ function FailuresSection({ ingressId }: { ingressId: string }) {
               </span>
             </p>
             <p className="text-[var(--fg-secondary)]">{f.detail}</p>
+            {f.outcome === DEAD_LETTER && !readOnly && (
+              <Button
+                size="sm"
+                disabled={replay.isLoading}
+                onClick={() => runReplay(f.evidence_id)}
+                aria-label={`Replay ${f.delivery_ref || f.evidence_id}`}
+              >
+                Replay
+              </Button>
+            )}
           </div>
         ))
       )}
+      {deadCount > 1 && !readOnly && (
+        <Button size="sm" disabled={replay.isLoading} onClick={() => runReplay('')}>
+          Replay all {deadCount} dead
+        </Button>
+      )}
+      {replay.error !== null && <p className="text-[12px] text-[var(--status-err)]">{replay.error}</p>}
+      {ack !== null && (
+        <p
+          role="status"
+          className={ack.ok ? 'text-[12px] text-[var(--fg-secondary)]' : 'text-[12px] text-[var(--status-err)]'}
+        >
+          {ack.ok ? ack.detail : ack.error}
+        </p>
+      )}
       <p className="text-[11px] text-[var(--fg-muted)]">
         A refusal is permanent for that revision — repair is a NEW revision promoted over the
-        archive, never a retry.
+        archive, never a retry. A dead letter is different: the delivery failed on every attempt
+        (e.g. a missing release), and once the cause is fixed, Replay runs it again through the
+        same consumer.
       </p>
     </section>
   );

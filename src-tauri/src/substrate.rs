@@ -57,6 +57,12 @@ pub struct CompiledQuery {
     pub as_of: String,
     pub from: String,
     pub to: String,
+    /// ADR-0148: `why` returns stored lineage only unless this asks for the
+    /// RELATED rows too (shared participant, windowed, ranked — not causal).
+    pub include_correlation: bool,
+    /// 0 = the kernel's default window (72 h).
+    pub correlation_window_seconds: i64,
+    pub correlation_roles: Vec<String>,
 }
 
 /// One executed query's answer: the §14 guarantee label plus the rows.
@@ -119,8 +125,13 @@ pub struct SubstrateOverview {
     pub actor_count: i64,
     /// Evidence archived but not yet transformed into typed rows — "your data
     /// is still materializing". Non-zero is normal moments after ingest;
-    /// growing without draining is the ingest-health warning.
+    /// growing without draining is the ingest-health warning. Excludes dead
+    /// items (`outbox_dead`) since the 2026-11-13 contract change.
     pub outbox_pending: i64,
+    /// Evidence whose transformation failed on every attempt and was parked
+    /// dead: never retried by itself. Replayed per ingress from Ingress Studio's
+    /// failure list once the cause is fixed.
+    pub outbox_dead: i64,
     /// Entities whose current resolutions disagree across actors. Disagreement
     /// is a headline metric for this product, not a buried query.
     pub contradiction_count: i64,
@@ -170,6 +181,9 @@ fn to_wire(q: &CompiledQuery) -> pb::substrate::QueryRequest {
         hops: q.hops,
         limit: q.limit,
         evidence_id: q.evidence_id.clone(),
+        include_correlation: q.include_correlation,
+        correlation_window_seconds: q.correlation_window_seconds,
+        correlation_roles: q.correlation_roles.clone(),
     }
 }
 
@@ -187,6 +201,9 @@ fn from_wire(q: pb::substrate::QueryRequest) -> CompiledQuery {
         as_of: ts_iso(&q.as_of),
         from: ts_iso(&q.from),
         to: ts_iso(&q.to),
+        include_correlation: q.include_correlation,
+        correlation_window_seconds: q.correlation_window_seconds,
+        correlation_roles: q.correlation_roles,
     }
 }
 
@@ -250,6 +267,7 @@ impl Transport {
             entity_count: o.entity_count,
             actor_count: o.actor_count,
             outbox_pending: o.outbox_pending,
+            outbox_dead: o.outbox_dead,
             contradiction_count: o.contradiction_count,
             earliest: ts_iso(&o.earliest),
             latest: ts_iso(&o.latest),
@@ -327,5 +345,26 @@ mod tests {
         };
         let wire = to_wire(&q);
         assert!(wire.as_of.is_none() && wire.from.is_none() && wire.to.is_none());
+    }
+
+    /// ADR-0148: the why opt-in reaches the wire as sent, and comes back.
+    #[test]
+    fn correlation_fields_round_trip_the_wire() {
+        let q = CompiledQuery {
+            kind: "why".into(),
+            entity_id: "entity:customer/C-1".into(),
+            include_correlation: true,
+            correlation_window_seconds: 3600,
+            correlation_roles: vec!["customer".into()],
+            ..Default::default()
+        };
+        let wire = to_wire(&q);
+        assert!(wire.include_correlation);
+        assert_eq!(wire.correlation_window_seconds, 3600);
+        assert_eq!(wire.correlation_roles, vec!["customer".to_string()]);
+        let back = from_wire(wire);
+        assert!(back.include_correlation && back.correlation_window_seconds == 3600);
+        // Default stays off: the stored-lineage answer is what a plain ask gets.
+        assert!(!to_wire(&CompiledQuery::default()).include_correlation);
     }
 }

@@ -904,6 +904,7 @@ class MockIPC {
     entity_count: 5,
     actor_count: 2,
     outbox_pending: 0,
+    outbox_dead: 0,
     contradiction_count: 1,
     earliest: '2026-08-01T09:00:00Z',
     latest: '2026-08-06T12:00:00Z',

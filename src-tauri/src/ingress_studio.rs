@@ -263,6 +263,16 @@ pub struct StudioFailure {
     pub finished_at: String,
 }
 
+/// The answer to a dead-delivery replay: the Ack fields plus how many dead
+/// deliveries were reset to pending (0 = the idempotent no-op).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StudioReplayAck {
+    pub ok: bool,
+    pub error: String,
+    pub detail: String,
+    pub replayed: i32,
+}
+
 fn ack(a: pb::ingress::Ack) -> StudioAck {
     StudioAck { ok: a.ok, error: a.error, detail: a.detail }
 }
@@ -791,6 +801,29 @@ impl Transport {
             .map_err(map_status)?
             .into_inner();
         Ok(ack(a))
+    }
+
+    /// Re-queue dead deliveries once their cause is fixed: every dead delivery
+    /// of the ingress (`evidence_id` empty) or one. The kernel resets them to
+    /// pending and its ordinary outbox consumer runs them again; Operator-only,
+    /// audited server-side.
+    pub async fn studio_replay_dead_deliveries(
+        &self,
+        ingress_id: String,
+        evidence_id: String,
+        reason: String,
+    ) -> Result<StudioReplayAck, String> {
+        let mut client = self.studio_client().await?;
+        let r = client
+            .replay_dead_deliveries(Request::new(pb::ingress::ReplayDeadDeliveriesRequest {
+                ingress_id,
+                evidence_id,
+                reason,
+            }))
+            .await
+            .map_err(map_status)?
+            .into_inner();
+        Ok(StudioReplayAck { ok: r.ok, error: r.error, detail: r.detail, replayed: r.replayed })
     }
 
     pub async fn studio_delivery_failures(&self, ingress_id: String) -> Result<Vec<StudioFailure>, String> {

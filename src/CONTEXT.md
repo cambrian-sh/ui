@@ -56,6 +56,8 @@ No screen renders its own permanent aside. No bottom status strip.
 |---|---|
 | Work | Chat (home; `/` redirects here) · Inbox (badge) · Tasks |
 | Knowledge | Memory (documents · notes) · Skills (`skills-read`/`skills-lifecycle`/`skill-grants`) · Knowledge (`substrate-query`) · Link review (`links`) |
+
+Knowledge → Explore entity card: `LineageSection` (ADR-0148, 2026-11-12) asks `why` for STORED lineage only and shows the kernel's hint row verbatim; "Show related events (not causal)" opts in with `include_correlation` and renders `row:"related"` rows (with score) and flagged hub participants in a separate "Related — not causal" section, never mixed into the lineage list.
 | Automate | Integrations · Pipelines (`watches-read`) · Plan builder · Ingress Studio (`ingress-studio`) · Telegram (`telegram-ingress`) |
 | Admin | Runtime (agents · tools · MCP) · Access policy (`access-policy`) · Organisation (`org-directory`) · Audit (`audit`) · Logs (`kernel-logs`) · Plugins |
 

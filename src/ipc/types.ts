@@ -1520,6 +1520,12 @@ export interface StudioAck {
   detail: string;
 }
 
+/** A dead-delivery replay's answer: replayed = how many were reset to pending
+ *  (0 when none in scope was dead — the idempotent no-op, still ok). */
+export interface StudioReplayAck extends StudioAck {
+  replayed: number;
+}
+
 /** One ingress row for the rail. */
 export interface StudioIngress {
   ingress_id: string;
@@ -2841,6 +2847,11 @@ export interface CompiledQuery {
   as_of: string;
   from: string;
   to: string;
+  /** ADR-0148: why returns stored lineage only unless this asks for related rows too. */
+  include_correlation?: boolean;
+  /** 0 = the kernel's default window (72 h). */
+  correlation_window_seconds?: number;
+  correlation_roles?: string[];
 }
 
 /**
@@ -2897,8 +2908,12 @@ export interface SubstrateOverview {
   live_resolution_count: number;
   entity_count: number;
   actor_count: number;
-  /** Evidence archived but not yet transformed — data still materializing. */
+  /** Evidence archived but not yet transformed — data still materializing.
+   *  Excludes dead items (outbox_dead). */
   outbox_pending: number;
+  /** Evidence whose transformation failed on every attempt and was parked
+   *  dead — never retried by itself; replayed from Ingress Studio's failures. */
+  outbox_dead: number;
   /** Entities whose current resolutions disagree across actors. */
   contradiction_count: number;
   earliest: string;

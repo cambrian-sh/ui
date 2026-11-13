@@ -1503,6 +1503,16 @@ async fn op_studio_set_egress_policy(
 }
 
 #[tauri::command(rename_all = "snake_case")]
+async fn op_studio_replay_dead_deliveries(
+    transport: State<'_, Transport>,
+    ingress_id: String,
+    evidence_id: String,
+    reason: String,
+) -> Result<crate::ingress_studio::StudioReplayAck, String> {
+    transport.inner().clone().studio_replay_dead_deliveries(ingress_id, evidence_id, reason).await
+}
+
+#[tauri::command(rename_all = "snake_case")]
 async fn op_studio_delivery_failures(
     transport: State<'_, Transport>,
     ingress_id: String,
@@ -2895,6 +2905,7 @@ pub fn run() {
             op_studio_clear_credential,
             op_studio_set_egress_policy,
             op_studio_delivery_failures,
+            op_studio_replay_dead_deliveries,
             op_register_ingress,
             op_deregister_ingress,
             op_list_principals,

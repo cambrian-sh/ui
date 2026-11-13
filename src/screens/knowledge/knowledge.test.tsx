@@ -75,6 +75,7 @@ function overview(over: Partial<SubstrateOverview> = {}): SubstrateOverview {
     entity_count: 5,
     actor_count: 2,
     outbox_pending: 0,
+    outbox_dead: 0,
     contradiction_count: 1,
     earliest: '2026-08-01T09:00:00Z',
     latest: '2026-08-06T12:00:00Z',
@@ -185,6 +186,18 @@ describe('the overview strip', () => {
     expect(screen.queryByText(/materializing/)).not.toBeInTheDocument();
     rerender(<OverviewStrip overview={overview({ outbox_pending: 7 })} />);
     expect(screen.getByText('7 materializing')).toBeInTheDocument();
+  });
+
+  it('reports dead outbox items separately from materializing, and only when there are any', () => {
+    const { rerender } = render(<OverviewStrip overview={overview({ outbox_pending: 0, outbox_dead: 0 })} />);
+    expect(screen.queryByText(/dead/)).not.toBeInTheDocument();
+    rerender(<OverviewStrip overview={overview({ outbox_pending: 0, outbox_dead: 3 })} />);
+    expect(screen.getByText('3 dead — not transformed')).toBeInTheDocument();
+    // Dead is not materializing: waiting will not drain it.
+    expect(screen.queryByText(/materializing/)).not.toBeInTheDocument();
+    rerender(<OverviewStrip overview={overview({ outbox_pending: 2, outbox_dead: 3 })} />);
+    expect(screen.getByText('2 materializing')).toBeInTheDocument();
+    expect(screen.getByText('3 dead — not transformed')).toBeInTheDocument();
   });
 });
 

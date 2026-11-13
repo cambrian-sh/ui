@@ -15,6 +15,7 @@ import { useKernelQuery } from '@/lib/useKernelQuery';
 import { cn } from '@/design-system/lib/utils';
 import { GuaranteeLabel, parseRows, RowTable } from './rows';
 import { NeighborGraph } from './NeighborGraph';
+import { LineageSection } from './LineageSection';
 
 /** Events/traverse need a window; the explorer reads the last 90 days. */
 export function exploreWindow(): { from: string; to: string } {
@@ -224,6 +225,8 @@ function EntityCard({
           </p>
         ) : null}
       </section>
+
+      <LineageSection entityId={entityId} onOpenReceipt={onOpenReceipt} />
 
       <section aria-label="Neighborhood" className="flex flex-col gap-2">
         <h3 className="text-[12px] uppercase tracking-wide text-[var(--fg-muted)]">

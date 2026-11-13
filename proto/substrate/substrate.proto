@@ -68,6 +68,81 @@ service SubstrateLane {
   // explore surface browses. Names and counts only; VALUES are disclosed
   // exclusively through the query plane.
   rpc ListEntities(ListEntitiesRequest) returns (ListEntitiesResponse);
+
+  // GetOntology returns a namespace's CURRENT ontology declarations
+  // (ADR-0149 D2): the kind and relation specs every write in it is validated
+  // against, and their version. Open to Operator and Viewer.
+  rpc GetOntology(GetOntologyRequest) returns (GetOntologyResponse);
+
+  // ApplyOntologyChange classifies a change to a namespace's declarations —
+  // additive (applied live), tightening (applied to new writes; existing rows
+  // reported by ListOntologyViolations, never rejected) or breaking (refused:
+  // it needs an explicit migration, which this RPC does not take) — and
+  // applies it unless dry_run. Operator-only; mutating: command_id + reason,
+  // audited, idempotent on command_id. A refused change answers
+  // FailedPrecondition and applies nothing.
+  rpc ApplyOntologyChange(ApplyOntologyChangeRequest) returns (ApplyOntologyChangeResponse);
+
+  // ListOntologyViolations lists existing rows the namespace's current
+  // declarations would refuse if written now (a query, not a table), fenced
+  // to what the caller may read.
+  rpc ListOntologyViolations(ListOntologyViolationsRequest) returns (ListOntologyViolationsResponse);
+}
+
+message GetOntologyRequest {
+  string namespace = 1; // "" = "default"
+}
+
+message GetOntologyResponse {
+  string namespace = 1;
+  int64 version = 2;
+  // The declarations as JSON: {"kinds":[KindSpec…],"relations":[RelationSpec…]}
+  // — the CAMBRIAN_SUBSTRATE_KINDS kind shape and the config "relations" shape.
+  string declarations_json = 3;
+}
+
+message ApplyOntologyChangeRequest {
+  string command_id = 1;
+  string reason = 2;
+  string namespace = 3; // "" = "default"
+  // The specs to add, or to replace by name, in the GetOntology JSON shape.
+  string change_json = 4;
+  // dry_run classifies without applying, auditing or deduplicating.
+  bool dry_run = 5;
+}
+
+message OntologyChange {
+  string class = 1; // additive | tightening | breaking
+  string subject = 2; // "kind order.status", "relation placed_by"
+  string detail = 3;
+}
+
+message ApplyOntologyChangeResponse {
+  string command_id = 1;
+  bool deduped = 2;
+  bool applied = 3;
+  int64 version = 4; // the namespace's version after the call
+  string class = 5; // the most severe class among changes
+  repeated OntologyChange changes = 6;
+}
+
+message ListOntologyViolationsRequest {
+  string namespace = 1; // "" = "default"
+  int32 limit = 2; // 0 = 200, max 1000
+}
+
+message OntologyViolation {
+  // required | enum | range | from_kind | to_kind | cardinality | required_link
+  string rule = 1;
+  string subject = 2;
+  string ref = 3; // the offending item, link or entity id
+  string detail = 4;
+}
+
+message ListOntologyViolationsResponse {
+  int64 version = 1;
+  repeated OntologyViolation violations = 2;
+  bool truncated = 3;
 }
 
 message AskKnowledgeRequest {
@@ -109,7 +184,10 @@ message OverviewResponse {
   int64 entity_count = 6;
   int64 actor_count = 7;
   // Evidence rows archived but not yet transformed into typed rows — "your
-  // data is still materializing", the async-ingest health number.
+  // data is still materializing", the async-ingest health number. Work that
+  // will still happen: due, backing off after a failure, or held while its
+  // ingress is paused. Dead items are NOT included (outbox_dead) — since
+  // 2026-11-13; before, pending counted them too.
   int64 outbox_pending = 8;
   // Entities whose CURRENT resolutions disagree across actors, summed over
   // all item kinds — disagreement is a headline metric, not a buried query.
@@ -118,6 +196,11 @@ message OverviewResponse {
   google.protobuf.Timestamp latest = 11;   // newest occurred_at held
   repeated SourceOverview sources = 12;
   repeated KindCount kinds = 13;
+  // Evidence rows whose transformation failed on every attempt and was parked
+  // dead (the evidence outbox's dead-letter state): never retried
+  // automatically. An ingress's dead deliveries are listed by Ingress Studio's
+  // ListDeliveryFailures and re-queued by ReplayDeadDeliveries.
+  int64 outbox_dead = 14;
 }
 
 message ListEntitiesRequest {
@@ -191,6 +274,21 @@ message QueryRequest {
   // that the query is refused, never truncated), and an entity claimed by more
   // than 16 links of one mechanism is flagged and excluded from expansion.
   bool expand_aliases = 14;
+  // ADR-0148 (accepted 2026-11-12): `why` answers from STORED lineage unless
+  // include_correlation asks for RELATED rows as well — earlier events that
+  // share a participant with an event the walk stands on, inside the window,
+  // hub-damped and ranked by score, at most 8 per event, labelled
+  // row:"related" with a score. Related rows are NOT causes. Refused on every
+  // kind but why, and the two fields below are refused without it.
+  //
+  // With the flag off, an empty why answer whose root has related events
+  // carries one row:"hint" (related_count, text) instead of silence.
+  bool include_correlation = 15;
+  // How far back a related event may lie; 0 = 72 h, refused above 30 days.
+  int64 correlation_window_seconds = 16;
+  // When set, a shared participant counts only if its role in BOTH events is
+  // listed. Roles are deployment data; the kernel names none.
+  repeated string correlation_roles = 17;
 }
 
 message QueryResponse {

@@ -637,6 +637,15 @@ export const ipc = {
     invoke<t.StudioAck>('op_studio_set_egress_policy', { ingress_id: ingressId, policy_json: policyJson }),
   studioDeliveryFailures: (ingressId: string): Promise<t.StudioFailure[]> =>
     invoke<t.StudioFailure[]>('op_studio_delivery_failures', { ingress_id: ingressId }),
+  /**
+   * Re-queue dead deliveries (outcome `dead_letter`) once their cause is fixed:
+   * one delivery (evidenceId) or every dead one of the ingress (''). The kernel's
+   * ordinary consumer runs them again. Operator-only; audited server-side.
+   */
+  studioReplayDeadDeliveries: (ingressId: string, evidenceId = '', reason = ''): Promise<t.StudioReplayAck> =>
+    invoke<t.StudioReplayAck>('op_studio_replay_dead_deliveries', {
+      ingress_id: ingressId, evidence_id: evidenceId, reason,
+    }),
 
   /**
    * Apply or remove one label on a document or memory.

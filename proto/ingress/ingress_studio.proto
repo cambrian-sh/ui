@@ -119,6 +119,16 @@ service IngressStudioAdmin {
 
   // ── Failures ──
   rpc ListDeliveryFailures(IngressRef) returns (DeliveryFailures);
+  // ReplayDeadDeliveries re-queues the deliveries the evidence outbox parked
+  // dead (outcome `dead_letter` above) once their cause is fixed: each item is
+  // reset to pending — attempts cleared, due now — and the ordinary outbox
+  // consumer runs it again; there is no second processing path. Scope is one
+  // ingress (every dead delivery of it) or one delivery of it (evidence_id).
+  // Idempotent: a delivery that is not dead (pending, held, processed, or
+  // already replayed) is left alone and counted as nothing, not an error.
+  // Audited with the caller and the count. Operator-only, like the plane's
+  // other write RPCs (owner decision 2026-11-13).
+  rpc ReplayDeadDeliveries(ReplayDeadDeliveriesRequest) returns (ReplayDeadDeliveriesResponse);
   // ListGaps returns a sequenced stream's recorded gap findings (plan D5):
   // messages the source's own counter says existed and this deployment never
   // made durable. Durable rows, never only log lines.
@@ -817,4 +827,24 @@ message DeliveryFailure {
   string outcome = 4;
   string detail = 5;
   string finished_at = 6;
+}
+
+message ReplayDeadDeliveriesRequest {
+  string ingress_id = 1;
+  // evidence_id narrows the replay to that one delivery (a DeliveryFailure's
+  // evidence_id); empty replays every dead delivery of the ingress. An id that
+  // is not this ingress's matches nothing.
+  string evidence_id = 2;
+  // reason is optional and recorded in the audit entry.
+  string reason = 3;
+}
+
+message ReplayDeadDeliveriesResponse {
+  bool ok = 1;
+  string error = 2;
+  // detail says what was replayed and what was left alone.
+  string detail = 3;
+  // replayed is how many dead deliveries were reset to pending; 0 when none
+  // was dead (the idempotent no-op).
+  int32 replayed = 4;
 }

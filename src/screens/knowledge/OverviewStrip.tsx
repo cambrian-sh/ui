@@ -35,6 +35,7 @@ export function OverviewStrip({ overview }: { overview: SubstrateOverview }) {
         ))}
         <ContradictionBadge count={overview.contradiction_count} />
         <OutboxBadge pending={overview.outbox_pending} />
+        <DeadBadge dead={overview.outbox_dead} />
       </div>
       {overview.sources.length > 0 && (
         <div className="flex flex-wrap gap-x-4 gap-y-1" aria-label="Holdings per source surface">
@@ -84,7 +85,8 @@ function ContradictionBadge({ count }: { count: number }) {
 /**
  * The async-ingest health number: evidence archived but not yet transformed
  * into typed rows. Non-zero moments after an ingest is normal ("your data is
- * still materializing"); shown only when non-zero so zero is silence.
+ * still materializing"); shown only when non-zero so zero is silence. Dead
+ * items are NOT in it (they will not materialize by waiting) — see DeadBadge.
  */
 function OutboxBadge({ pending }: { pending: number }) {
   if (pending === 0) return null;
@@ -94,6 +96,26 @@ function OutboxBadge({ pending }: { pending: number }) {
       role="status"
     >
       {pending.toLocaleString()} materializing
+    </span>
+  );
+}
+
+/**
+ * Evidence the outbox parked dead: its transformation failed on every attempt
+ * and nothing retries it by itself. Separate from "materializing" because no
+ * amount of waiting drains it — someone has to fix the cause and replay it
+ * (Ingress Studio → an ingress's delivery failures). Silent at zero, a word
+ * and a shape when not, never colour alone.
+ */
+function DeadBadge({ dead }: { dead: number }) {
+  if (!dead) return null;
+  return (
+    <span
+      className="rounded-[5px] border border-dashed border-[var(--border-strong)] px-1.5 py-0.5 text-[11.5px] text-[var(--fg-secondary)]"
+      role="status"
+      title="Transformation failed on every attempt; not retried automatically. Replay it from Ingress Studio once the cause is fixed."
+    >
+      {dead.toLocaleString()} dead — not transformed
     </span>
   );
 }
