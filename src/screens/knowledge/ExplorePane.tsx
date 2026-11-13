@@ -1,15 +1,20 @@
 // The entity explorer: browse what the substrate models, then drill in.
 //
 // The browser lists NAMES only (ListEntities discloses names, predicates and
-// counts — values are served exclusively through the query plane). Selecting
-// an entity assembles its card from the query plane's own shapes: the latest
-// value per predicate (point), participation (events), and the co-participant
-// neighborhood (traverse, hop-capped by the plane itself). Every value cell
-// keeps its evidence_id, so the receipt is one click from anything.
+// counts — values are served by the kernel's read planes). Selecting an entity
+// asks GetObject first (ADR-0149 D7): an object of a declared table kind gets
+// its whole page — current values with provenance and visible conflicts,
+// lifecycle, typed links both ways, aliases, timeline — in ONE call
+// (ObjectCard). Any other entity (GetObject answers null) keeps the card
+// assembled from the query plane's own shapes: the latest value per predicate
+// (point), participation (events), lineage, and the co-participant
+// neighborhood (traverse). Every value keeps its evidence_id, so the receipt
+// is one click from anything.
 
 import { useMemo, useState } from 'react';
 import { ipc } from '@/ipc';
 import type { KnowledgeEntity } from '@/ipc/types';
+import { ObjectCard } from './ObjectCard';
 import { ErrorState, Input } from '@/design-system/components';
 import { useKernelQuery } from '@/lib/useKernelQuery';
 import { cn } from '@/design-system/lib/utils';
@@ -133,6 +138,42 @@ function EntityRow({
 }
 
 function EntityCard({
+  entityId,
+  onOpenReceipt,
+  onSelectEntity,
+}: {
+  entityId: string;
+  onOpenReceipt: (evidenceId: string) => void;
+  onSelectEntity: (entityId: string) => void;
+}) {
+  const objectQuery = useKernelQuery(
+    ['knowledge', 'object', entityId],
+    () => ipc.getObject(entityId),
+    { staleTime: 30_000 },
+  );
+  if (objectQuery.isPending) {
+    return <p className="text-[12.5px] text-[var(--fg-muted)]">Loading…</p>;
+  }
+  if (objectQuery.isError) {
+    return (
+      <ErrorState
+        reason={`The object page could not be read: ${objectQuery.error?.message ?? 'the substrate lane did not answer'}.`}
+        whatToDo="A read failure, not a missing object."
+      />
+    );
+  }
+  if (objectQuery.data) {
+    return (
+      <ObjectCard page={objectQuery.data} onOpenReceipt={onOpenReceipt} onSelectEntity={onSelectEntity} />
+    );
+  }
+  return (
+    <QueryPlaneCard entityId={entityId} onOpenReceipt={onOpenReceipt} onSelectEntity={onSelectEntity} />
+  );
+}
+
+/** The card for an entity that is not an object of a declared table kind. */
+function QueryPlaneCard({
   entityId,
   onOpenReceipt,
   onSelectEntity,

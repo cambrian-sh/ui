@@ -81,6 +81,7 @@ pub const COMMANDS: &[&str] = &[
     "op_knowledge_overview",
     "op_knowledge_entities",
     "op_get_ontology_draft",
+    "op_get_object",
     "op_studio_create_ingress",
     "op_studio_list_ingresses",
     "op_studio_get_ingress",
@@ -849,6 +850,14 @@ pub async fn dispatch(
             }
             let a: A = parse(args)?;
             reply(super::super::op_get_ontology_draft(app.state::<Transport>(), a.draft_id).await)
+        }
+        "op_get_object" => {
+            #[derive(serde::Deserialize)]
+            struct A {
+                entity_id: String,
+            }
+            let a: A = parse(args)?;
+            reply(super::super::op_get_object(app.state::<Transport>(), a.entity_id).await)
         }
         "op_studio_create_ingress" => {
             #[derive(serde::Deserialize)]

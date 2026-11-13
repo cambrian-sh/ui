@@ -958,6 +958,12 @@ class MockIPC {
     return Promise.resolve(structuredClone(fx.ONTOLOGY_DRAFT));
   }
 
+  /** The mock substrate declares no object kinds: every entity uses the
+   *  query-plane card (GetObject answers NotFound → null). */
+  getObject(_entityId: string): Promise<t.ObjectPage | null> {
+    return Promise.resolve(null);
+  }
+
   __seedKnowledgeAsk(outcome: t.AskOutcome) {
     this.knowledgeAskOutcome = outcome;
   }

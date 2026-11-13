@@ -332,6 +332,200 @@ impl Transport {
             .into_inner();
         Ok(draft_from_wire(resp))
     }
+
+    /// One object page (ADR-0149 D7, substrate GetObject) — the Explore card's
+    /// single call for an entity that is an object of a declared table kind.
+    /// `None` when the kernel answers NotFound: the entity is not such an object
+    /// (or the reader may not know it exists), and the card falls back to the
+    /// query-plane shapes that serve every other entity.
+    pub async fn get_object(&self, entity_id: String) -> Result<Option<ObjectPage>, String> {
+        let mut client = self.substrate_client().await?;
+        match client
+            .get_object(Request::new(pb::substrate::GetObjectRequest {
+                namespace: String::new(),
+                entity_id,
+            }))
+            .await
+        {
+            Ok(resp) => Ok(Some(object_from_wire(resp.into_inner()))),
+            Err(e) if e.code() == tonic::Code::NotFound => Ok(None),
+            Err(e) => Err(map_status(e)),
+        }
+    }
+}
+
+/// A typed value for the webview: its type ("text" | "number" | "date" |
+/// "entity"; "" = absent) and a display string (dates RFC-3339, entities their id).
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct ObjectValue {
+    pub r#type: String,
+    pub display: String,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ObjectAlternative {
+    pub value: ObjectValue,
+    pub at: String,
+    pub source: String,
+    pub evidence_id: String,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ObjectProperty {
+    pub property: String,
+    pub value: ObjectValue,
+    pub at: String,
+    pub source: String,
+    pub evidence_id: String,
+    pub conflict: bool,
+    pub alternatives: Vec<ObjectAlternative>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ObjectLifecycle {
+    pub state_predicate: String,
+    pub state: String,
+    pub allowed: Vec<String>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ObjectLink {
+    pub link_id: String,
+    pub relation: String,
+    pub label: String,
+    pub family: String,
+    /// "out" | "in".
+    pub direction: String,
+    pub other_ref: String,
+    pub other_kind: String,
+    pub evidence_id: String,
+    pub asserted_at: String,
+    pub valid_from: String,
+    pub valid_to: String,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ObjectTimelineEntry {
+    /// "event" | "property".
+    pub kind: String,
+    pub at: String,
+    pub event_id: String,
+    pub event_type: String,
+    pub roles: std::collections::BTreeMap<String, String>,
+    pub property: String,
+    pub value: ObjectValue,
+    pub evidence_id: String,
+}
+
+/// GetObject's answer as the webview reads it. Everything absent is absent
+/// for this reader — the kernel omits, never redacts.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ObjectPage {
+    pub entity_id: String,
+    pub kind: String,
+    pub namespace: String,
+    pub created_at: String,
+    pub first_seen_evidence: String,
+    pub decl_version: i64,
+    pub updated_at: String,
+    pub properties: Vec<ObjectProperty>,
+    pub lifecycle: Option<ObjectLifecycle>,
+    pub aliases: Vec<ObjectLink>,
+    pub links: Vec<ObjectLink>,
+    pub timeline: Vec<ObjectTimelineEntry>,
+    pub evidence: Vec<String>,
+}
+
+fn value_from_wire(v: Option<pb::substrate::TypedValue>) -> ObjectValue {
+    use pb::substrate::typed_value::Value;
+    match v.and_then(|v| v.value) {
+        Some(Value::Date(t)) => ObjectValue { r#type: "date".into(), display: ts_iso(&Some(t)) },
+        Some(Value::Number(n)) => ObjectValue { r#type: "number".into(), display: n.to_string() },
+        Some(Value::Text(s)) => ObjectValue { r#type: "text".into(), display: s },
+        Some(Value::EntityId(s)) => ObjectValue { r#type: "entity".into(), display: s },
+        None => ObjectValue::default(),
+    }
+}
+
+fn links_from_wire(v: Vec<pb::substrate::ObjectLink>) -> Vec<ObjectLink> {
+    v.into_iter()
+        .map(|l| ObjectLink {
+            link_id: l.link_id,
+            relation: l.relation,
+            label: l.label,
+            family: l.family,
+            direction: l.direction,
+            other_ref: l.other_ref,
+            other_kind: l.other_kind,
+            evidence_id: l.evidence_id,
+            asserted_at: ts_iso(&l.asserted_at),
+            valid_from: ts_iso(&l.valid_from),
+            valid_to: ts_iso(&l.valid_to),
+        })
+        .collect()
+}
+
+fn object_from_wire(r: pb::substrate::GetObjectResponse) -> ObjectPage {
+    ObjectPage {
+        entity_id: r.entity_id,
+        kind: r.kind,
+        namespace: r.namespace,
+        created_at: ts_iso(&r.created_at),
+        first_seen_evidence: r.first_seen_evidence,
+        decl_version: r.decl_version,
+        updated_at: ts_iso(&r.updated_at),
+        properties: r
+            .properties
+            .into_iter()
+            .map(|p| ObjectProperty {
+                property: p.property,
+                value: value_from_wire(p.value),
+                at: ts_iso(&p.at),
+                source: p.source,
+                evidence_id: p.evidence_id,
+                conflict: p.conflict,
+                alternatives: p
+                    .alternatives
+                    .into_iter()
+                    .map(|a| ObjectAlternative {
+                        value: value_from_wire(a.value),
+                        at: ts_iso(&a.at),
+                        source: a.source,
+                        evidence_id: a.evidence_id,
+                    })
+                    .collect(),
+            })
+            .collect(),
+        lifecycle: r.lifecycle.map(|l| ObjectLifecycle {
+            state_predicate: l.state_predicate,
+            state: l.state,
+            allowed: l.allowed,
+        }),
+        aliases: links_from_wire(r.aliases),
+        links: links_from_wire(r.links),
+        timeline: r
+            .timeline
+            .into_iter()
+            .map(|e| ObjectTimelineEntry {
+                kind: e.kind,
+                at: ts_iso(&e.at),
+                event_id: e.event_id,
+                event_type: e.event_type,
+                roles: e.roles.into_iter().collect(),
+                property: e.property,
+                value: value_from_wire(e.value),
+                evidence_id: e.evidence_id,
+            })
+            .collect(),
+        evidence: r.evidence,
+    }
 }
 
 /// One classified difference (`additive` | `tightening` | `breaking`).
@@ -424,6 +618,81 @@ fn draft_from_wire(r: pb::substrate::GetOntologyDraftResponse) -> OntologyDraftV
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// GetObject's answer reaches the webview whole: typed values keep their
+    /// type, times become RFC-3339, an absent value stays absent, and the link
+    /// direction and inverse label survive.
+    #[test]
+    fn object_page_maps_every_section() {
+        use pb::substrate::typed_value::Value;
+        let t = prost_types::Timestamp { seconds: 1_790_000_000, nanos: 0 };
+        let tv = |v: Value| Some(pb::substrate::TypedValue { value: Some(v) });
+        let page = object_from_wire(pb::substrate::GetObjectResponse {
+            entity_id: "order/O-1".into(),
+            kind: "order".into(),
+            namespace: "default".into(),
+            created_at: Some(t),
+            first_seen_evidence: "ev-1".into(),
+            decl_version: 7,
+            updated_at: Some(t),
+            properties: vec![pb::substrate::ObjectProperty {
+                property: "total".into(),
+                value: tv(Value::Number(42.5)),
+                at: Some(t),
+                source: "erp".into(),
+                evidence_id: "ev-2".into(),
+                conflict: true,
+                alternatives: vec![pb::substrate::ObjectAlternative {
+                    value: tv(Value::Number(40.0)),
+                    at: Some(t),
+                    source: "crm".into(),
+                    evidence_id: "ev-3".into(),
+                }],
+            }],
+            lifecycle: Some(pb::substrate::ObjectLifecycle {
+                state_predicate: "status".into(),
+                state: "open".into(),
+                allowed: vec!["shipped".into()],
+            }),
+            aliases: vec![],
+            links: vec![pb::substrate::ObjectLink {
+                link_id: "lnk".into(),
+                relation: "placed_by".into(),
+                label: "has_order".into(),
+                family: "relation".into(),
+                direction: "in".into(),
+                other_ref: "entity:customer/C-1".into(),
+                other_kind: "customer".into(),
+                evidence_id: "ev-4".into(),
+                asserted_at: Some(t),
+                valid_from: None,
+                valid_to: None,
+            }],
+            timeline: vec![pb::substrate::ObjectTimelineEntry {
+                kind: "event".into(),
+                at: Some(t),
+                event_id: "e1".into(),
+                event_type: "shipped".into(),
+                roles: [("order".to_string(), "order/O-1".to_string())].into_iter().collect(),
+                property: String::new(),
+                value: None,
+                evidence_id: "ev-5".into(),
+            }],
+            evidence: vec!["ev-1".into(), "ev-2".into()],
+        });
+        assert_eq!(page.properties[0].value, ObjectValue { r#type: "number".into(), display: "42.5".into() });
+        assert!(page.properties[0].conflict);
+        assert_eq!(page.properties[0].alternatives[0].source, "crm");
+        assert_eq!(page.lifecycle.as_ref().unwrap().allowed, vec!["shipped".to_string()]);
+        assert_eq!(page.links[0].label, "has_order");
+        assert_eq!(page.links[0].direction, "in");
+        assert_eq!(page.links[0].valid_from, "");
+        assert_eq!(page.timeline[0].value, ObjectValue::default());
+        assert_eq!(page.timeline[0].roles.get("order").map(String::as_str), Some("order/O-1"));
+        assert!(!page.created_at.is_empty());
+        let json = serde_json::to_value(&page).unwrap();
+        assert_eq!(json["properties"][0]["value"]["type"], "number");
+    }
 
     /// Every field of the approver's view survives the wire → webview mapping;
     /// the spec field `type` (a Rust keyword) serialises as "type".

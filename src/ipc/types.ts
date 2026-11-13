@@ -2982,6 +2982,84 @@ export interface OntologyDraftView {
   dry_run_refusal: string;
 }
 
+// ── Object pages (ADR-0149 D7, substrate GetObject) ───────────────────────
+//
+// Mirrors `src-tauri/src/substrate.rs` ObjectPage. Everything the reader may
+// not see is absent (omitted, never redacted). Times are RFC-3339; '' = unset.
+
+/** A typed value: type "text" | "number" | "date" | "entity"; '' = absent. */
+export interface ObjectValue {
+  type: string;
+  display: string;
+}
+
+export interface ObjectAlternative {
+  value: ObjectValue;
+  at: string;
+  source: string;
+  evidence_id: string;
+}
+
+export interface ObjectProperty {
+  property: string;
+  value: ObjectValue;
+  at: string;
+  source: string;
+  evidence_id: string;
+  /** Other sources the reader may see currently say something else. */
+  conflict: boolean;
+  alternatives: ObjectAlternative[];
+}
+
+export interface ObjectLifecycle {
+  state_predicate: string;
+  /** '' = no visible state; allowed are then the initial states. */
+  state: string;
+  allowed: string[];
+}
+
+export interface ObjectLink {
+  link_id: string;
+  relation: string;
+  /** The relation outgoing; its declared inverse incoming. */
+  label: string;
+  family: string;
+  direction: 'out' | 'in' | string;
+  other_ref: string;
+  other_kind: string;
+  evidence_id: string;
+  asserted_at: string;
+  valid_from: string;
+  valid_to: string;
+}
+
+export interface ObjectTimelineEntry {
+  kind: 'event' | 'property' | string;
+  at: string;
+  event_id: string;
+  event_type: string;
+  roles: Record<string, string>;
+  property: string;
+  value: ObjectValue;
+  evidence_id: string;
+}
+
+export interface ObjectPage {
+  entity_id: string;
+  kind: string;
+  namespace: string;
+  created_at: string;
+  first_seen_evidence: string;
+  decl_version: number;
+  updated_at: string;
+  properties: ObjectProperty[];
+  lifecycle: ObjectLifecycle | null;
+  aliases: ObjectLink[];
+  links: ObjectLink[];
+  timeline: ObjectTimelineEntry[];
+  evidence: string[];
+}
+
 // ── The identity plane's review lane (contract 0098) ──────────────────────
 //
 // Mirrors `src-tauri/src/links.rs`. A link is an ASSERTION, not a fact: the

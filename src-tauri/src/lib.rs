@@ -1250,6 +1250,16 @@ async fn op_get_ontology_draft(
     transport.inner().clone().ontology_draft(draft_id).await
 }
 
+/// One object page (ADR-0149 D7); `None` when the entity is not an object of a
+/// declared table kind (the Explore card then falls back to the query plane).
+#[tauri::command(rename_all = "snake_case")]
+async fn op_get_object(
+    transport: State<'_, Transport>,
+    entity_id: String,
+) -> Result<Option<crate::substrate::ObjectPage>, String> {
+    transport.inner().clone().get_object(entity_id).await
+}
+
 // ── Ingress Studio (ADR-0112 §13) ──
 // Thin pass-throughs; every rule lives kernel-side. `op_studio_set_credential`
 // follows the write-only discipline: the value crosses these functions and is
@@ -2890,6 +2900,7 @@ pub fn run() {
             op_knowledge_overview,
             op_knowledge_entities,
             op_get_ontology_draft,
+            op_get_object,
             op_telegram_list_bots,
             op_telegram_add_bot,
             op_telegram_remove_bot,

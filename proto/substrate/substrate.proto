@@ -97,6 +97,200 @@ service SubstrateLane {
   // approval runs. Operator-only read; writes nothing. NotFound for an unknown
   // id.
   rpc GetOntologyDraft(GetOntologyDraftRequest) returns (GetOntologyDraftResponse);
+
+  // ListObjects is the objects query (ADR-0149 D6) over the per-kind object
+  // tables: typed filters, link filters (confirmed links, at most 2 hops),
+  // sort with keyset paging, or groups and metrics. The request is closed and
+  // validated against the live declarations: an unknown kind, property,
+  // relation or operator, a wrongly typed literal, a request over a bound or a
+  // page token reused with changed parameters is InvalidArgument; nothing ran.
+  // Runs as the system principal on this plane (the Query rule).
+  rpc ListObjects(ListObjectsRequest) returns (ListObjectsResponse);
+
+  // GetObject is one object page (ADR-0149 D7): current properties with
+  // provenance and visible conflicts, lifecycle, typed links in both
+  // directions, aliases, recent timeline, evidence. NotFound for an id that is
+  // not an object and for one the caller may not know exists alike.
+  rpc GetObject(GetObjectRequest) returns (GetObjectResponse);
+}
+
+// ── Objects (ADR-0149 D6, D7) ────────────────────────────────────────────────
+//
+// One request type for every caller: the operator plane and the agent plane
+// take these messages, and the published MCP tools' JSON Schema is generated
+// from ListObjectsRequest / GetObjectRequest and parsed back into them. Access
+// is per property: a value the caller may not read is absent — not returned,
+// matching no filter but is_null, sorting last, grouping under the empty key.
+
+// TypedValue is one typed value; none set = absent.
+message TypedValue {
+  oneof value {
+    google.protobuf.Timestamp date = 1;
+    double number = 2;
+    string text = 3;
+    // An entity id ("customer/C-1").
+    string entity_id = 4;
+  }
+}
+
+// ObjectCondition tests one declared property. op: eq | ne | lt | le | gt | ge
+// (number, date) | in | prefix (text) | is_null. values: one literal of the
+// property's type; one or more for in; none for is_null.
+message ObjectCondition {
+  string property = 1;
+  string op = 2;
+  repeated TypedValue values = 3;
+}
+
+// ObjectLinkFilter keeps objects that reach, over confirmed links of the
+// declared relations in path (from → to, 1 or 2 hops), an object satisfying
+// where.
+message ObjectLinkFilter {
+  repeated string path = 1;
+  ObjectCondition where = 2;
+}
+
+message ObjectOrder {
+  string property = 1;
+  bool desc = 2;
+}
+
+// ObjectMetric: count (no property) | sum | avg (number) | min | max (number, date).
+message ObjectMetric {
+  string fn = 1;
+  string property = 2;
+}
+
+message ListObjectsRequest {
+  // "" = the default namespace.
+  string namespace = 1;
+  // A declared kind with an object table.
+  string kind = 2;
+  // ANDed.
+  repeated ObjectCondition where = 3;
+  // ANDed; at most 4.
+  repeated ObjectLinkFilter links = 4;
+  // At most 3 keys; entity id ascending is always the last key; absent values sort last.
+  repeated ObjectOrder order_by = 5;
+  // With group_by or metrics the request is a GROUP request: buckets (at most
+  // 1000, ordered by key) instead of rows; no order_by, fields or paging.
+  repeated string group_by = 6;
+  repeated ObjectMetric metrics = 7;
+  // Returned properties; empty = every declared one.
+  repeated string fields = 8;
+  // 0 = 50; at most 200.
+  int32 page_size = 9;
+  // From next_page_token; only page_size may change between pages.
+  string page_token = 10;
+}
+
+message PropertyValue {
+  string property = 1;
+  TypedValue value = 2;
+}
+
+message ObjectRow {
+  string entity_id = 1;
+  // The visible values among the requested fields.
+  repeated PropertyValue values = 2;
+}
+
+message ObjectGroup {
+  // One per group_by property; an absent value has no TypedValue set.
+  repeated PropertyValue key = 1;
+  // One per metric, in request order.
+  repeated TypedValue metrics = 2;
+}
+
+message ListObjectsResponse {
+  string kind = 1;
+  // The declarations version the request was validated against.
+  int64 decl_version = 2;
+  repeated ObjectRow rows = 3;
+  // "" = last page.
+  string next_page_token = 4;
+  repeated ObjectGroup groups = 5;
+  // More than 1000 buckets exist; the first 1000 by key are returned.
+  bool truncated = 6;
+}
+
+message GetObjectRequest {
+  string namespace = 1;
+  string entity_id = 2;
+}
+
+message ObjectAlternative {
+  TypedValue value = 1;
+  google.protobuf.Timestamp at = 2;
+  string source = 3;
+  string evidence_id = 4;
+}
+
+message ObjectProperty {
+  string property = 1;
+  TypedValue value = 2;
+  // Event time of the current value and who said it.
+  google.protobuf.Timestamp at = 3;
+  string source = 4;
+  string evidence_id = 5;
+  // Other sources' current values the caller may read that differ.
+  bool conflict = 6;
+  repeated ObjectAlternative alternatives = 7;
+}
+
+message ObjectLifecycle {
+  string state_predicate = 1;
+  // "" = no visible state; allowed are then the initial states.
+  string state = 2;
+  repeated string allowed = 3;
+}
+
+message ObjectLink {
+  string link_id = 1;
+  string relation = 2;
+  // The relation outgoing; its declared inverse (when any) incoming.
+  string label = 3;
+  string family = 4;
+  // "out" | "in".
+  string direction = 5;
+  string other_ref = 6;
+  string other_kind = 7;
+  string evidence_id = 8;
+  google.protobuf.Timestamp asserted_at = 9;
+  google.protobuf.Timestamp valid_from = 10;
+  google.protobuf.Timestamp valid_to = 11;
+}
+
+message ObjectTimelineEntry {
+  // "event" | "property".
+  string kind = 1;
+  google.protobuf.Timestamp at = 2;
+  string event_id = 3;
+  string event_type = 4;
+  map<string, string> roles = 5;
+  string property = 6;
+  TypedValue value = 7;
+  string evidence_id = 8;
+}
+
+message GetObjectResponse {
+  string entity_id = 1;
+  string kind = 2;
+  string namespace = 3;
+  // Set only when the caller may read the evidence that minted the entity.
+  google.protobuf.Timestamp created_at = 4;
+  string first_seen_evidence = 5;
+  int64 decl_version = 6;
+  google.protobuf.Timestamp updated_at = 7;
+  repeated ObjectProperty properties = 8;
+  ObjectLifecycle lifecycle = 9;
+  // Confirmed identity links.
+  repeated ObjectLink aliases = 10;
+  repeated ObjectLink links = 11;
+  // Newest first: events the object took part in and recorded values.
+  repeated ObjectTimelineEntry timeline = 12;
+  // Every evidence id the page cites, once.
+  repeated string evidence = 13;
 }
 
 message GetOntologyRequest {
@@ -292,6 +486,12 @@ service SubstrateRetrieval {
   // InvalidArgument "cannot express safely"; rows the principal's scope does
   // not reach are simply absent, never redacted in place.
   rpc Query(QueryRequest) returns (QueryResponse);
+
+  // ListObjects and GetObject (ADR-0149 D6, D7) as the calling agent's
+  // principal: the operator lane's messages and refusals; values, links and
+  // objects the principal's scope does not reach are absent.
+  rpc ListObjects(ListObjectsRequest) returns (ListObjectsResponse);
+  rpc GetObject(GetObjectRequest) returns (GetObjectResponse);
 }
 
 message QueryRequest {

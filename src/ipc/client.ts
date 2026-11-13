@@ -887,6 +887,11 @@ export const ipc = {
   getOntologyDraft: (draftId: string): Promise<t.OntologyDraftView> =>
     invoke<t.OntologyDraftView>('op_get_ontology_draft', { draft_id: draftId }),
 
+  /** One object page (ADR-0149 D7) in one call; null when the entity is not an
+   *  object of a declared table kind (the Explore card falls back). */
+  getObject: (entityId: string): Promise<t.ObjectPage | null> =>
+    invoke<t.ObjectPage | null>('op_get_object', { entity_id: entityId }),
+
   listRoleAssignments: (): Promise<t.RoleAssignment[]> =>
     invoke<t.RoleAssignment[]>('op_list_role_assignments'),
 
