@@ -218,6 +218,25 @@ function populatedState(base: t.StateOfRecord): t.StateOfRecord {
         reason: 'send-email is marked dangerous: it writes outside the organisation.',
         raised_at: ago(90_000),
       },
+      {
+        // ADR-0149 D2: an agent-drafted ontology change; the object is the draft id.
+        intervention_id: 'hitl-3',
+        plan_id: '',
+        step_id: '',
+        agent_id: 'cognitive-analyst',
+        nature: 'approval_request',
+        kind: 'ontology_change',
+        rule: 'operator',
+        answerable: true,
+        proposed_action: {
+          tool_name: 'ontology_change',
+          object: 'od_mock1',
+          args_preview: 'tightening change to ontology "default" (v3): kind order.status enum narrowed; relation ships_to new relation — drafted by agent:cognitive-analyst — "lost" is not a status',
+        },
+        intended_action: null,
+        reason: 'ontology_change',
+        raised_at: ago(4 * MIN),
+      },
     ],
     agents: [
       {
@@ -780,3 +799,44 @@ export function logRecords(count = 60): t.LogRecord[] {
     };
   });
 }
+
+/** ADR-0149 D2: the full draft behind the mock `ontology_change` approval (hitl-3). */
+export const ONTOLOGY_DRAFT: t.OntologyDraftView = {
+  draft_id: 'od_mock1',
+  namespace: 'default',
+  proposer: 'agent:cognitive-analyst',
+  reason: '"lost" is not a status; shipments need a destination',
+  created_at_unix_ms: agoMs(4 * 60_000),
+  base_version: 3,
+  class: 'tightening',
+  changes: [
+    { class: 'tightening', subject: 'kind order.status', detail: 'enum narrowed: lost removed' },
+    { class: 'additive', subject: 'relation ships_to', detail: 'new relation' },
+  ],
+  change_json: JSON.stringify({
+    kinds: [{ kind: 'order', predicates: { status: { type: 'text', enum: ['open', 'shipped'] }, total: { type: 'number' } } }],
+    relations: [{ name: 'ships_to', family: 'relation' }],
+  }),
+  specs: [
+    {
+      type: 'kind',
+      name: 'order',
+      new_json: JSON.stringify({ kind: 'order', predicates: { status: { type: 'text', enum: ['open', 'shipped'] }, total: { type: 'number' } } }),
+      current_json: JSON.stringify({ kind: 'order', predicates: { status: { type: 'text', enum: ['open', 'shipped', 'lost'] }, total: { type: 'number' } } }),
+    },
+    { type: 'relation', name: 'ships_to', new_json: JSON.stringify({ name: 'ships_to', family: 'relation' }), current_json: '' },
+  ],
+  state: 'pending',
+  state_by: 'agent:cognitive-analyst',
+  detail: '',
+  applied_version: 0,
+  approval_id: 'hitl-3',
+  current_version: 3,
+  dry_run_ran: true,
+  dry_run_class: 'tightening',
+  dry_run_changes: [
+    { class: 'tightening', subject: 'kind order.status', detail: 'enum narrowed: lost removed' },
+    { class: 'additive', subject: 'relation ships_to', detail: 'new relation' },
+  ],
+  dry_run_refusal: '',
+};

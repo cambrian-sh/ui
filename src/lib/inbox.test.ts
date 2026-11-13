@@ -1,6 +1,27 @@
 import { describe, expect, it } from 'vitest';
 import type { HITLIntervention, SkillAccessRequest, SkillProposal } from '@/ipc/types';
-import { buildInbox, inboxCount } from './inbox';
+import { buildInbox, inboxCount, ontologyDraftIdOf } from './inbox';
+
+describe('ontology_change approvals (ADR-0149 D2)', () => {
+  const base: HITLIntervention = {
+    intervention_id: 'appr-o', plan_id: '', step_id: '', agent_id: 'a1', nature: 'approval_request',
+    proposed_action: {}, intended_action: null, reason: 'ontology_change', raised_at: '2026-11-06T10:00:00Z',
+  };
+
+  it('is its own inbox kind, titled, with the draft id from the object', () => {
+    const h = { ...base, kind: 'ontology_change', proposed_action: { tool_name: 'ontology_change', object: 'od_1' } };
+    const [item] = buildInbox({ hitl: [h] });
+    expect(item.kind).toBe('ontology_change');
+    expect(item.title).toBe('Change the ontology declarations');
+    expect(item.destructive).toBe(false);
+    expect(ontologyDraftIdOf(h)).toBe('od_1');
+  });
+
+  it('names no draft for another kind or a missing object', () => {
+    expect(ontologyDraftIdOf({ ...base, proposed_action: { object: 'od_1' } })).toBe('');
+    expect(ontologyDraftIdOf({ ...base, kind: 'ontology_change' })).toBe('');
+  });
+});
 
 function hitl(o: Partial<HITLIntervention>): HITLIntervention {
   return {

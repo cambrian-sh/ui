@@ -882,6 +882,11 @@ export const ipc = {
   listKnowledgeEntities: (query: string, limit = 50): Promise<t.KnowledgeEntity[]> =>
     invoke<t.KnowledgeEntity[]>('op_knowledge_entities', { query, limit }),
 
+  /** The full agent-drafted ontology change behind an `ontology_change`
+   *  approval, by the approval's object (the draft id). Operator-only. */
+  getOntologyDraft: (draftId: string): Promise<t.OntologyDraftView> =>
+    invoke<t.OntologyDraftView>('op_get_ontology_draft', { draft_id: draftId }),
+
   listRoleAssignments: (): Promise<t.RoleAssignment[]> =>
     invoke<t.RoleAssignment[]>('op_list_role_assignments'),
 

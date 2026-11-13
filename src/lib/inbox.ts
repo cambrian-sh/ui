@@ -35,7 +35,8 @@ export type InboxKind =
   | 'schedule_approval'
   | 'machine_consent'
   | 'account_approval'
-  | 'publish_approval';
+  | 'publish_approval'
+  | 'ontology_change';
 
 export interface InboxItem {
   /** Stable across re-reads: `<kind>:<source id>`. */
@@ -80,6 +81,7 @@ export const KIND_LABEL: Record<InboxKind, string> = {
   machine_consent: 'Run on your machine',
   account_approval: 'Confirm connected account',
   publish_approval: 'Share to team',
+  ontology_change: 'Ontology change',
 };
 
 /** ADR-0142 D11: the inbox kind of a hub item, by its wire kind. */
@@ -90,7 +92,17 @@ const HUB_KIND: Record<string, InboxKind> = {
   choose_machine: 'machine_consent',
   account_confirm: 'account_approval',
   publish: 'publish_approval',
+  // ADR-0149 D2: an agent-drafted change to the ontology declarations; the
+  // object is the draft id (OntologyDraftPanel reads the full draft by it).
+  ontology_change: 'ontology_change',
 };
+
+/** The draft id an `ontology_change` approval names ('' when absent). */
+export function ontologyDraftIdOf(h: HITLIntervention): string {
+  if (h.kind !== 'ontology_change') return '';
+  const object = h.proposed_action?.object;
+  return typeof object === 'string' ? object : '';
+}
 
 export function skillOfApproval(h: HITLIntervention): string {
   const raw = (h.proposed_action?.tool_name as string | undefined) ?? h.reason;
@@ -117,6 +129,7 @@ export function buildInbox(input: {
     // An assistant proposing a recurring task for the person it serves
     // (kernel capability "scheduled-tasks"); approving creates it, owned by them.
     const isSchedule = h.kind === 'schedule';
+    const isOntology = h.kind === 'ontology_change';
     if (isSkill) liveAccess.add(`${h.agent_id}\u0000${skillOfApproval(h)}`);
     // A pre-hub kernel sends no rule: every item was the operator's to answer.
     const answerable = !h.rule || h.answerable !== false;
@@ -131,7 +144,9 @@ export function buildInbox(input: {
         ? `Use skill ${skillOfApproval(h)}`
         : isSchedule
           ? 'Set up a recurring task'
-          : (h.proposed_action?.tool_name as string) || h.reason || 'Approval',
+          : isOntology
+            ? 'Change the ontology declarations'
+            : (h.proposed_action?.tool_name as string) || h.reason || 'Approval',
       agent_id: h.agent_id,
       since_ms: parseTime(h.raised_at),
       destructive: !isSkill && !isSchedule && h.nature === 'destructive_command',

@@ -2930,6 +2930,58 @@ export interface KnowledgeEntity {
   last_seen: string;
 }
 
+/** One classified difference of an ontology change. */
+export interface OntologyChangeLine {
+  /** additive | tightening | breaking */
+  class: string;
+  /** "kind order.status", "relation ships_to" */
+  subject: string;
+  detail: string;
+}
+
+/** One kind/relation spec a draft declares, next to what is declared now. */
+export interface OntologyDraftSpec {
+  type: 'kind' | 'relation' | string;
+  name: string;
+  /** The spec as drafted (GetOntology JSON shape). */
+  new_json: string;
+  /** The spec declared NOW under this name; '' = the name is new. */
+  current_json: string;
+}
+
+/**
+ * The full agent-drafted ontology change behind an `ontology_change` approval
+ * (substrate GetOntologyDraft; Operator-only). The approval itself carries
+ * only a ≤200-character preview.
+ */
+export interface OntologyDraftView {
+  draft_id: string;
+  namespace: string;
+  proposer: string;
+  reason: string;
+  created_at_unix_ms: number;
+  /** Classification as drafted, against base_version. */
+  base_version: number;
+  class: string;
+  changes: OntologyChangeLine[];
+  change_json: string;
+  specs: OntologyDraftSpec[];
+  /** pending | applied | rejected | expired | superseded */
+  state: string;
+  state_by: string;
+  detail: string;
+  applied_version: number;
+  approval_id: string;
+  /** ≠ base_version: the declarations moved since the draft. */
+  current_version: number;
+  /** A dry run against the current declarations ran (pending drafts only). */
+  dry_run_ran: boolean;
+  dry_run_class: string;
+  dry_run_changes: OntologyChangeLine[];
+  /** Why approving now would apply nothing; '' = it would apply as drafted. */
+  dry_run_refusal: string;
+}
+
 // ── The identity plane's review lane (contract 0098) ──────────────────────
 //
 // Mirrors `src-tauri/src/links.rs`. A link is an ASSERTION, not a fact: the

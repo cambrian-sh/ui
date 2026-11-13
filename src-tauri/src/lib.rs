@@ -1240,6 +1240,16 @@ async fn op_knowledge_entities(
         .await
 }
 
+/// The full agent-drafted ontology change behind an `ontology_change` approval
+/// (the approval's object is the draft id). Operator-only on the kernel.
+#[tauri::command(rename_all = "snake_case")]
+async fn op_get_ontology_draft(
+    transport: State<'_, Transport>,
+    draft_id: String,
+) -> Result<crate::substrate::OntologyDraftView, String> {
+    transport.inner().clone().ontology_draft(draft_id).await
+}
+
 // ── Ingress Studio (ADR-0112 §13) ──
 // Thin pass-throughs; every rule lives kernel-side. `op_studio_set_credential`
 // follows the write-only discipline: the value crosses these functions and is
@@ -2879,6 +2889,7 @@ pub fn run() {
             op_knowledge_query,
             op_knowledge_overview,
             op_knowledge_entities,
+            op_get_ontology_draft,
             op_telegram_list_bots,
             op_telegram_add_bot,
             op_telegram_remove_bot,

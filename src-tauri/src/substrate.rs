@@ -318,11 +318,159 @@ impl Transport {
             })
             .collect())
     }
+
+    /// The full agent-drafted ontology change behind an `ontology_change`
+    /// approval (its object is the draft id), for the person deciding it
+    /// (T-20261113-approvers-of-an-ontology-change-see-only-a-200). Operator-only
+    /// on the kernel; a read, writes nothing.
+    pub async fn ontology_draft(&self, draft_id: String) -> Result<OntologyDraftView, String> {
+        let mut client = self.substrate_client().await?;
+        let resp = client
+            .get_ontology_draft(Request::new(pb::substrate::GetOntologyDraftRequest { draft_id }))
+            .await
+            .map_err(map_status)?
+            .into_inner();
+        Ok(draft_from_wire(resp))
+    }
+}
+
+/// One classified difference (`additive` | `tightening` | `breaking`).
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct OntologyChangeLine {
+    pub class: String,
+    pub subject: String,
+    pub detail: String,
+}
+
+/// One kind or relation spec the draft declares, next to what is declared now
+/// under that name. Specs stay JSON strings (the GetOntology shape) so a new
+/// spec field never needs a Rust release; `current_json` "" = the name is new.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct OntologyDraftSpec {
+    pub r#type: String,
+    pub name: String,
+    pub new_json: String,
+    pub current_json: String,
+}
+
+/// The approver's view of one draft (substrate GetOntologyDraft).
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct OntologyDraftView {
+    pub draft_id: String,
+    pub namespace: String,
+    pub proposer: String,
+    pub reason: String,
+    pub created_at_unix_ms: i64,
+    pub base_version: i64,
+    pub class: String,
+    pub changes: Vec<OntologyChangeLine>,
+    pub change_json: String,
+    pub specs: Vec<OntologyDraftSpec>,
+    pub state: String,
+    pub state_by: String,
+    pub detail: String,
+    pub applied_version: i64,
+    pub approval_id: String,
+    pub current_version: i64,
+    pub dry_run_ran: bool,
+    pub dry_run_class: String,
+    pub dry_run_changes: Vec<OntologyChangeLine>,
+    pub dry_run_refusal: String,
+}
+
+fn change_lines(v: Vec<pb::substrate::OntologyChange>) -> Vec<OntologyChangeLine> {
+    v.into_iter()
+        .map(|c| OntologyChangeLine { class: c.class, subject: c.subject, detail: c.detail })
+        .collect()
+}
+
+fn draft_from_wire(r: pb::substrate::GetOntologyDraftResponse) -> OntologyDraftView {
+    OntologyDraftView {
+        draft_id: r.draft_id,
+        namespace: r.namespace,
+        proposer: r.proposer,
+        reason: r.reason,
+        created_at_unix_ms: r.created_at_unix_ms,
+        base_version: r.base_version,
+        class: r.class,
+        changes: change_lines(r.changes),
+        change_json: r.change_json,
+        specs: r
+            .specs
+            .into_iter()
+            .map(|s| OntologyDraftSpec {
+                r#type: s.r#type,
+                name: s.name,
+                new_json: s.new_json,
+                current_json: s.current_json,
+            })
+            .collect(),
+        state: r.state,
+        state_by: r.state_by,
+        detail: r.detail,
+        applied_version: r.applied_version,
+        approval_id: r.approval_id,
+        current_version: r.current_version,
+        dry_run_ran: r.dry_run_ran,
+        dry_run_class: r.dry_run_class,
+        dry_run_changes: change_lines(r.dry_run_changes),
+        dry_run_refusal: r.dry_run_refusal,
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Every field of the approver's view survives the wire → webview mapping;
+    /// the spec field `type` (a Rust keyword) serialises as "type".
+    #[test]
+    fn ontology_draft_maps_every_field() {
+        let wire = pb::substrate::GetOntologyDraftResponse {
+            draft_id: "od_1".into(),
+            namespace: "ns1".into(),
+            proposer: "agent:planner".into(),
+            reason: "lost orders".into(),
+            created_at_unix_ms: 7,
+            base_version: 3,
+            class: "tightening".into(),
+            changes: vec![pb::substrate::OntologyChange {
+                class: "tightening".into(),
+                subject: "kind order.status".into(),
+                detail: "enum narrowed".into(),
+            }],
+            change_json: "{\"kinds\":[]}".into(),
+            specs: vec![pb::substrate::OntologyDraftSpec {
+                r#type: "kind".into(),
+                name: "order".into(),
+                new_json: "{\"kind\":\"order\"}".into(),
+                current_json: "".into(),
+            }],
+            state: "pending".into(),
+            state_by: "agent:planner".into(),
+            detail: "".into(),
+            applied_version: 0,
+            approval_id: "apr-1".into(),
+            current_version: 4,
+            dry_run_ran: true,
+            dry_run_class: "tightening".into(),
+            dry_run_changes: vec![],
+            dry_run_refusal: "moved".into(),
+        };
+        let v = draft_from_wire(wire);
+        assert_eq!(v.draft_id, "od_1");
+        assert_eq!(v.base_version, 3);
+        assert_eq!(v.current_version, 4);
+        assert_eq!(v.changes[0].subject, "kind order.status");
+        assert_eq!(v.specs[0].name, "order");
+        assert!(v.dry_run_ran && v.dry_run_refusal == "moved");
+        let json = serde_json::to_value(&v).unwrap();
+        assert_eq!(json["specs"][0]["type"], "kind");
+        assert_eq!(json["approval_id"], "apr-1");
+    }
 
     #[test]
     fn iso_round_trips_through_the_wire_types() {

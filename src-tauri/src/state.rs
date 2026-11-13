@@ -47,6 +47,12 @@ pub(crate) fn merge_approval(s: &mut StateOfRecord, a: &pb::ApprovalOp) {
     if !a.duplicate_notice.is_empty() {
         action.insert("duplicate_notice".to_string(), serde_json::Value::String(a.duplicate_notice.clone()));
     }
+    // The exact object acted on (an ontology_change approval names its draft id
+    // here, which the Inbox uses to open the full draft —
+    // T-20261113-approvers-of-an-ontology-change-see-only-a-200).
+    if !a.object.is_empty() {
+        action.insert("object".to_string(), serde_json::Value::String(a.object.clone()));
+    }
     // ADR-0142 D11: a resolved op (any state but pending) leaves the set; a
     // stream predating the addressed hub never sends one (state is "").
     if !a.state.is_empty() && a.state != "pending" {
@@ -2091,6 +2097,25 @@ mod tests {
         // A non-destructive raise that is not a skill is not mislabelled.
         s.fold(&hitl(2, "x:0", "delete the table", false));
         assert_eq!(s.pending_hitl[1].kind, "");
+    }
+
+    /// An ontology_change approval carries its draft id as the object; the inbox
+    /// opens the full draft by it.
+    #[test]
+    fn an_approval_object_reaches_the_proposed_action() {
+        let mut s = StateOfRecord::default();
+        merge_approval(&mut s, &pb::ApprovalOp {
+            id: "appr-o".into(),
+            tool_name: "ontology_change".into(),
+            kind: "ontology_change".into(),
+            object: "od_1".into(),
+            ..Default::default()
+        });
+        assert_eq!(s.pending_hitl[0].kind, "ontology_change");
+        assert_eq!(s.pending_hitl[0].proposed_action.get("object").and_then(|v| v.as_str()), Some("od_1"));
+        // No object, no key.
+        merge_approval(&mut s, &pb::ApprovalOp { id: "appr-p".into(), tool_name: "t".into(), ..Default::default() });
+        assert!(!s.pending_hitl[1].proposed_action.contains_key("object"));
     }
 
     #[test]

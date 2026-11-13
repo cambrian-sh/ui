@@ -22,10 +22,11 @@ import { projectionStore } from '@/store/projection';
 import { useStore } from '@/store/useStore';
 import { useKernelQuery } from '@/lib/useKernelQuery';
 import { ago, formatUnixMs, useCommandGate } from '@/lib/useCommandGate';
-import { KIND_LABEL, type InboxItem } from '@/lib/inbox';
+import { KIND_LABEL, ontologyDraftIdOf, type InboxItem } from '@/lib/inbox';
 import { refreshInbox, useInbox } from '@/lib/useInbox';
 import { SkillDiff, ScanVerdict } from '@/screens/skills/SkillDiff';
 import { FullScreenApproval } from './FullScreenApproval';
+import { OntologyDraftPanel, ONTOLOGY_DRAFT_CAPABILITY } from './OntologyDraftPanel';
 import { AccountItem } from './AccountItem';
 import { AttentionItem } from './AttentionItem';
 import { UnroutedApprovals } from './UnroutedApprovals';
@@ -57,6 +58,22 @@ export function InboxConsole() {
   const addressed = caps.includes('addressed-approvals');
   const unrouted = useStore(projectionStore, (s) => s.state?.unrouted_approvals ?? EMPTY_UNROUTED);
   const selected = inbox.items.find((i) => i.key === open && i.hitl) ?? null;
+  // ADR-0149 D2: the full draft behind an ontology_change approval. Read over the
+  // substrate plane (capability-gated) and Operator-only on the kernel, so the
+  // control exists only for an Operator on a kernel that advertises the plane.
+  const role = useStore(projectionStore, (s) => s.state?.role ?? null);
+  const canReadDrafts = role === 'operator' && caps.includes(ONTOLOGY_DRAFT_CAPABILITY);
+  const [draftOpen, setDraftOpen] = useState<string | null>(null);
+  const draftItem = canReadDrafts ? (inbox.items.find((i) => i.key === draftOpen && i.hitl) ?? null) : null;
+  const draftButton = (item: InboxItem) => {
+    const draftId = item.hitl ? ontologyDraftIdOf(item.hitl) : '';
+    if (!canReadDrafts || !draftId) return null;
+    return (
+      <Button variant="secondary" size="sm" className="self-start" onClick={() => setDraftOpen(item.key)}>
+        Read the full draft
+      </Button>
+    );
+  };
 
   const decideHitl = async (id: string, approve: boolean, reason: string) => {
     setRefusal(null);
@@ -135,6 +152,7 @@ export function InboxConsole() {
                         <EscalationChain rule={item.rule} beneficiary={item.hitl.beneficiary} />
                       )}
                       {standingToggle(item)}
+                      {draftButton(item)}
                       <HITLInline
                         intervention={item.hitl}
                         disabledReason={gate ?? item.approve_blocked}
@@ -175,8 +193,25 @@ export function InboxConsole() {
           onClose={() => setOpen(null)}
         />
       )}
+      {draftItem?.hitl && (
+        <OntologyDraftPanel
+          draftId={ontologyDraftIdOf(draftItem.hitl)}
+          interventionId={draftItem.hitl.intervention_id}
+          disabledReason={gate ?? draftItem.approve_blocked}
+          busy={busy}
+          onApprove={(reason) => {
+            setDraftOpen(null);
+            void decideHitl(draftItem.hitl!.intervention_id, true, reason);
+          }}
+          onReject={(reason) => {
+            setDraftOpen(null);
+            void decideHitl(draftItem.hitl!.intervention_id, false, reason);
+          }}
+          onClose={() => setDraftOpen(null)}
+        />
+      )}
       <Sheet
-        open={Boolean(selected?.hitl) && selected?.hitl?.nature !== 'destructive_command'}
+        open={Boolean(selected?.hitl) && selected?.hitl?.nature !== 'destructive_command' && !draftItem}
         onOpenChange={(o) => !o && setOpen(null)}
       >
         <SheetContent side="bottom" className="max-h-[88vh] overflow-y-auto p-4">
@@ -184,6 +219,7 @@ export function InboxConsole() {
             <>
               <SheetTitle className="sr-only">Decide {selected.title}</SheetTitle>
               {standingToggle(selected)}
+              {draftButton(selected)}
               <HITLInline
                 intervention={selected.hitl}
                 disabledReason={gate ?? selected.approve_blocked}

@@ -110,6 +110,14 @@ never-populated `lifecycle` / `verifier_pool` / `cost_dashboard` fields
   WatchToolApprovals `args_preview`), live skill-access requests (ResolveHITL), timed-out
   access requests (GrantSkill only — no deny RPC), skill proposals (DecideSkillProposal,
   diff + scan verdict, optional lock).
+- `screens/inbox/OntologyDraftPanel.tsx` (ADR-0149 D2, 2026-11-13) — the full agent-drafted
+  ontology change behind an `ontology_change` approval (inbox kind `ontology_change`; the
+  approval's `object`, folded into `proposed_action.object` by `state.rs merge_approval`, is
+  the draft id): every spec current vs drafted, classification against the base version,
+  proposer, reason, state and the dry run, read with `ipc.getOntologyDraft` →
+  `op_get_ontology_draft` → substrate `GetOntologyDraft`. FullScreenApproval pattern, decides
+  through the same `decideHitl`. Offered only to an Operator on a kernel advertising
+  `substrate-query` (the read is Operator-only on the kernel). Tests: `ontology-draft.test.tsx`.
 - `screens/skills/SkillsConsole.tsx` (`/skills?tab=`) — catalog, proposals, ledger + rollback,
   grants. Diff: `lib/lineDiff.ts` (LCS, no dependency).
 - `screens/memory/NotesPane.tsx` (Memory › Notes, capability `memory-notes`) — etag-guarded

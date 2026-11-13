@@ -951,6 +951,13 @@ class MockIPC {
     return Promise.resolve(this.knowledgeEntities);
   }
 
+  getOntologyDraft(draftId: string): Promise<t.OntologyDraftView> {
+    if (draftId !== fx.ONTOLOGY_DRAFT.draft_id) {
+      return Promise.reject(new Error(`NotFound: no ontology draft "${draftId}"`));
+    }
+    return Promise.resolve(structuredClone(fx.ONTOLOGY_DRAFT));
+  }
+
   __seedKnowledgeAsk(outcome: t.AskOutcome) {
     this.knowledgeAskOutcome = outcome;
   }
