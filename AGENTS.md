@@ -18,42 +18,56 @@
 
 ## Knowledge substrate & tickets (MANDATORY — every task)
 
-The full protocol is root [`../AGENTS.md` §0](../AGENTS.md) — read it. In short, for every
-change in this repo, however small:
+The full protocol is root [`../AGENTS.md` §0](../AGENTS.md) — read it. **Live status lives in HQ**
+on a cut-over machine (`../cambrian-knowledge/.hq-cutover` exists — the owner's machine): use the
+`hq` MCP tools (`ready`, `create_ticket`, `update_ticket`, `list_tickets`, `brief`, `record_finding`,
+`verify_card`, `list_decisions` / `set_decision_status`, the benchmark tools) or
+`C:/Users/afsin/Dev/hq/bin/hq.exe … --config ../hq.yaml`. There the old `bin/ticket` / `bin/bench`
+scripts and the codebase-memory-mcp ticket tools **refuse writes**. Without the marker, the file
+workflow of root §0.4/§0.5 applies. In short, for every change in this repo, however small:
 
-1. **Before editing:** `list_tickets` (`repo: "ui"`) → `create_ticket` if the work is not
-   ticketed → `update_ticket` action `claim`. Query the graph (`search_graph`, `query_graph`)
-   for the ADRs and decisions that govern the code you will touch; if one is stale, read why
-   (knowledge-board → Freshness) and verify it before relying on it.
+1. **Before editing:** `ready` / `list_tickets` (`repo: "ui"`) → `create_ticket` if the work is
+   not ticketed → `update_ticket` action `claim`. `brief <path>` (or the card that loads when you
+   open a file) for the cards, ADRs, decisions and open tickets that govern the code you will
+   touch; a drifted card or stale ADR is a claim to re-verify against code before relying on it.
 2. **While working:** `log` findings, dead ends and `decision:` lines on the ticket. A bug or
-   follow-up you will not fix now gets its own `create_ticket`, immediately.
-3. **Decisions:** architectural → `cambrian-knowledge/adrs/NNNN-slug.md` (`status: proposed`,
-   per `cambrian-knowledge/meta/SCHEMA.md`); operating rule → `cambrian-knowledge/decisions/`;
-   tradeoff → the ADR's `tradeoffs:`. **Never write ADRs to `docs/adr/`** — it holds redirect
-   stubs only.
+   follow-up you will not fix now gets its own `create_ticket` (`triage=true`), immediately.
+3. **Decisions:** architectural → `cambrian-knowledge/adrs/NNNN-slug.md` (proposed, per
+   `cambrian-knowledge/meta/SCHEMA.md`; its lifecycle status is set in HQ, not the frontmatter);
+   operating rule → `cambrian-knowledge/decisions/`; tradeoff → the ADR's `tradeoffs:`. **Never
+   write ADRs to `docs/adr/`** — no sub-repo has that directory; ADRs live in `cambrian-knowledge/adrs/`.
 4. **Before reporting done:** benchmark runs → a run record each (`record_benchmark_run`; the
    procedure is root `../AGENTS.md` §0.5); other numbers you produced → the ADR's `measurements:`;
-   gotchas → `observations:`; re-verified ADRs →
-   `last_verified` + `verified_at_rev`; `CONTEXT.md` if architecture or gaps changed. Then
-   `close` the ticket with a resolution (files changed, ADRs updated, tests run and result) —
+   gotchas → `observations:`; re-verified ADRs → `last_verified` + `verified_at_rev`; cards you
+   re-read against code → `verify_card` (the Stop hook blocks while a card your edit drifted is
+   unverified); `CONTEXT.md` if architecture or gaps changed (never edit between the
+   `<!-- hq:cards:start -->` / `<!-- hq:cards:end -->` markers — `hq context` generates that block).
+   Then `close` the ticket with a resolution (files changed, ADRs updated, tests run and result) —
    or, if unfinished, `log` where you stopped and `release`.
 
-Pass `by: "agent:<name>"` on ticket calls. No MCP ticket tools? Use
-`python ../cambrian-knowledge/bin/ticket … --json` — same store. Never hand-edit
-`cambrian-knowledge/tickets/`; tickets never close from commit messages.
+Pass `by: "agent:<name>"` on ticket calls. Never hand-edit `cambrian-knowledge/tickets/`; tickets
+never close from commit messages.
+
+**Default execution lane (ADR-0150, owner decision 2026-11-13).** A request runs in the
+**single-agent lane** by default: one agent holds the person's tools and answers itself, fanning
+out read-only work through the kernel-run `run_subtasks` tool (`execution.lane.default:
+single_agent`, `cambrian-core/internal/config/lane.go`). The ADR-0145 **planner lane** (planner →
+Gatekeeper → Dispatcher → DAG, coverage, verifier) runs only under `execution.lane.default:
+planner` and is kept for research — so plan views, dispatch events and Gatekeeper scoring appear
+only in that lane. See [`decisions/default-lane-single-agent-with-fan-out.md`](../cambrian-knowledge/decisions/default-lane-single-agent-with-fan-out.md).
 
 ## Session Bootstrap (REQUIRED)
 
 Every new session MUST start by reading, in full:
 1. **`CONTEXT.md`** (this directory) — the project source of truth: architecture, layer responsibilities, status, decisions, glossary.
-2. **`docs/web-ui-prd.md`** — the product spec (what to build: 53 user stories, 24 use cases, the V1 demo path, out of scope).
+2. **`docs/prd/web-ui-prd.md`** — the product spec (what to build: 53 user stories, 24 use cases, the V1 demo path, out of scope).
 3. **`proto/operator.proto`** — the vendored, pinned gRPC contract. The *only* API to the runtime.
 
 Then read the **layer file for the layer you are working in**, and its `AGENTS.md`:
 - Working in the **Rust core / transport / state** → `src-tauri/CONTEXT.md` + `src-tauri/AGENTS.md`.
 - Working in the **webview / UI / projection** → `src/CONTEXT.md` + `src/AGENTS.md`.
 
-Do not assume anything about the runtime, the transport, or the domain terminology without consulting these. For runtime-side rationale, the kernel repo's `docs/adr/0047-operator-transport-plane.md` is the authority (this UI consumes ADR-0047's Operator Transport Plane).
+Do not assume anything about the runtime, the transport, or the domain terminology without consulting these. For runtime-side rationale, `cambrian-knowledge/adrs/0047-operator-transport-plane-a-sequenced-grpc-surface-for-the-ca.md` is the authority (this UI consumes ADR-0047's Operator Transport Plane).
 
 ## The architecture in one paragraph
 
@@ -85,10 +99,10 @@ This is a **Tauri 2** desktop app: a **Rust core** + a **React 19 / TypeScript**
 
 - **Match the existing stack:** Tauri 2, React 19 + TypeScript + Vite, **Bun** for JS deps, Cargo for the Rust core. Don't introduce a second framework or a second visual language.
 - **Dark-mode-first, dense, keyboard-friendly, accessible by construction** (WCAG AA in dark mode minimum). Accessibility is not a follow-on (PRD story 46).
-- **Every screen traces to a PRD user story.** A screen with no story is scope creep; a story with no screen is a gap. The PRD (`docs/web-ui-prd.md`) is normative.
-- **The plan is the centre of gravity.** When a session has a running plan, the plan view is always visible; chat and console are *around* it. Since the 2026-11-06 redesign the run (steps, live output, inline approvals) renders *inside* the conversation that started it, and Chat is the landing route.
+- **Every screen traces to a PRD user story.** A screen with no story is scope creep; a story with no screen is a gap. The PRD (`docs/prd/web-ui-prd.md`) is normative.
+- **The plan is the centre of gravity — when there is one.** Plans exist only in the planner lane (`execution.lane.default: planner`); in the default single-agent lane (ADR-0150) a request is one agent's turn plus its `run_subtasks` children, with no ExecutionPlan, Gatekeeper or dispatch events. When a session has a running plan, the plan view is always visible; chat and console are *around* it. Since the 2026-11-06 redesign the run (steps, live output, inline approvals) renders *inside* the conversation that started it, and Chat is the landing route.
 - **One gating rule.** A rail entry declares `requires` / `requiresAny` (`nav-rail.tsx`, `entryAvailable`); a screen asks `useCapability()`; a mutating control asks `useCommandGate()` for its disabled reason. Do not add a fourth way.
-- **One inbox count.** The rail badge, the header and the Inbox screen all read `useInbox()` (`lib/inbox.ts buildInbox`). A new kind of pending human decision is added there, not as a second badge.
+- **One inbox count.** The rail badge, the header and the Inbox screen all read `useInbox()` (`lib/useInbox.ts`, which derives items with `buildInbox` in `lib/inbox.ts`). A new kind of pending human decision is added there, not as a second badge.
 - **Secrets are write-only in the webview.** Integration credentials, org-account keys and OAuth client secrets are typed into password inputs, cleared on every outcome and sent once; nothing in the core returns a secret (an org key shows its last four at most), and the UI never stores one.
 - **Account sign-in opens the SYSTEM browser from the Rust core.** `op_start_account_connect` opens the kernel's single-use start URL itself (http/https only) and returns only flow id / provider / scopes / expiry; never put the URL in webview state, a webview, or a log. Self-service account actions use `useCommandGate(action, { selfService: true })` (any role); everything org-wide is Operator-only.
 - **External systems are one page each** (ADR-0141 D9). Account, data-in and agent-action logic lives in `lib/accounts.ts`; add a new account surface there and render it on the system page, not as a second accounts screen.
