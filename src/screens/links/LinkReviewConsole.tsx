@@ -3,6 +3,7 @@ import { EmptyState, ScrollArea } from '@/design-system/components';
 import { ipc } from '@/ipc';
 import { errorMessage } from '@/lib/errorMessage';
 import { useKernelQuery } from '@/lib/useKernelQuery';
+import { useCapability } from '@/lib/useCommandGate';
 import { useStore } from '@/store/useStore';
 import { projectionStore } from '@/store/projection';
 import type { Link } from '@/ipc/types';
@@ -53,10 +54,11 @@ export function orderCandidates(links: readonly Link[]): Link[] {
  *     not read as an empty queue, and an empty queue must not read as a fault.
  */
 export function LinkReviewConsole() {
-  const projection = useStore(projectionStore);
-  const capabilities = projection.state?.capabilities ?? [];
-  const role = projection.state?.role ?? null;
-  const available = capabilities.includes(LINKS_CAPABILITY);
+  // `links` is an OSS operator capability (core app.go operatorCaps), not a
+  // plugin's, so this screen gates with useCapability and does not wrap itself
+  // in PluginSurface: there is no plugin version to report skew against.
+  const role = useStore(projectionStore, (s) => s.state?.role ?? null);
+  const available = useCapability(LINKS_CAPABILITY);
   const canDecide = role === 'operator';
 
   const candidates = useKernelQuery(['link-candidates'], () => ipc.listLinkCandidates(), {

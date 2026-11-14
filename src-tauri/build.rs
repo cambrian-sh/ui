@@ -7,10 +7,10 @@ fn main() {
         protoc_bin_vendored::protoc_bin_path().expect("failed to locate vendored protoc binary");
     std::env::set_var("PROTOC", protoc);
 
-    // ADR-0088: two planes, one connection. `operator.proto` is the pinned OSS
-    // contract; `authz/access_policy.proto` is a PREMIUM-owned plane mounted on
-    // the same kernel server behind the same operator auth interceptors
-    // (ADR-0073). Compiling both here is what lets the UI render a plugin's
+    // ADR-0088: one connection, the OSS plane plus the premium planes.
+    // `operator.proto` is the pinned OSS contract; every other proto below is a
+    // PREMIUM-owned plane mounted on the same kernel server behind the same
+    // operator auth interceptors (ADR-0073). Compiling both here is what lets the UI render a plugin's
     // surface when the kernel advertises its capability, and render nothing when
     // it does not — the client is always present, the SERVER is what varies.
     tonic_build::configure()
@@ -62,7 +62,7 @@ fn main() {
             ],
             &["../proto"],
         )
-        .expect("failed to compile the operator + access-policy protos");
+        .expect("failed to compile the operator-plane protos");
 
     println!("cargo:rerun-if-changed=../proto/operator.proto");
     println!("cargo:rerun-if-changed=../proto/authz/access_policy.proto");

@@ -42,9 +42,12 @@ export interface DispatchSettingsProps {
  *    produces the worst configuration bug there is: you change a value, it
  *    saves, and nothing happens.
  *
- * The kernel does not publish its schema yet (`GetConfigSchema` is not on the
- * contract), so current values are unknown and the form shows kernel defaults,
- * labelled as such. It does not pretend to be reading live config.
+ * `GetConfigSchema` is on the operator contract, and this form reads it only
+ * for the keys the durable store pins (`StoredOverrides`). The fields
+ * themselves still open at the kernel's documented defaults (`fallback` in
+ * dispatchFields.ts), not at the running values in `current_values`; when the
+ * kernel does not answer the schema call, `SourceNote` says so. It does not
+ * pretend to be reading live config.
  */
 export function DispatchSettings({ canMutate }: DispatchSettingsProps) {
   const [draft, setDraft] = useState<Draft>({});
@@ -146,8 +149,10 @@ export function DispatchSettings({ canMutate }: DispatchSettingsProps) {
             dirty={isDirty(f)}
             onChange={(v) => set(f.key, v)}
             disabled={!canMutate}
-            // A timeout is only meaningful against what plans actually take.
-            measured={f.key === 'plan_timeout_ms' ? measured : undefined}
+            // A hard cap is only meaningful against what plans actually take.
+            // The idle timeout measures inactivity, not total run time, so the
+            // measured-duration note belongs to the maximum duration only.
+            measured={f.key === 'plan_max_duration_ms' ? measured : undefined}
           />
         ))}
       </Section>

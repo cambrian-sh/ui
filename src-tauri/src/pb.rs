@@ -1,12 +1,14 @@
-//! Generated gRPC clients + message types for the two planes the UI speaks.
+//! Generated gRPC clients + message types for the operator plane the UI speaks.
 //!
 //! Produced by `build.rs` (tonic-build) from the vendored protos. Do not edit by
 //! hand; re-vendor + rebuild when a contract bumps.
 //!
 //! - `cambrian` — the pinned OSS `OperatorConsole` contract (`../proto/operator.proto`).
-//! - [`authz`] — the PREMIUM `AccessPolicyAdmin` plane (`../proto/authz/access_policy.proto`),
-//!   mounted on the same kernel server behind the same operator auth interceptors
-//!   (ADR-0073/0088).
+//! - The PREMIUM planes, each mounted on the same kernel server behind the same
+//!   operator auth interceptors (ADR-0073/0088) and gated on its capability:
+//!   [`authz`], [`telegram`], [`ingress`], [`substrate`], [`accounts`], [`org`] and
+//!   `cambrian.premium.telemetry` (compiled by `build.rs`; no module here yet,
+//!   because no Rust code calls the telemetry plane).
 
 tonic::include_proto!("cambrian");
 
@@ -263,10 +265,28 @@ pub const PINNED_CONTRACT_VERSION: &str = "0101";
 /// for — reported as unknown rather than assumed compatible. Add an entry when
 /// the console gains a surface for a plugin, and bump it when that surface is
 /// rebuilt against a new plugin major.
+///
+/// Each value is the plugin's own `Version` constant in
+/// `cambrian-premium/plugins/<plugin>/plugin.go` at the time the surface was
+/// built. `src/components/plugin-pins.test.ts` fails when a screen passes a
+/// `pluginId` to `PluginSurface` that has no entry here.
 pub const PINNED_PLUGIN_VERSIONS: &[(&str, &str)] = &[
+    // Integrations > Accounts (premium accounts plane).
+    ("accounts", "1.0.0"),
+    // Access policy.
     ("authz", "1.0.0"),
+    // Ingress Studio.
+    ("ingress-studio", "0.1.0"),
+    // Settings > Telemetry (TelemetryAdmin plane).
+    ("langfuse", "1.0.0"),
+    // Organisation.
+    ("org-directory", "1.0.0"),
+    // Pipelines.
     ("reactive", "1.0.0"),
+    // Knowledge.
     ("substrate", "0.1.0"),
+    // Telegram ingress.
+    ("telegram", "1.0.0"),
 ];
 
 /// How a kernel plugin's version compares to what this console pinned.

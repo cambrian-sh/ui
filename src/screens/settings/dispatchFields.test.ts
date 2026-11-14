@@ -120,3 +120,29 @@ describe('coherenceProblems', () => {
     expect(coherenceProblems(values).length).toBe(1);
   });
 });
+
+describe('the plan ceiling fields (T-20261105-console-dispatch-settings-still-edits-the)', () => {
+  // The kernel replaced the fixed plan_timeout_ms with a progress-aware pair on
+  // 2026-11-05 (cambrian-core internal/config/config.go PlanIdleTimeoutMs /
+  // PlanMaxDurationMs). Offering the removed key showed a stale 120 s default
+  // for a setting the kernel no longer has.
+  const byKey = (key: string) => DISPATCH_FIELDS.find((f) => f.key === key);
+
+  it('does not offer the removed plan_timeout_ms', () => {
+    expect(byKey('plan_timeout_ms')).toBeUndefined();
+  });
+
+  it('offers the idle timeout at the kernel default, with 0 allowed (disables it)', () => {
+    const f = byKey('plan_idle_timeout_ms');
+    expect(f?.fallback).toBe(180000); // DefaultPlanIdleTimeoutMs
+    expect(f?.min).toBe(0);
+    expect(f?.section).toBe('timeouts');
+  });
+
+  it('offers the maximum duration at the kernel default and validation floor', () => {
+    const f = byKey('plan_max_duration_ms');
+    expect(f?.fallback).toBe(1800000); // DefaultPlanMaxDurationMs
+    expect(f?.min).toBe(1000); // config.go: plan_max_duration_ms must be >= 1000
+    expect(f?.section).toBe('timeouts');
+  });
+});

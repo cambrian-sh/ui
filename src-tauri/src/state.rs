@@ -1686,7 +1686,7 @@ mod tests {
         assert_eq!(pb::plugin_skew("authz", "2.0.0"), pb::PluginSkew::Major);
         // A plugin this console never pinned — unknown, not assumed compatible.
         assert_eq!(
-            pb::plugin_skew("telegram", "1.0.0"),
+            pb::plugin_skew("receipts", "0.1.0"),
             pb::PluginSkew::Unknown
         );
         // An unreadable version is exactly when NOT to claim compatibility.

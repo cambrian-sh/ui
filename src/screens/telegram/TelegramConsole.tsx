@@ -4,6 +4,8 @@ import { Button, EmptyState, ScrollArea } from '@/design-system/components';
 import { useStore } from '@/store/useStore';
 import { projectionStore } from '@/store/projection';
 import { cn } from '@/design-system/lib/utils';
+import { PluginSurface } from '@/components/PluginSurface';
+import { useCapability } from '@/lib/useCommandGate';
 import { ipc } from '@/ipc';
 import { Route } from '@/routes/telegram';
 import { PeoplePane } from './PeoplePane';
@@ -14,6 +16,9 @@ import { SurfaceLock } from '@/screens/plugins/panels/SurfaceLock';
 import type { TelegramBot, TelegramStatus } from '@/ipc/types';
 
 const TELEGRAM_CAPABILITY = 'telegram-ingress';
+
+/** The plugin id the premium telegram manifest declares (plugins/telegram/plugin.go). */
+const TELEGRAM_PLUGIN_ID = 'telegram';
 
 const TABS = [
   { id: 'overview', label: 'Overview' },
@@ -46,14 +51,38 @@ const STATE_TONE: Record<string, { label: string; tone: string }> = {
  *
  * The bot rail is present with one bot because that is what stops multi-bot
  * needing a third restructure of this screen.
+ *
+ * Wrapped in `PluginSurface` like every other premium screen (ADR-0089), so the
+ * expired-entitlement and plugin-skew banners appear by construction; the
+ * workspace below renders only while the plugin's capability is live.
  */
 export function TelegramConsole() {
+  return (
+    <PluginSurface
+      pluginId={TELEGRAM_PLUGIN_ID}
+      capability={TELEGRAM_CAPABILITY}
+      absent={
+        <ScrollArea className="h-full">
+          <div className="p-4">
+            <EmptyState
+              title="This kernel is not running the Telegram plugin"
+              body="There is no ingress to configure. That is a correct deployment, not a broken one — nothing else in the console is affected."
+            />
+          </div>
+        </ScrollArea>
+      }
+    >
+      <TelegramWorkspace />
+    </PluginSurface>
+  );
+}
+
+/** The live Telegram screen; mounted only while `telegram-ingress` is advertised. */
+function TelegramWorkspace() {
   const projection = useStore(projectionStore);
-  const state = projection.state;
-  const capabilities = state?.capabilities ?? [];
-  const role = state?.role ?? null;
+  const role = projection.state?.role ?? null;
   const readOnly = role !== 'operator';
-  const available = capabilities.includes(TELEGRAM_CAPABILITY);
+  const hasPolicyPlane = useCapability('access-policy');
 
   const { tab, bot } = Route.useSearch();
   const navigate = useNavigate();
@@ -72,7 +101,6 @@ export function TelegramConsole() {
   const [notice, setNotice] = useState('');
 
   const reload = useCallback(async () => {
-    if (!available) return;
     setLoading(true);
     try {
       // The list first: it names which bots exist, and the status call is about
@@ -98,7 +126,7 @@ export function TelegramConsole() {
     } finally {
       setLoading(false);
     }
-  }, [available, activeBot]);
+  }, [activeBot]);
 
   useEffect(() => {
     void reload();
@@ -108,11 +136,10 @@ export function TelegramConsole() {
   // any moment without the console doing anything, and an indicator that only
   // updates when the operator touches it is how a crash loop stays invisible.
   useEffect(() => {
-    if (!available) return;
     if (status?.state !== 'starting' && status?.state !== 'running') return;
     const id = setInterval(() => void reload(), status.state === 'starting' ? 3000 : 15000);
     return () => clearInterval(id);
-  }, [available, status?.state, reload]);
+  }, [status?.state, reload]);
 
   const toggle = async (next: boolean) => {
     setBusy(true);
@@ -137,19 +164,6 @@ export function TelegramConsole() {
   // Intent and reality are different facts. Collapsing them into one indicator is
   // how a panel looks healthy while a crash loop runs underneath it.
   const stalled = !!status?.enabled && !status?.running;
-
-  if (!available) {
-    return (
-      <ScrollArea className="h-full">
-        <div className="p-4">
-          <EmptyState
-            title="This kernel is not running the Telegram plugin"
-            body="There is no ingress to configure. That is a correct deployment, not a broken one — nothing else in the console is affected."
-          />
-        </div>
-      </ScrollArea>
-    );
-  }
 
   return (
     <ScrollArea className="h-full">
@@ -357,11 +371,11 @@ export function TelegramConsole() {
                 other screen holds the lock is the manageability bug. */}
             <SurfaceLock
               surfaceTarget={status?.surface?.replace(/^surface:/, '') || 'chat:telegram:default'}
-              hasPolicyPlane={capabilities.includes('access-policy')}
+              hasPolicyPlane={hasPolicyPlane}
             />
           </div>
         ) : active === 'people' ? (
-          capabilities.includes('access-policy') ? (
+          hasPolicyPlane ? (
             <PeoplePane surface={surface} canMutate={!readOnly} />
           ) : (
             <EmptyState

@@ -38,9 +38,15 @@ export const SHORTCUTS: Shortcut[] = [
   { keys: '?', label: 'Open shortcut palette', scope: 'global' },
 ];
 
-// The bindings are unchanged — they simply stopped being drawn at 10px next to
-// every rail label, and are looked up here, in the palette and the shortcut
-// sheet instead.
+// The navigation chords. They stopped being drawn at 10px next to every rail
+// label; they are listed in the palette and the shortcut sheet, and bound by
+// `components/NavChords.tsx` (mounted once in Shell). Labels use the rail's
+// names for the destination.
+//
+// SHORTCUTS above is NOT bound beyond what Shell.tsx binds (mod+k, shift+/,
+// mod+i): its single-key entries need a focus model, and a/r/e need the HITL
+// reason gate and confirm step, so whether to bind or drop them is open
+// (T-20261113-advertised-keyboard-shortcuts-g-chords-a-r-e-on).
 export const NAV_SHORTCUTS: Array<{ keys: string; label: string; path: string }> = [
   { keys: 'g c', label: 'Go to Chat', path: '/chat' },
   { keys: 'g i', label: 'Go to Inbox', path: '/inbox' },
@@ -51,8 +57,8 @@ export const NAV_SHORTCUTS: Array<{ keys: string; label: string; path: string }>
   { keys: 'g t', label: 'Go to Runtime — Tools & Skills', path: '/tools' },
   { keys: 'g m', label: 'Go to Runtime — MCP', path: '/mcp' },
   { keys: 'g y', label: 'Go to Memory', path: '/memory' },
-  { keys: 'g o', label: 'Go to Scope', path: '/scope' },
-  { keys: 'g w', label: 'Go to Watch', path: '/watch' },
+  { keys: 'g o', label: 'Go to Access policy', path: '/scope' },
+  { keys: 'g w', label: 'Go to Pipelines', path: '/watch' },
   { keys: 'g u', label: 'Go to Audit', path: '/audit' },
   { keys: 'g x', label: 'Go to Settings', path: '/settings' },
 ];

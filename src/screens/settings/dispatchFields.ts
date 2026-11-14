@@ -160,16 +160,36 @@ export const DISPATCH_FIELDS: DispatchField[] = [
       'At 1.0 an unproven agent competes as an equal on its first ever step. Near 0 it never wins one, so it never builds the record that would let it compete — the penalty has to be survivable or it is permanent.',
   },
 
+  // The plan ceiling is a progress-aware pair since 2026-11-05: the fixed
+  // plan_timeout_ms is gone from the kernel (owner decision,
+  // T-20261105-owner-decision-needed-120-s-plan-timeout-ms; cambrian-core
+  // internal/config/config.go PlanIdleTimeoutMs / PlanMaxDurationMs and their
+  // Default* constants). A retired plan_timeout_ms still loads kernel-side as
+  // plan_max_duration_ms, so the console must not offer the old key.
   {
-    key: 'plan_timeout_ms',
-    label: 'Plan timeout',
+    key: 'plan_idle_timeout_ms',
+    label: 'Plan idle timeout',
     kind: 'number',
     section: 'timeouts',
-    fallback: 120000,
+    fallback: 180000,
+    min: 0,
+    step: 1000,
+    unit: 'ms',
+    description:
+      'How long a plan may make no progress — no step starting or finishing, no model or tool call in flight, no progress event — before it is stopped. 0 turns the idle watchdog off.',
+    consequence:
+      'A plan that keeps working is never cut by this, however long it runs. Too low and a plan stalled between steps is stopped before it recovers; at 0 only the maximum duration bounds a stuck plan.',
+  },
+  {
+    key: 'plan_max_duration_ms',
+    label: 'Plan maximum duration',
+    kind: 'number',
+    section: 'timeouts',
+    fallback: 1800000,
     min: 1000,
     step: 1000,
     unit: 'ms',
-    description: 'How long a whole plan may run before it is abandoned.',
+    description: 'The absolute cap on one plan, whatever its progress.',
     consequence:
       'Below your real distribution this kills work that was about to succeed, and the operator sees a failure rather than a slow plan.',
   },
