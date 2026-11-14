@@ -1,6 +1,7 @@
 //! ADR-0142 D1 on the transport: which sign-in methods a kernel offers
 //! (`DescribeAuth`), the OIDC session (sign-in, refresh, resume, logout), the
-//! plane-role probe, and the MEMBER lane.
+//! kernel's WhoAmI answer (contract 0102; the plane-role probe only for an older
+//! kernel), and the MEMBER lane.
 //!
 //! A child module of `transport` so it can use the Transport's private fields
 //! and helpers without widening them for the rest of the crate.
@@ -50,8 +51,38 @@ pub(crate) fn auth_methods(r: Result<pb::DescribeAuthResponse, Status>) -> Resul
     }
 }
 
-/// The plane role a bearer has, from two harmless reads (no WhoAmI exists:
-/// T-20261106-operator-plane-has-no-whoami-an-oidc-signed-in).
+/// Why the kernel refused an identity provider's access token: the usual cause.
+const AUDIENCE_HINT: &str = "the kernel refused the identity provider's access token. Its `aud` must name \
+     the console's client id (Keycloak: add an Audience protocol mapper to the client), \
+     and the person must not be suspended.";
+
+/// What a WhoAmI answer means for an OIDC sign-in (contract 0102,
+/// T-20261106-operator-plane-has-no-whoami-an-oidc-signed-in): `Some` is the
+/// kernel's own view of the caller (principal, role set, plane role); `None` is
+/// an older kernel without the RPC (Unimplemented), where the console falls back
+/// to the [`plane_role`] probe. Any other refusal fails the sign-in.
+pub(crate) fn whoami_outcome(r: Result<pb::WhoAmIResponse, Status>) -> Result<Option<pb::WhoAmIResponse>, String> {
+    match r {
+        Ok(w) => Ok(Some(w)),
+        Err(s) if s.code() == tonic::Code::Unimplemented => Ok(None),
+        Err(s) if s.code() == tonic::Code::Unauthenticated => Err(AUDIENCE_HINT.into()),
+        Err(s) => Err(format!("the kernel did not accept the sign-in: {}", s.message())),
+    }
+}
+
+/// The plane role a WhoAmI answer names. The kernel derives it from the role
+/// set; an answer naming no role the console knows starts the least-privileged
+/// lane (member) — the kernel enforces every call anyway, so this only decides
+/// which loop the console starts.
+pub(crate) fn whoami_role(w: &pb::WhoAmIResponse) -> String {
+    match w.role.as_str() {
+        "operator" | "viewer" | "member" => w.role.clone(),
+        _ => "member".into(),
+    }
+}
+
+/// The plane role a bearer has, from two harmless reads — the FALLBACK for a
+/// kernel older than contract 0102, which has no WhoAmI (see [`whoami_outcome`]).
 /// - `Snapshot` is open to operator and viewer, refused to member.
 /// - `ListScheduledTasks` is an operator-only READ (kernel `operatorOnlyReads`),
 ///   so it tells an operator from a viewer without changing anything.
@@ -59,12 +90,7 @@ pub(crate) fn plane_role(snapshot: Result<(), Status>, operator_read: Result<(),
     match snapshot {
         Ok(()) => {}
         Err(s) if s.code() == tonic::Code::PermissionDenied => return Ok("member".into()),
-        Err(s) if s.code() == tonic::Code::Unauthenticated => {
-            return Err("the kernel refused the identity provider's access token. Its `aud` must name \
-                 the console's client id (Keycloak: add an Audience protocol mapper to the client), \
-                 and the person must not be suspended."
-                .into())
-        }
+        Err(s) if s.code() == tonic::Code::Unauthenticated => return Err(AUDIENCE_HINT.into()),
         Err(s) => return Err(format!("the kernel did not accept the sign-in: {}", s.message())),
     }
     match operator_read {
@@ -201,7 +227,9 @@ impl Transport {
         }
         self.set_connection(app, ConnectionStatus::Reconnecting).await;
 
-        let role = match self.probe_plane_role().await {
+        // Contract 0102: ask the kernel who this bearer is (WhoAmI); only a kernel
+        // without the RPC gets the old Snapshot probe.
+        let (role, whoami) = match self.whoami_or_probe().await {
             Ok(r) => r,
             Err(e) => {
                 self.set_token(None);
@@ -212,7 +240,11 @@ impl Transport {
         {
             let mut s = self.state.lock().await;
             s.role = Some(role.clone());
-            s.identity = Some(Identity::from_oidc(&session));
+            let mut identity = Identity::from_oidc(&session);
+            if let Some(w) = &whoami {
+                identity.apply_whoami(w);
+            }
+            s.identity = Some(identity);
         }
         if remember {
             save_oidc(&endpoint, &session);
@@ -222,6 +254,16 @@ impl Transport {
         self.start_refresh(app.clone(), gen);
         self.start_session_loops(app.clone(), &role);
         Ok(role)
+    }
+
+    /// The plane role, and the kernel's WhoAmI answer when it has the RPC.
+    async fn whoami_or_probe(&self) -> Result<(String, Option<pb::WhoAmIResponse>), String> {
+        let mut c = self.client().await?;
+        let r = c.who_am_i(Request::new(pb::WhoAmIRequest {})).await.map(|r| r.into_inner());
+        match whoami_outcome(r)? {
+            Some(w) => Ok((whoami_role(&w), Some(w))),
+            None => Ok((self.probe_plane_role().await?, None)),
+        }
     }
 
     async fn probe_plane_role(&self) -> Result<String, String> {
@@ -292,7 +334,10 @@ impl Transport {
                     if let Some(id) = s.identity.as_mut() {
                         let fresh = Identity::from_oidc(&next);
                         id.expires_at_unix_ms = fresh.expires_at_unix_ms;
-                        id.display_name = fresh.display_name;
+                        // The registry name WhoAmI gave wins over the IdP claim.
+                        if id.role_source != "kernel" || id.display_name.is_empty() {
+                            id.display_name = fresh.display_name;
+                        }
                         id.email = fresh.email;
                     }
                 }
@@ -503,6 +548,45 @@ mod tests {
         assert_eq!(older, AuthMethods { password_login: true, describe_supported: false, ..Default::default() });
 
         assert!(auth_methods(Err(Status::unavailable("down"))).is_err());
+    }
+
+    #[test]
+    fn whoami_is_the_kernels_answer_and_an_older_kernel_falls_back_to_the_probe() {
+        let w = pb::WhoAmIResponse {
+            principal: "user:alice".into(),
+            display_name: "Alice Doe".into(),
+            role: "viewer".into(),
+            roles: vec!["viewer".into(), "analyst".into()],
+            role_source: "kernel".into(),
+            issuer: "https://idp/realms/x".into(),
+        };
+        let got = whoami_outcome(Ok(w)).unwrap().unwrap();
+        assert_eq!(whoami_role(&got), "viewer");
+        assert!(whoami_outcome(Err(Status::unimplemented("old kernel"))).unwrap().is_none());
+        let e = whoami_outcome(Err(Status::unauthenticated("bad aud"))).unwrap_err();
+        assert!(e.contains("Audience"), "{e}");
+        assert!(whoami_outcome(Err(Status::internal("x"))).is_err());
+        // An unknown role starts the least-privileged lane.
+        assert_eq!(whoami_role(&pb::WhoAmIResponse { role: "root".into(), ..Default::default() }), "member");
+
+        // The identity becomes the kernel's: principal, role set, registry name.
+        let mut id = Identity {
+            method: "oidc".into(),
+            display_name: "alice@idp".into(),
+            email: "alice@example.com".into(),
+            role_source: "probe".into(),
+            ..Default::default()
+        };
+        id.apply_whoami(&got);
+        assert_eq!(id.principal, "user:alice");
+        assert_eq!(id.roles, vec!["viewer".to_string(), "analyst".to_string()]);
+        assert_eq!(id.display_name, "Alice Doe");
+        assert_eq!(id.role_source, "kernel");
+        assert_eq!(id.email, "alice@example.com");
+        // No registry name: the ID-token name stays.
+        let mut id2 = Identity { display_name: "bob@idp".into(), ..Default::default() };
+        id2.apply_whoami(&pb::WhoAmIResponse { principal: "user:bob".into(), ..Default::default() });
+        assert_eq!(id2.display_name, "bob@idp");
     }
 
     #[test]

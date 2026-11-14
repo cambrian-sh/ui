@@ -277,7 +277,9 @@ export function StepInspector({
             ? step.output_peek
             : step.status === 'pending'
               ? 'Nothing yet — this step has not started.'
-              : 'No output captured for this step.'}
+              : step.status === 'unreported'
+                ? 'The kernel has not reported this step yet.'
+                : 'No output captured for this step.'}
         </pre>
       </div>
 

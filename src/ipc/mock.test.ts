@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { ipc } from '@/ipc/mock';
-import type { AgentSummary, ToolSummary, SkillSummary, ScopeSummary } from '@/ipc/types';
+import type { AgentSummary, ToolSummary, ScopeSummary } from '@/ipc/types';
 
 function makeAgent(id: string): AgentSummary {
   return { id, trait: 'Cognitive', scope_summary: 'read:*,write:*', trust_score: 0.85, last_activity_at: new Date().toISOString(), last_state: 'ready' };
@@ -8,10 +8,6 @@ function makeAgent(id: string): AgentSummary {
 
 function makeTool(id: string): ToolSummary {
   return { id, description: `Tool ${id}`, danger: false, granted_agent_count: 2, recent_invocation_count: 10, last_cost: 0.05 };
-}
-
-function makeSkill(id: string): SkillSummary {
-  return { id, description: `Skill ${id}`, scope_tags: ['tag1'], loaded_in_count: 3, last_loaded_at: new Date().toISOString() };
 }
 
 function makeScope(agentId: string): ScopeSummary {
@@ -36,12 +32,8 @@ describe('mock IPC — subsystem entities (UI-IMPL-21a)', () => {
       pending_hitl: [],
       agents: [],
       tools: [],
-      skills: [],
       scope: {},
       watch_configs: [],
-      lifecycle: { scheduler_state: 'idle', pending_jobs: 0, last_consolidation: null, dormancy_events: [] },
-      verifier_pool: { pool_agents: [], recent_rounds: [], surveillance_triggers: [] },
-      cost_dashboard: { spend_rate_usd: 0, circuit_breakers: [], max_energy_per_step: 0.5, price_ledger: [], recent_acquires: [] },
     });
   });
 
@@ -49,25 +41,21 @@ describe('mock IPC — subsystem entities (UI-IMPL-21a)', () => {
     const state = await ipc.getState();
     expect(state.agents).toEqual([]);
     expect(state.tools).toEqual([]);
-    expect(state.skills).toEqual([]);
     expect(state.scope).toEqual({});
   });
 
   it('seeds and retrieves subsystem entities via getState', async () => {
     const agents = [makeAgent('a1'), makeAgent('a2')];
     const tools = [makeTool('t1'), makeTool('t2'), makeTool('t3')];
-    const skills = [makeSkill('s1'), makeSkill('s2')];
     const scope: Record<string, ScopeSummary> = { a1: makeScope('a1') };
 
     ipc.__seedAgents(agents);
     ipc.__seedTools(tools);
-    ipc.__seedSkills(skills);
     ipc.__seedScope(scope);
 
     const state = await ipc.getState();
     expect(state.agents).toHaveLength(2);
     expect(state.tools).toHaveLength(3);
-    expect(state.skills).toHaveLength(2);
     expect(state.scope.a1).toEqual(scope.a1);
   });
 

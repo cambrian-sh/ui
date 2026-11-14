@@ -199,7 +199,6 @@ describe('DagBuilder', () => {
         max_energy: 0,
         recommended_model: '',
         checkpoint_after: false,
-        checkpoint_query: '',
         is_thought: false,
         preferred_agent: '',
         agent_pin: '',

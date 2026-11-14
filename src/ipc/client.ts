@@ -101,6 +101,10 @@ export const ipc = {
   pauseSession: (params: t.PauseSessionParams): Promise<t.CommandAck> =>
     invoke<t.CommandAck>('op_pause_session', { ...params }),
 
+  // Contract 0102 (capability 'run-cancel'): terminal, unlike pauseSession.
+  cancelRun: (params: t.CancelRunParams): Promise<t.CommandAck> =>
+    invoke<t.CommandAck>('op_cancel_run', { ...params }),
+
   resumeSession: (params: t.ResumeSessionParams): Promise<t.CommandAck> =>
     invoke<t.CommandAck>('op_resume_session', { ...params }),
 
@@ -192,8 +196,6 @@ export const ipc = {
   listTools: (): Promise<t.ToolSummary[]> =>
     invoke<t.ToolSummary[]>('op_list_tools'),
 
-  listSkills: (): Promise<t.SkillSummary[]> =>
-    invoke<t.SkillSummary[]>('op_list_skills'),
 
   // ── ADR-0139 D13 skill lifecycle + skill grants (src-tauri/src/skills.rs) ──
   // Every mutation's command_id is minted in the Rust core; `reason` is mandatory.
@@ -388,12 +390,14 @@ export const ipc = {
     toState: string,
     revision = 0,
     reason = '',
+    commandId = '',
   ): Promise<t.PipelineTransitioned> =>
     invoke<t.PipelineTransitioned>('op_transition_pipeline', {
       pipeline_id: pipelineId,
       revision,
       to_state: toState,
       reason,
+      command_id: commandId,
     }),
 
   dryRunPipeline: (pipelineId: string, revision = 0, sampleLimit = 0): Promise<t.PipelineDryRun> =>
@@ -768,18 +772,17 @@ export const ipc = {
   clearGeneratorKey: (id: string, reason: string): Promise<t.ConfigWriteResult> =>
     invoke<t.ConfigWriteResult>('op_clear_generator_key', { id, reason }),
 
-  // ── Part 3 PROPOSED CONTRACT ───────────────────────────────────────────
-  // No kernel serves these yet; every call rejects and the panes say so rather
-  // than rendering an empty form. See report.md §4.8–§4.15.
+  // ── Settings > Telemetry: premium TelemetryAdmin (capability `telemetry-admin`) ──
 
   getTelemetryConfig: (): Promise<t.TelemetryConfig> =>
     invoke<t.TelemetryConfig>('op_get_telemetry_config'),
 
-  setTelemetryConfig: (config: t.TelemetryConfig, reason: string): Promise<t.CommandAck> =>
-    invoke<t.CommandAck>('op_set_telemetry_config', { config, reason }),
+  setTelemetryConfig: (config: t.TelemetryConfig, reason: string): Promise<t.TelemetryAck> =>
+    invoke<t.TelemetryAck>('op_set_telemetry_config', { config, reason }),
 
-  setTelemetrySecretKey: (key: string): Promise<t.SaveOutcome> =>
-    invoke<t.SaveOutcome>('op_set_telemetry_secret_key', { key }),
+  /** Write-only: the key is sent once and never returned. `reason` is mandatory. */
+  setTelemetrySecretKey: (key: string, reason: string): Promise<t.TelemetryAck> =>
+    invoke<t.TelemetryAck>('op_set_telemetry_secret_key', { key, reason }),
 
   /** The tracer DROPS what it cannot send, so this is the only way to know. */
   sendTestTrace: (): Promise<t.TestTraceResult> =>

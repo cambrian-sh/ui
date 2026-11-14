@@ -441,6 +441,30 @@ pub struct ObjectPage {
     pub links: Vec<ObjectLink>,
     pub timeline: Vec<ObjectTimelineEntry>,
     pub evidence: Vec<String>,
+    /// An open kind's undeclared properties, read-only, each fenced kernel-side by
+    /// its own classification (ENG-1109). Empty from an older kernel.
+    pub extra_properties: Vec<ObjectProperty>,
+}
+
+fn property_from_wire(p: pb::substrate::ObjectProperty) -> ObjectProperty {
+    ObjectProperty {
+        property: p.property,
+        value: value_from_wire(p.value),
+        at: ts_iso(&p.at),
+        source: p.source,
+        evidence_id: p.evidence_id,
+        conflict: p.conflict,
+        alternatives: p
+            .alternatives
+            .into_iter()
+            .map(|a| ObjectAlternative {
+                value: value_from_wire(a.value),
+                at: ts_iso(&a.at),
+                source: a.source,
+                evidence_id: a.evidence_id,
+            })
+            .collect(),
+    }
 }
 
 fn value_from_wire(v: Option<pb::substrate::TypedValue>) -> ObjectValue {
@@ -481,28 +505,8 @@ fn object_from_wire(r: pb::substrate::GetObjectResponse) -> ObjectPage {
         first_seen_evidence: r.first_seen_evidence,
         decl_version: r.decl_version,
         updated_at: ts_iso(&r.updated_at),
-        properties: r
-            .properties
-            .into_iter()
-            .map(|p| ObjectProperty {
-                property: p.property,
-                value: value_from_wire(p.value),
-                at: ts_iso(&p.at),
-                source: p.source,
-                evidence_id: p.evidence_id,
-                conflict: p.conflict,
-                alternatives: p
-                    .alternatives
-                    .into_iter()
-                    .map(|a| ObjectAlternative {
-                        value: value_from_wire(a.value),
-                        at: ts_iso(&a.at),
-                        source: a.source,
-                        evidence_id: a.evidence_id,
-                    })
-                    .collect(),
-            })
-            .collect(),
+        properties: r.properties.into_iter().map(property_from_wire).collect(),
+        extra_properties: r.extra_properties.into_iter().map(property_from_wire).collect(),
         lifecycle: r.lifecycle.map(|l| ObjectLifecycle {
             state_predicate: l.state_predicate,
             state: l.state,
@@ -679,7 +683,20 @@ mod tests {
                 evidence_id: "ev-5".into(),
             }],
             evidence: vec!["ev-1".into(), "ev-2".into()],
+            extra_properties: vec![pb::substrate::ObjectProperty {
+                property: "carrier".into(),
+                value: tv(Value::Text("dhl".into())),
+                at: Some(t),
+                source: "erp".into(),
+                evidence_id: "ev-6".into(),
+                conflict: false,
+                alternatives: vec![],
+            }],
         });
+        assert_eq!(page.extra_properties.len(), 1);
+        assert_eq!(page.extra_properties[0].property, "carrier");
+        assert_eq!(page.extra_properties[0].value, ObjectValue { r#type: "text".into(), display: "dhl".into() });
+        assert_eq!(page.extra_properties[0].evidence_id, "ev-6");
         assert_eq!(page.properties[0].value, ObjectValue { r#type: "number".into(), display: "42.5".into() });
         assert!(page.properties[0].conflict);
         assert_eq!(page.properties[0].alternatives[0].source, "crm");

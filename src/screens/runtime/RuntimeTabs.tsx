@@ -10,14 +10,14 @@ interface RuntimeTab {
 
 const TABS: readonly RuntimeTab[] = [
   { path: '/agents', label: 'Agents', hint: 'who can act' },
-  { path: '/tools', label: 'Tools & Skills', hint: 'what they can do' },
+  { path: '/tools', label: 'Tools', hint: 'what they can do' },
   { path: '/mcp', label: 'MCP', hint: 'where the tools come from' },
 ];
 
 /**
  * Runtime, as one destination with three tabs.
  *
- * Agents, Tools & Skills and MCP answer a single question — *what can act here,
+ * Agents, Tools and MCP answer a single question — *what can act here,
  * and what is it allowed to do* — but they used to be three separate rail
  * entries, so a grant, an effect class, and the server supplying the tool were
  * three navigations apart. An operator investigating "why can this agent send

@@ -1,14 +1,12 @@
 import { cn } from '@/design-system/lib/utils';
 import { relativeTime } from '@/lib/relativeTime';
-import type { AgentSummary, SurveillanceTrigger } from '@/ipc/types';
+import type { AgentSummary } from '@/ipc/types';
 import { AgentTraitPill } from './AgentTraitPill';
 
 interface AgentListRowProps {
   agent: AgentSummary;
   selected: boolean;
   onClick: () => void;
-  /** Set when this agent is under 100% verification surveillance. */
-  surveillance?: SurveillanceTrigger | null;
   /** Set when the agent is blocked waiting on a tool grant. */
   wantsGrant?: string | null;
 }
@@ -20,19 +18,19 @@ interface AgentListRowProps {
  * which of these would win work — and two decimals side by side do not answer
  * that at a glance.
  *
- * The two states that change what an operator does are called out as kickers
- * rather than left to be inferred from a score: an agent under surveillance is
- * being verified on every task and its cause is worth reading, and an agent
- * blocked on a grant is not idle, it is *waiting for you*.
+ * The state that changes what an operator does is called out as a kicker rather
+ * than left to be inferred from a score: an agent blocked on a grant is not idle,
+ * it is *waiting for you*. (A "under surveillance" kicker read the verifier pool,
+ * which the feed never populated; removed with it —
+ * T-20261106-state-of-record-still-carries-never-populated.)
  */
 export function AgentListRow({
   agent,
   selected,
   onClick,
-  surveillance,
   wantsGrant,
 }: AgentListRowProps) {
-  const tinted = Boolean(surveillance || wantsGrant);
+  const tinted = Boolean(wantsGrant);
 
   return (
     <button
@@ -50,12 +48,7 @@ export function AgentListRow({
       style={tinted ? ({ '--tint': 'var(--status-warn)' } as React.CSSProperties) : undefined}
     >
       <div className="min-w-0 flex-1">
-        {surveillance && (
-          <div className="type-status mb-1 text-[var(--status-warn)]">
-            Under surveillance — {surveillance.reason || 'recent outcomes fell below threshold'}
-          </div>
-        )}
-        {!surveillance && wantsGrant && (
+        {wantsGrant && (
           <div className="type-status mb-1 text-[var(--status-warn)]">
             WANTS A GRANT — blocked on {wantsGrant}
           </div>

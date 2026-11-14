@@ -33,6 +33,7 @@ pub const COMMANDS: &[&str] = &[
     "op_set_tool_grant",
     "op_ingest_memory",
     "op_complete_session",
+    "op_cancel_run",
     "op_blast_radius_preview",
     "op_stat_file",
     "op_ingest_file",
@@ -52,7 +53,6 @@ pub const COMMANDS: &[&str] = &[
     "op_backtest_watch",
     "op_preview_route",
     "op_list_tools",
-    "op_list_skills",
     "op_list_watches",
     "op_list_node_items",
     "op_list_pipelines",
@@ -69,6 +69,10 @@ pub const COMMANDS: &[&str] = &[
     "op_list_documents",
     "op_match_upload",
     "op_tag_memory",
+    "op_get_telemetry_config",
+    "op_set_telemetry_config",
+    "op_set_telemetry_secret_key",
+    "op_send_test_trace",
     "op_telegram_status",
     "op_telegram_set_token",
     "op_telegram_clear_token",
@@ -454,6 +458,16 @@ pub async fn dispatch(
             let a: A = parse(args)?;
             reply(super::super::op_complete_session(app.state::<Transport>(), a.session_id, a.reason).await)
         }
+        "op_cancel_run" => {
+            #[derive(serde::Deserialize)]
+            struct A {
+                session_id: String,
+                run_id: String,
+                reason: String,
+            }
+            let a: A = parse(args)?;
+            reply(super::super::op_cancel_run(app.state::<Transport>(), a.session_id, a.run_id, a.reason).await)
+        }
         "op_blast_radius_preview" => {
             #[derive(serde::Deserialize)]
             struct A {
@@ -627,9 +641,6 @@ pub async fn dispatch(
         "op_list_tools" => {
             reply(super::super::op_list_tools(app.state::<Transport>(), app.clone()).await)
         }
-        "op_list_skills" => {
-            reply(super::super::op_list_skills(app.state::<Transport>(), app.clone()).await)
-        }
         "op_list_watches" => {
             reply(super::super::op_list_watches(app.state::<Transport>(), app.clone()).await)
         }
@@ -757,6 +768,30 @@ pub async fn dispatch(
             }
             let a: A = parse(args)?;
             reply(super::super::op_tag_memory(app.state::<Transport>(), a.doc_id, a.tag, a.add, a.reason).await)
+        }
+        "op_get_telemetry_config" => {
+            reply(super::super::op_get_telemetry_config(app.state::<Transport>()).await)
+        }
+        "op_set_telemetry_config" => {
+            #[derive(serde::Deserialize)]
+            struct A {
+                config: crate::telemetry::TelemetryConfig,
+                reason: String,
+            }
+            let a: A = parse(args)?;
+            reply(super::super::op_set_telemetry_config(app.state::<Transport>(), a.config, a.reason).await)
+        }
+        "op_set_telemetry_secret_key" => {
+            #[derive(serde::Deserialize)]
+            struct A {
+                key: String,
+                reason: String,
+            }
+            let a: A = parse(args)?;
+            reply(super::super::op_set_telemetry_secret_key(app.state::<Transport>(), a.key, a.reason).await)
+        }
+        "op_send_test_trace" => {
+            reply(super::super::op_send_test_trace(app.state::<Transport>()).await)
         }
         "op_telegram_status" => {
             #[derive(serde::Deserialize)]

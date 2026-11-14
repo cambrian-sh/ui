@@ -16,7 +16,13 @@ export interface MemoryDocument {
   scope_tags: string[];
   activation_strength: number;
   session_id: string | null;
-  created_at: string;
+  /**
+   * When THIS CONSOLE saw the document's write event — the Rust core stamps it on
+   * arrival because `MemoryWrittenOp` carries no kernel time. It is a receipt
+   * clock, not an ingest or event time, and is labelled "seen" wherever it shows
+   * (T-20261101-memory-list-rows-age-a-ui-side-receipt-clock).
+   */
+  seen_at: string;
   content_preview: string;
 }
 
@@ -116,8 +122,11 @@ export function MemoryListRow({
       <span className="max-w-[5rem] truncate font-mono text-[11px] text-[var(--fg-muted)]">
         {doc.session_id ?? "—"}
       </span>
-      <span className="shrink-0 text-[11.5px] text-[var(--fg-muted)]">
-        {formatAge(doc.created_at)}
+      <span
+        className="shrink-0 text-[11.5px] text-[var(--fg-muted)]"
+        title="When this console saw the write, not when the kernel ingested it"
+      >
+        seen {formatAge(doc.seen_at)}
       </span>
       <span className="flex-1 truncate text-[13px] text-[var(--fg-primary)]">
         {doc.content_preview}

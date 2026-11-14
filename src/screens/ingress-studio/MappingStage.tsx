@@ -1,4 +1,4 @@
-import { ArrowRight, Sparkle } from "@phosphor-icons/react";
+import { ArrowRight, Sparkle } from "lucide-react";
 import { MappingSummary } from "./MappingSummary";
 import { Button, Input } from "@/design-system/components";
 import type { StudioDraft, StudioFieldAbstention } from "@/ipc/types";
@@ -173,7 +173,7 @@ function ProposeOnly({
         <Sparkle
           aria-hidden="true"
           size={14}
-          weight="fill"
+          fill="currentColor"
           className="flex-none text-[var(--color-accent-400)]"
         />
         <h4 className="text-[12.5px] font-medium">

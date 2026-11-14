@@ -27,7 +27,7 @@ function makeDoc(): MemoryDocument {
     scope_tags: ['global'],
     activation_strength: 0.9,
     session_id: 'ses-456',
-    created_at: new Date().toISOString(),
+    seen_at: new Date().toISOString(),
     content_preview: 'Test memory content',
   };
 }
@@ -53,27 +53,8 @@ function makeState(role: 'operator' | 'viewer' = 'operator'): StateOfRecord {
     pending_hitl: [],
     agents: [],
     tools: [],
-    skills: [],
     scope: {},
     watch_configs: [],
-    lifecycle: {
-      scheduler_state: 'idle',
-      pending_jobs: 0,
-      last_consolidation: null,
-      dormancy_events: [],
-    },
-    verifier_pool: {
-      pool_agents: [],
-      recent_rounds: [],
-      surveillance_triggers: [],
-    },
-    cost_dashboard: {
-      spend_rate_usd: 0,
-      circuit_breakers: [],
-      max_energy_per_step: 0.5,
-      price_ledger: [],
-      recent_acquires: [],
-    },
   };
 }
 
@@ -97,11 +78,11 @@ describe('MemoryDetail', () => {
     expect(screen.getByText('Fact')).toBeInTheDocument();
   });
 
-  // T-20261101-ui-memory-detail-labels-a-ui-side-receipt-clock: `created_at` on a
+  // T-20261101-ui-memory-detail-labels-a-ui-side-receipt-clock: `seen_at` on a
   // session doc is the console's receipt clock and must never be shown as a time.
   it('never shows the UI-side receipt clock; the ingest time comes from the kernel listing', async () => {
     const doc = makeDoc();
-    doc.created_at = '2001-02-03T04:05:06.000Z';
+    doc.seen_at = '2001-02-03T04:05:06.000Z';
     projectionStore
       .getState()
       .hydrate({ ...makeState('operator'), capabilities: ['document-listing'] });

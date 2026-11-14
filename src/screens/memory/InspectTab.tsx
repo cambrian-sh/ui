@@ -44,7 +44,7 @@ export function InspectTab({ events }: { events: MemoryWrittenEvent[] }) {
         scope_tags: [],
         activation_strength: 1,
         session_id: ev.session_id,
-        created_at: ev.written_at,
+        seen_at: ev.written_at,
         content_preview: ev.summary || ev.source,
       });
     }

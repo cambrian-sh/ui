@@ -28,7 +28,6 @@ export function blankStep(): AuthoredStep {
     max_energy: 0,
     recommended_model: '',
     checkpoint_after: false,
-    checkpoint_query: '',
     is_thought: false,
     preferred_agent: '',
     agent_pin: '',
@@ -721,17 +720,8 @@ function StepInspectorPanel({
           />
           Check the output before the next step uses it
         </label>
-        {step.checkpoint_after && (
-          <Input
-            value={step.checkpoint_query}
-            onChange={(e) => onChange({ checkpoint_query: e.target.value })}
-            placeholder="What must be true for this to be right?"
-            aria-label="Verification question"
-            className="h-8 text-[12px]"
-          />
-        )}
         <p className="text-[11px] leading-[1.55] text-[var(--fg-muted)]">
-          A verifier checks the output against a question you write, and a rejection re-runs the
+          A verifier checks the output before the next step uses it, and a rejection re-runs the
           step with the next-ranked agent. It earns its keep where a wrong answer is expensive to
           notice later — less so where the output either parses or does not.
         </p>

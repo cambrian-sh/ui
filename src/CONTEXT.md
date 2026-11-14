@@ -19,13 +19,14 @@ The facts about each area live in its card (`cambrian-knowledge/cards/`). An age
 | `card.subsystem.agent-runtime` | Agent runtime & SDK — how agents are defined, started, trusted and run | `cambrian-core/internal/metabolism/agentmgr/**`, `cambrian-core/internal/metabolism/registration/**`, `cambrian-core/internal/agentplane/**`, `cambrian-core/internal/agentpool/**`, +26 more |
 | `card.subsystem.dispatch-planning` | Dispatch & planning — how a request becomes work, who does it, and when it is done | `cambrian-core/internal/router/**`, `cambrian-core/internal/awareness/**`, `cambrian-core/internal/metabolism/**`, `cambrian-core/internal/supervision/**`, +23 more |
 | `card.subsystem.identity-access` | Identity & access — who is asking (Keycloak/OIDC, principals, org directory) and what they may see and do (policy, enforcement, approvals, privacy) | `cambrian-core/internal/identity/**`, `cambrian-core/internal/authz/**`, `cambrian-core/app/identity.go`, `cambrian-core/app/caller_scope.go`, +21 more |
-| `card.subsystem.ingress` | Ingress — getting the outside world in (studio, mapping, delivery, chat front doors, SDK ingress agents) | `cambrian-core/internal/ingress/**`, `cambrian-core/domain/ingress*.go`, `cambrian-core/domain/delivery.go`, `cambrian-core/domain/progress.go`, +17 more |
+| `card.subsystem.ingress` | Ingress — getting the outside world in (studio, mapping, delivery, chat front doors, SDK ingress agents) | `cambrian-core/internal/ingress/**`, `cambrian-core/domain/ingress*.go`, `cambrian-core/domain/delivery.go`, `cambrian-core/domain/progress.go`, +15 more |
 | `card.subsystem.knowledge-substrate` | Knowledge substrate & ontology — evidence, typed knowledge, entities/links, objects, one fenced query plane | `cambrian-core/app/substrate.go`, `cambrian-core/internal/evidence/**`, `cambrian-core/internal/knowledgecommit/**`, `cambrian-core/internal/ontology/**`, +26 more |
 | `card.subsystem.memory-retrieval` | Memory & retrieval — what Cambrian remembers and how it finds it again | `cambrian-core/internal/memory/**`, `cambrian-core/internal/kernel/memory_stack.go`, `cambrian-core/internal/memorynotes/**`, `cambrian-core/agents/system/**`, +16 more |
+| `card.subsystem.multi-agent-research-lane` | Multi-agent research lane (frozen) — the ADR-0145 planner → Gatekeeper → Dispatcher → DAG pipeline behind execution.lane.default planner | `cambrian-core/internal/awareness/**`, `cambrian-core/internal/metabolism/**`, `cambrian-core/internal/supervision/**`, `cambrian-core/internal/requirements/**`, +6 more |
 | `card.subsystem.operations-brain` | Operations brain / decision-intelligence platform — Connect, Model, Understand, Decide, Act, Learn (the product lane) | `cambrian-core/internal/objects/**`, `cambrian-core/domain/objects.go`, `cambrian-premium/plugins/substrateplugin/objects.go`, `cambrian-premium/pipeline/effect.go`, +13 more |
 | `card.subsystem.operator-ui` | Operator plane & UI — how people see and steer a running Cambrian | `cambrian-core/internal/substrate/operator/**`, `cambrian-core/api/proto/operator.proto`, `cambrian-core/app/version.go`, `cambrian-core/scripts/sync-protos.sh`, +6 more |
 | `card.subsystem.reactive-pipelines` | Reactive pipelines & daemons — signals, watches, pipeline graphs, the one registry, schedules | `cambrian-core/domain/signal*.go`, `cambrian-core/domain/reactive_*.go`, `cambrian-core/domain/scheduled_task.go`, `cambrian-core/internal/reactive/**`, +18 more |
-| `card.subsystem.tools-mcp` | Tools & MCP — every action an agent takes in the world, through one guarded door | `cambrian-core/domain/tool_executor.go`, `cambrian-core/domain/tool*.go`, `cambrian-core/domain/kernel_tool.go`, `cambrian-core/domain/hooks.go`, +31 more |
+| `card.subsystem.tools-mcp` | Tools & MCP — every action an agent takes in the world, through one guarded door | `cambrian-core/domain/tool_executor.go`, `cambrian-core/domain/tool*.go`, `cambrian-core/domain/kernel_tool.go`, `cambrian-core/domain/hooks.go`, +32 more |
 | `card.ui.access-policy` | Studio access-policy console — explain, rules, groups, reachability matrix, ingress registry | `ui/src-tauri/src/policy.rs`, `screens/scope/**`, `routes/scope.tsx` |
 | `card.ui.auth-sessions` | Studio sign-in — DescribeAuth, OIDC loopback flow, role probe, member lane | `ui/src-tauri/src/oidc.rs`, `ui/src-tauri/src/transport/session_auth.rs`, `lib/loginMethods.ts`, `lib/signOut.ts`, +2 more |
 | `card.ui.capability-gating` | Studio webview — IPC projection and the one gating rule (capabilities, roles, commands, inbox) | `ipc/**`, `store/**`, `lib/**`, `design-system/components/cambrian/nav-rail.tsx`, +3 more |
@@ -112,9 +113,10 @@ Knowledge → Explore entity card (ADR-0149 P4, 2026-11-13): the card asks `ipc.
 
 Deleted 2026-11-06 (rendered state nothing populates, or duplicated another screen):
 Now, Plans in flight, Verifier Pool, Lifecycle, Cost & Energy, PlanWorkSurface/PlanGraph,
-AgentOutputStream, the header spend/breaker readouts. `StateOfRecord` still carries the
-never-populated `lifecycle` / `verifier_pool` / `cost_dashboard` fields
-(T-20261106-state-of-record-still-carries-never-populated).
+AgentOutputStream, the header spend/breaker readouts. The never-populated `lifecycle` /
+`verifier_pool` / `cost_dashboard` fields followed on 2026-11-15 (Rust `StateOfRecord`,
+`types.ts`, mock, fixtures; the agents list's "under surveillance" kicker read them and went
+too — T-20261106-state-of-record-still-carries-never-populated).
 
 ## Live state that is not on `kernel://state`
 

@@ -1,30 +1,21 @@
-import { useState } from 'react';
-import { Button } from '@/design-system/components';
+import { Link } from '@tanstack/react-router';
 import { ipc } from '@/ipc';
 import { useKernelQuery } from '@/lib/useKernelQuery';
-import { useStore } from '@/store/useStore';
-import { projectionStore } from '@/store/projection';
 import { cn } from '@/design-system/lib/utils';
 import type { MCPServerConfig } from '@/ipc/types';
-import { MCPServerEditor, newServerDraft } from './MCPServerEditor';
 
 /**
- * MCP servers — the ONE surface (contract 0097).
+ * MCP servers — the READ-ONLY runtime view (contract 0097 `ListMCPServers`):
+ * declared config plus live connection facts, for watching what the kernel is
+ * connected to.
  *
- * This screen used to render a feed projection (`mcp_servers` on the state of
- * record) that no kernel ever populated: the shape predated the real read RPC
- * and showed "no servers registered" on every deployment forever. It now reads
- * `ListMCPServers` — declared config plus live connection facts — and carries
- * the whole write surface: add, edit, test, token, remove. A save is LIVE: the
- * kernel arms the server's health loop immediately, tools appear as soon as
- * the server answers, and an unreachable one is retried with backoff.
+ * Owner decision 2026-11-15 (T-20261113-two-write-surfaces-for-mcp-servers-mcp-console):
+ * Integrations OWNS every MCP server change — catalog installs, custom servers,
+ * secrets, enable/disable, remove — so there is one place to change one thing.
+ * This screen links there instead of carrying a second write surface.
  */
 export function MCPServersConsole() {
-  const projection = useStore(projectionStore);
-  const canMutate = (projection.state?.role ?? null) === 'operator';
-
   const servers = useKernelQuery(['mcp-server-configs'], () => ipc.listMCPServerConfigs());
-  const [editing, setEditing] = useState<MCPServerConfig | null>(null);
 
   if (servers.error) {
     return (
@@ -49,18 +40,6 @@ export function MCPServersConsole() {
 
   const list = servers.data ?? [];
 
-  if (editing) {
-    return (
-      <div className="mx-auto w-full max-w-[860px] p-4 pb-10">
-        <MCPServerEditor
-          server={editing}
-          canMutate={canMutate}
-          onClose={() => setEditing(null)}
-        />
-      </div>
-    );
-  }
-
   return (
     <div className="mx-auto flex w-full max-w-[1100px] flex-col gap-5 p-4 pb-10">
       <div className="flex items-start justify-between gap-3">
@@ -70,25 +49,28 @@ export function MCPServersConsole() {
           </h2>
           <p className="type-page-description mt-1">
             {list.length === 0
-              ? 'No servers yet. Adding one connects it now — no restart.'
+              ? 'No servers yet.'
               : `${list.length} server${list.length === 1 ? '' : 's'}. Their tools are offered to agents as mcp:<id>/<tool>.`}
           </p>
         </div>
-        <Button size="sm" onClick={() => setEditing(newServerDraft())} disabled={!canMutate}>
-          Add server
-        </Button>
+        <Link
+          to="/integrations"
+          className="shrink-0 text-[12px] text-[var(--fg-muted)] hover:text-[var(--fg-primary)]"
+        >
+          Add or change servers in Integrations →
+        </Link>
       </div>
 
       <div className="grid gap-3 lg:grid-cols-2">
         {list.map((s) => (
-          <ServerCard key={s.id} server={s} onEdit={() => setEditing(s)} />
+          <ServerCard key={s.id} server={s} />
         ))}
       </div>
     </div>
   );
 }
 
-function ServerCard({ server: s, onEdit }: { server: MCPServerConfig; onEdit: () => void }) {
+function ServerCard({ server: s }: { server: MCPServerConfig }) {
   const tone = s.connected ? 'var(--status-live)' : 'var(--status-warn)';
   return (
     <div className="flex flex-col gap-2.5 rounded-[var(--radius-lg)] bg-[var(--bg-surface)] p-3.5 shadow-[var(--elevation-1)]">
@@ -100,13 +82,6 @@ function ServerCard({ server: s, onEdit }: { server: MCPServerConfig; onEdit: ()
         />
         <span className="font-mono text-[13px] font-medium">{s.id}</span>
         <span className="font-mono text-[10.5px] text-[var(--fg-muted)]">{s.transport}</span>
-        <button
-          type="button"
-          onClick={onEdit}
-          className="ml-auto text-[11.5px] text-[var(--fg-muted)] hover:text-[var(--fg-primary)]"
-        >
-          Edit →
-        </button>
       </div>
 
       <p className="truncate font-mono text-[11px] text-[var(--fg-secondary)]">

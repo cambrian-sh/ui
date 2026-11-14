@@ -11,6 +11,7 @@ import type { SessionState } from '@/ipc/types';
 import { Inspector } from '@/components/InspectorSlot';
 import { ConfirmMutationDialog } from '@/screens/tasks/ConfirmMutationDialog';
 import { useMutation } from '@/lib/useMutation';
+import { useCapability, useCommandGate } from '@/lib/useCommandGate';
 import { errorMessage } from '@/lib/errorMessage';
 import { useBreakpoint } from '@/lib/useBreakpoint';
 import { formatTokenCount, formatRelativeTime, sessionSubject } from '@/lib/format';
@@ -49,7 +50,7 @@ export function SessionWorkSurface({
 
   const [mode, setMode] = useState<ComposerMode>('message');
   const [localStep, setLocalStep] = useState<number | null>(null);
-  const [confirming, setConfirming] = useState<'pause' | 'resume' | null>(null);
+  const [confirming, setConfirming] = useState<'pause' | 'resume' | 'cancel' | null>(null);
 
   const plans = useMemo(
     () => (state?.plans ?? []).filter((p) => p.session_id === sessionId),
@@ -100,11 +101,19 @@ export function SessionWorkSurface({
 
   const resolveHitl = useMutation(ipc.resolveHITL);
   const sessionMutation = useMutation(
-    async (args: { kind: 'pause' | 'resume'; reason: string }) =>
-      args.kind === 'pause'
-        ? ipc.pauseSession({ session_id: sessionId, reason: args.reason })
-        : ipc.resumeSession({ session_id: sessionId, reason: args.reason }),
+    async (args: { kind: 'pause' | 'resume' | 'cancel'; reason: string }) =>
+      args.kind === 'cancel'
+        ? ipc.cancelRun({ session_id: sessionId, run_id: '', reason: args.reason })
+        : args.kind === 'pause'
+          ? ipc.pauseSession({ session_id: sessionId, reason: args.reason })
+          : ipc.resumeSession({ session_id: sessionId, reason: args.reason }),
   );
+  // Contract 0102 CancelRun: the TERMINAL stop (CloseSession/Pause only park the
+  // run). Rendered only when the kernel advertises it; gated like every mutation
+  // (T-20261106-operator-closesession-only-pauses-a-live-plan).
+  const canCancel = useCapability('run-cancel');
+  const cancelGate = useCommandGate('cancel a run');
+  const hasLiveRun = activePlan?.status === 'running' || activePlan?.status === 'forming' || liveRuns.length > 0;
 
   const composerDisabledReason = connectionDown
     ? connection === 'reconnecting'
@@ -171,6 +180,11 @@ export function SessionWorkSurface({
         busy={sessionMutation.isLoading}
         onPause={() => setConfirming('pause')}
         onResume={() => setConfirming('resume')}
+        cancel={
+          canCancel && hasLiveRun
+            ? { disabledReason: cancelGate, onCancel: () => setConfirming('cancel') }
+            : undefined
+        }
       />
 
       <div
@@ -298,13 +312,18 @@ export function SessionWorkSurface({
         <ConfirmMutationDialog
           open
           onOpenChange={(o) => !o && setConfirming(null)}
-          title={confirming === 'resume' ? 'Resume task' : 'Pause task'}
-          description={
-            confirming === 'resume'
-              ? 'The task resumes accepting work from where it stopped.'
-              : 'The task stops accepting new work. Running steps finish; nothing new starts.'
+          title={
+            confirming === 'cancel' ? 'Cancel run' : confirming === 'resume' ? 'Resume task' : 'Pause task'
           }
-          confirmLabel={confirming === 'resume' ? 'Resume' : 'Pause'}
+          description={
+            confirming === 'cancel'
+              ? 'The live run stops now and cannot be resumed: running steps and tool calls are cancelled. Anything already sent to another system is not undone.'
+              : confirming === 'resume'
+                ? 'The task resumes accepting work from where it stopped.'
+                : 'The task stops accepting new work. Running steps finish; nothing new starts.'
+          }
+          confirmLabel={confirming === 'cancel' ? 'Cancel run' : confirming === 'resume' ? 'Resume' : 'Pause'}
+          destructive={confirming === 'cancel'}
           onConfirm={async (reason) => {
             await sessionMutation.mutate({ kind: confirming, reason });
             setConfirming(null);
@@ -329,6 +348,7 @@ function SessionHeader({
   busy,
   onPause,
   onResume,
+  cancel,
 }: {
   sessionId: string;
   goal: string;
@@ -340,6 +360,8 @@ function SessionHeader({
   busy: boolean;
   onPause: () => void;
   onResume: () => void;
+  /** Present only when the kernel offers CancelRun and a run is live. */
+  cancel?: { disabledReason: string | undefined; onCancel: () => void };
 }) {
   const subject = sessionSubject(goal);
 
@@ -366,6 +388,17 @@ function SessionHeader({
           </div>
 
           <div className="flex flex-none items-center gap-2">
+            {cancel && (
+              <Button
+                size="sm"
+                variant="danger"
+                onClick={cancel.onCancel}
+                disabled={Boolean(cancel.disabledReason) || busy}
+                title={cancel.disabledReason}
+              >
+                Cancel run
+              </Button>
+            )}
             {state === 'paused' ? (
               <Button size="sm" onClick={onResume} disabled={!canMutate || busy}>
                 Resume

@@ -32,6 +32,12 @@ interface SectionSpec {
   planned?: boolean;
   /** Listed only when the kernel advertises this capability and the role is Operator. */
   requiresOperatorCapability?: string;
+  /**
+   * Listed only when the kernel advertises this capability, for any role (reads are
+   * open to viewers; writes are disabled by `canMutate`). A premium plane is gated,
+   * never probed (ADR-0088).
+   */
+  requiresCapability?: string;
 }
 
 /**
@@ -53,7 +59,8 @@ const SECTIONS: SectionSpec[] = [
   // state are the same list, and a second pane would drift from it.
   { id: 'embedding', label: 'Embedding', kernel: true },
   { id: 'dispatch', label: 'Dispatch & retrieval', kernel: true },
-  { id: 'telemetry', label: 'Telemetry', kernel: true },
+  // Premium TelemetryAdmin (langfuse plugin): absent without `telemetry-admin`.
+  { id: 'telemetry', label: 'Telemetry', kernel: true, requiresCapability: 'telemetry-admin' },
   // ADR-0141 D8: the one writer of a provider's OAuth client (Operator-only RPCs).
   { id: 'oauth', label: 'OAuth providers', kernel: true, requiresOperatorCapability: 'accounts' },
   { id: 'storage', label: 'Storage & database', kernel: true, planned: true },
@@ -69,7 +76,10 @@ export function SettingsPage() {
 
   const capabilities = projection.state?.capabilities ?? [];
   const visible = SECTIONS.filter(
-    (s) => !s.requiresOperatorCapability || (role === 'operator' && capabilities.includes(s.requiresOperatorCapability)),
+    (s) =>
+      (!s.requiresOperatorCapability ||
+        (role === 'operator' && capabilities.includes(s.requiresOperatorCapability))) &&
+      (!s.requiresCapability || capabilities.includes(s.requiresCapability)),
   );
   const spec = visible.find((s) => s.id === section) ?? visible[0];
   // A config form backed by nothing is worse than no form.

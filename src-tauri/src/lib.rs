@@ -6,6 +6,7 @@
 
 pub mod accounts;
 pub mod attention;
+pub mod emit_coalesce;
 mod ingress_studio;
 pub mod integrations;
 pub mod links;
@@ -19,6 +20,7 @@ pub mod skills;
 pub mod state;
 pub mod substrate;
 mod telegram;
+mod telemetry;
 pub mod transport;
 #[cfg(all(feature = "dev-bridge", debug_assertions))]
 mod dev_bridge;
@@ -35,7 +37,7 @@ use state::{
     AuthoredStep, ClassifiedInput, ConfigSchema, ConfigWriteResult, ConversationMessage,
     ConversationSummary,
     GeneratorSpec, GeneratorTestResult, MCPServerConfigSpec, MCPServerTestResult,
-    PlanProposalResponse, RoleAssignment, SkillSummary,
+    PlanProposalResponse, RoleAssignment,
     PipelineSummary, StateOfRecord, SubmitPlanResult, ToolSummary, WatchConfigSummary,
 };
 use transport::{DocumentPage, DocumentSummary, MemoryQueryResult, Transport};
@@ -507,6 +509,24 @@ async fn op_complete_session(
     Ok(CommandAck { deduped })
 }
 
+/// Cancel a live run terminally (contract 0102, capability "run-cancel"). The
+/// webview renders the control only when the handshake advertises the capability;
+/// the kernel enforces operator-only and the mandatory reason.
+#[tauri::command(rename_all = "snake_case")]
+async fn op_cancel_run(
+    transport: State<'_, Transport>,
+    session_id: String,
+    run_id: String,
+    reason: String,
+) -> Result<CommandAck, String> {
+    let deduped = transport
+        .inner()
+        .clone()
+        .cancel_run(session_id, run_id, reason)
+        .await?;
+    Ok(CommandAck { deduped })
+}
+
 #[tauri::command(rename_all = "snake_case")]
 async fn op_blast_radius_preview(
     _mutation: serde_json::Value,
@@ -845,14 +865,6 @@ async fn op_list_tools(
 }
 
 #[tauri::command(rename_all = "snake_case")]
-async fn op_list_skills(
-    transport: State<'_, Transport>,
-    app: AppHandle,
-) -> Result<Vec<SkillSummary>, String> {
-    transport.inner().clone().list_skills(&app).await
-}
-
-#[tauri::command(rename_all = "snake_case")]
 async fn op_list_watches(
     transport: State<'_, Transport>,
     app: AppHandle,
@@ -1097,6 +1109,43 @@ async fn op_tag_memory(
 // The token travels one way. There is no command that returns it, and none of these log
 // their arguments — a console that can echo a credential leaks it to the screen, to a
 // recording, and to whatever captures the log.
+
+// ---- Settings > Telemetry (premium TelemetryAdmin, capability `telemetry-admin`) ----
+//
+// The secret key travels one way, exactly like the Telegram token: no command
+// returns it and none logs its arguments.
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_get_telemetry_config(
+    transport: State<'_, Transport>,
+) -> Result<crate::telemetry::TelemetryConfig, String> {
+    transport.inner().clone().telemetry_get_config().await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_set_telemetry_config(
+    transport: State<'_, Transport>,
+    config: crate::telemetry::TelemetryConfig,
+    reason: String,
+) -> Result<crate::telemetry::TelemetryAck, String> {
+    transport.inner().clone().telemetry_set_config(config, reason).await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_set_telemetry_secret_key(
+    transport: State<'_, Transport>,
+    key: String,
+    reason: String,
+) -> Result<crate::telemetry::TelemetryAck, String> {
+    transport.inner().clone().telemetry_set_secret_key(key, reason).await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_send_test_trace(
+    transport: State<'_, Transport>,
+) -> Result<crate::telemetry::TestTraceResult, String> {
+    transport.inner().clone().telemetry_send_test_trace().await
+}
 
 #[tauri::command(rename_all = "snake_case")]
 async fn op_telegram_status(
@@ -2844,7 +2893,6 @@ pub fn run() {
             op_backtest_watch,
             op_preview_route,
             op_list_tools,
-            op_list_skills,
             op_list_watches,
             op_list_pipelines,
             op_list_node_items,
@@ -2859,6 +2907,7 @@ pub fn run() {
             op_query_memory,
             op_answer_memory,
             op_complete_session,
+            op_cancel_run,
             op_blast_radius_preview,
             op_get_config_schema,
             op_delete_config,
@@ -2892,6 +2941,10 @@ pub fn run() {
             op_telegram_set_token,
             op_telegram_clear_token,
             op_telegram_set_enabled,
+            op_get_telemetry_config,
+            op_set_telemetry_config,
+            op_set_telemetry_secret_key,
+            op_send_test_trace,
             op_query_logs,
             op_start_log_tail,
             op_stop_log_tail,

@@ -13,6 +13,7 @@ import { projectionStore } from '@/store/projection';
 import { formatDuration } from '@/lib/format';
 import { cn } from '@/design-system/lib/utils';
 import { StoredOverrides } from './ConfigFileFacts';
+import { FactLayerSettings } from './FactLayerSettings';
 import {
   coherenceProblems,
   DISPATCH_FIELDS,
@@ -109,9 +110,14 @@ export function DispatchSettings({ canMutate }: DispatchSettingsProps) {
           <StoredOverrides
             valueSource={schema.data.value_source}
             currentValues={schema.data.current_values}
+            overridesFile={schema.data.overrides_file}
+            overridesFileValue={schema.data.overrides_file_value}
           />
         )}
       </div>
+
+      {/* ADR-0136 fact layer: read-only, restart to change (config schema v4). */}
+      {schema.data && <FactLayerSettings schema={schema.data} />}
 
       {/* ── How a step finds an agent ─────────────────────────────────── */}
       <Section id="dispatch">

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { rememberDiscovery, rememberedDiscovery } from "./discoverySession";
-import { Sparkle, Warning, Question, Check } from "@phosphor-icons/react";
+import { Sparkle, TriangleAlert, CircleHelp, Check } from "lucide-react";
 import { Button, Input } from "@/design-system/components";
 import { useMutation } from "@/lib/useMutation";
 import { ipc } from "@/ipc";
@@ -226,7 +226,7 @@ function Ask({
         <Sparkle
           aria-hidden="true"
           size={14}
-          weight="fill"
+          fill="currentColor"
           className="flex-none text-[var(--color-accent-400)]"
         />
         <h3 className="text-[13px] font-medium">Say what you want, and where it is</h3>
@@ -569,7 +569,7 @@ function Gaps({ gaps }: { gaps: DiscoveryGap[] }) {
           <RowList>
             {refusals.map((g) => (
               <Row key={g.field} align="start" tone="warn">
-                <Warning
+                <TriangleAlert
                   aria-hidden="true"
                   size={13}
                   className="mt-[2px] flex-none text-[var(--status-err)]"
@@ -689,10 +689,10 @@ function Questions({
       <RowList>
         {open.map((q) => (
           <Row key={q.id} align="start" tone="warn">
-            <Question
+            <CircleHelp
               aria-hidden="true"
               size={12}
-              weight="bold"
+              strokeWidth={2.5}
               className="mt-[2px] flex-none text-[var(--status-warn)]"
             />
             <div className="min-w-0 flex-1">
@@ -841,7 +841,7 @@ function Accept({
         <Check
           aria-hidden="true"
           size={13}
-          weight="bold"
+          strokeWidth={2.5}
           className="flex-none text-[var(--color-accent-400)]"
         />
         <h3 className="text-[13px] font-medium">What it proposes</h3>

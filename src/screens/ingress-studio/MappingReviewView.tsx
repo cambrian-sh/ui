@@ -1,4 +1,4 @@
-import { CaretRight, Question } from "@phosphor-icons/react";
+import { ChevronRight, CircleHelp } from "lucide-react";
 import { cn } from "@/design-system/lib/utils";
 
 /**
@@ -58,9 +58,9 @@ export function PathCell({ children }: { children: React.ReactNode }) {
  */
 export function AbstainMark() {
   return (
-    <Question
+    <CircleHelp
       aria-hidden="true"
-      weight="bold"
+      strokeWidth={2.5}
       className="mt-[2px] flex-none text-[var(--status-warn)]"
       size={12}
     />
@@ -210,7 +210,7 @@ export function Lifecycle({ at }: { at: "capturing" | "mapped" }) {
       {steps.map((s, i) => (
         <span key={s.label} className="flex items-center gap-1.5">
           {i > 0 && (
-            <CaretRight
+            <ChevronRight
               aria-hidden="true"
               size={10}
               className="text-[var(--border-strong)]"

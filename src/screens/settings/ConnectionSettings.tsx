@@ -386,10 +386,11 @@ export function ConnectionSettings() {
               </span>
               {/* A warning triangle teaches nothing. Name the concrete case. */}
               <span className="text-[11.5px] leading-[1.5] text-[var(--fg-muted)]">
-                The concrete case right now is ADR-0100: a kernel that has retired
-                <code className="mx-1">AuctionEventOp</code> and
-                <code className="mx-1">GatekeeperFunnelOp</code> sends no dispatch events, so an
-                older build&rsquo;s dispatch panels render empty rather than wrong.
+                The concrete case right now is contract 0102: it replaced
+                <code className="mx-1">AuctionEventOp</code> with
+                <code className="mx-1">SelectionEventOp</code>, so a build pinned to an older
+                contract sees no dispatch events, and its dispatch panels render empty rather
+                than wrong.
               </span>
             </div>
           )}

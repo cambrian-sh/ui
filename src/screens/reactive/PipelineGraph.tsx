@@ -1,4 +1,4 @@
-import { createContext, useContext, useMemo, useRef } from "react";
+import { createContext, useCallback, useContext, useMemo, useRef } from "react";
 import {
   ReactFlow,
   Background,
@@ -17,7 +17,8 @@ import type {
   PipelineNodeMeter,
   PipelineRefusal,
 } from "@/ipc/types";
-import { FAMILY_TONE, SPEC_BY_KIND, deliveryMode, portTone } from "./nodeVocabulary";
+import { useShortcut } from "@/components/ShortcutKeys";
+import { FAMILY_TONE, SPEC_BY_KIND, deliveryMode, isUnavailableHere, portTone } from "./nodeVocabulary";
 import { configSummary } from "./nodeConfig";
 import { canWire } from "./pipelineEdit";
 import { buildGraph, type Counts, type StepData, type StopData } from "./graphLayout";
@@ -158,6 +159,13 @@ export function PipelineGraph({
 
   // The instance, for translating a drop's screen point into graph space.
   const rf = useRef<ReactFlowInstance | null>(null);
+  // Shortcuts +/-/0 (components/ShortcutKeys): zoom the canvas.
+  const zoomIn = useCallback(() => void rf.current?.zoomIn(), []);
+  const zoomOut = useCallback(() => void rf.current?.zoomOut(), []);
+  const zoomReset = useCallback(() => void rf.current?.fitView({ padding: 0.2 }), []);
+  useShortcut('zoom-in', zoomIn);
+  useShortcut('zoom-out', zoomOut);
+  useShortcut('zoom-reset', zoomReset);
   // Whether a grabbed pipe landed on a handle. onReconnectEnd cannot tell on
   // its own — this ref is the standard React Flow pattern for "dropped on
   // nothing means disconnect".
@@ -338,10 +346,16 @@ function StepNode({ data }: NodeProps) {
       ? canWire(h.doc, d.wiring.node, d.wiring.port, d.node.id)
       : null;
 
+  // ADR-0155 D3: a node no runtime here can execute is greyed out.
+  const unavailable = isUnavailableHere(d.refusals);
+
   return (
     <div
+      data-unavailable={unavailable ? "true" : undefined}
+      title={unavailable ? "Not available in this deployment: no dispatcher is wired for this node kind" : undefined}
       className={cn(
         "relative w-[250px] rounded-[var(--radius-lg)] bg-[var(--bg-surface)] shadow-[var(--elevation-1)]",
+        unavailable && "opacity-50 grayscale",
         d.selected && "ring-2 ring-[var(--color-accent-400)]",
         family === "effect" && "tint-wash",
         d.refusals.length > 0 && "tint-wash tint-ring",

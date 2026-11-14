@@ -58,6 +58,12 @@ const KNOWN: Record<string, Omit<CapabilitySurface, 'capability'>> = {
     consequence: 'pause, resume and inject',
   },
   audit: { surface: 'Audit', consequence: 'the audit tail', gatesSurface: true },
+  // contract 0102: CancelRun, the terminal stop (CloseSession only pauses).
+  'run-cancel': {
+    surface: 'Session work surface',
+    consequence: 'the Cancel run control — without it a live run can only be paused',
+    gatesSurface: true,
+  },
   'session-lifecycle': {
     surface: 'Sessions',
     consequence: 'session create/close and the lifecycle states',

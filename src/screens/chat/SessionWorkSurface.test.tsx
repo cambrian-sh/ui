@@ -12,6 +12,7 @@ vi.mock('@/ipc', () => ({
     resolveHITL: vi.fn().mockResolvedValue({ deduped: false }),
     pauseSession: vi.fn().mockResolvedValue({ deduped: false }),
     resumeSession: vi.fn().mockResolvedValue({ deduped: false }),
+    cancelRun: vi.fn().mockResolvedValue({ deduped: false }),
   },
 }));
 
@@ -102,23 +103,8 @@ function makeState(
     pending_hitl: hitl,
     agents: [],
     tools: [],
-    skills: [],
     scope: {},
     watch_configs: [],
-    lifecycle: {
-      scheduler_state: 'idle',
-      pending_jobs: 0,
-      last_consolidation: null,
-      dormancy_events: [],
-    },
-    verifier_pool: { pool_agents: [], recent_rounds: [], surveillance_triggers: [] },
-    cost_dashboard: {
-      spend_rate_usd: 0,
-      circuit_breakers: [],
-      max_energy_per_step: 0.5,
-      price_ledger: [],
-      recent_acquires: [],
-    },
   };
 }
 
@@ -367,5 +353,56 @@ describe('SessionWorkSurface — plan and inspector', () => {
     });
     const results = await axe(container);
     expect(results).toHaveNoViolations();
+  });
+});
+
+// Contract 0102 CancelRun (T-20261106-operator-closesession-only-pauses-a-live-plan):
+// the terminal stop is offered only when the kernel advertises it, is gated like
+// every mutation, and needs a reason and a confirm before anything is sent.
+describe('SessionWorkSurface — cancel run', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    projectionStore.getState().reset();
+  });
+
+  const withCaps = (role: 'operator' | 'viewer', caps: string[]) => ({
+    ...makeState(role, []),
+    capabilities: caps,
+  });
+
+  it('is absent when the kernel does not advertise run-cancel', () => {
+    projectionStore.getState().hydrate(withCaps('operator', []));
+    render(<SessionWorkSurface sessionId="session-1" />);
+    expect(screen.queryByRole('button', { name: 'Cancel run' })).toBeNull();
+  });
+
+  it('is disabled for a Viewer, with the reason', () => {
+    projectionStore.getState().hydrate(withCaps('viewer', ['run-cancel']));
+    render(<SessionWorkSurface sessionId="session-1" />);
+    const btn = screen.getByRole('button', { name: 'Cancel run' });
+    expect(btn).toBeDisabled();
+    expect(btn).toHaveAttribute('title', 'Operator role required to cancel a run.');
+  });
+
+  it('asks for a reason and a confirm, then calls cancelRun for the session', async () => {
+    projectionStore.getState().hydrate(withCaps('operator', ['run-cancel']));
+    render(<SessionWorkSurface sessionId="session-1" />);
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel run' }));
+    expect(ipc.cancelRun).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByLabelText('Reason (required)'), {
+      target: { value: 'runaway loop' },
+    });
+    const dialog = screen.getByRole('dialog');
+    const confirm = Array.from(dialog.querySelectorAll('button')).find(
+      (b) => b.textContent === 'Cancel run',
+    )!;
+    fireEvent.click(confirm);
+    await waitFor(() =>
+      expect(vi.mocked(ipc.cancelRun)).toHaveBeenCalledWith({
+        session_id: 'session-1',
+        run_id: '',
+        reason: 'runaway loop',
+      }),
+    );
   });
 });

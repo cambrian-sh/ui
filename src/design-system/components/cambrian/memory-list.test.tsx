@@ -13,7 +13,7 @@ const doc = (i: number): MemoryDocument => ({
   scope_tags: ['kb:internal'],
   activation_strength: 0.7,
   session_id: 's-1',
-  created_at: new Date(Date.now() - i * 60_000).toISOString(),
+  seen_at: new Date(Date.now() - i * 60_000).toISOString(),
   content_preview: `fact ${i}`,
 });
 
@@ -25,6 +25,14 @@ describe('MemoryList', () => {
     expect(screen.getByText('fact 1')).toBeInTheDocument();
     screen.getByText('fact 0').click();
     expect(onSelect).toHaveBeenCalledWith('doc-0');
+  });
+
+  // T-20261101-memory-list-rows-age-a-ui-side-receipt-clock: the age is the
+  // console's receipt clock, so it says "seen", never a bare ingest-looking age.
+  it('labels the row age as when the console saw the write', () => {
+    render(<MemoryList docs={[doc(3)]} />);
+    const age = screen.getByText('seen 3m ago');
+    expect(age).toHaveAttribute('title', expect.stringMatching(/not when the kernel ingested it/));
   });
 
   it('shows the empty state when no docs', async () => {

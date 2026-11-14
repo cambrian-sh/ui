@@ -36,6 +36,10 @@ import {
   touchesWorld,
 } from "./nodeVocabulary";
 
+// Mutating controls ask useCommandGate (ENG-1176): every test starts as a live
+// operator unless it says otherwise.
+beforeEach(() => hydrateAs("operator"));
+
 function summary(over: Partial<PipelineSummary> = {}): PipelineSummary {
   return {
     pipeline_id: "ingress:usgs",
@@ -387,6 +391,9 @@ describe("15a — the canvas", () => {
     await waitFor(() =>
       expect(screen.getByText("Arm — make it live")).toBeInTheDocument(),
     );
+    // Arming makes a revision live, so it waits for an audited reason (ENG-1176).
+    expect(screen.getByText("Arm — make it live").closest("button")).toBeDisabled();
+    giveReason("arming after the dry run looked right");
     expect(screen.getByText("Arm — make it live")).toBeEnabled();
   });
 
@@ -793,9 +800,8 @@ describe("the ports table counts", () => {
       connection: { status: "live" }, role: "operator",
       kernel_version: "", contract_version: "", capabilities: [], contract_skew: 0,
       plugins: [], cursor: 1, plans: [], sessions: [], audit_tail: [],
-      pending_hitl: [], agents: [], tools: [], skills: [],
+      pending_hitl: [], agents: [], tools: [],
       scope: {}, watch_configs: [],
-      lifecycle: {} as never, verifier_pool: {} as never, cost_dashboard: {} as never,
       pipeline_meters: {
         "ingress:usgs": {
           pipeline_id: "ingress:usgs", revision: 2,
@@ -1011,11 +1017,31 @@ describe("the data through a step", () => {
 /**
  * Contract 0093 — the lifecycle finally has a button.
  */
+function hydrateAs(role: string, status = "live") {
+  projectionStore.getState().hydrate({
+    connection: { status }, role,
+    kernel_version: "", contract_version: "", capabilities: [], contract_skew: 0,
+    plugins: [], cursor: 1, plans: [], sessions: [], audit_tail: [],
+    pending_hitl: [], agents: [], tools: [],
+    scope: {}, watch_configs: [],
+    pipeline_meters: {},
+  } as never);
+}
+
+const REASON = "publishing after reviewing the graph";
+
+function giveReason(text = REASON) {
+  fireEvent.change(screen.getByLabelText("Reason for the lifecycle change"), {
+    target: { value: text },
+  });
+}
+
 describe("publishing and arming from the canvas", () => {
   beforeEach(() => {
     getPipeline.mockReset();
     dryRunPipeline.mockReset();
     transitionPipeline.mockReset();
+    hydrateAs("operator");
     dryRunPipeline.mockResolvedValue({
       refused: "", run_id: "r", samples: 0,
       effects: [], duplicates: [], terminations: [], failures: [], elapsed_ms: 0,
@@ -1045,6 +1071,7 @@ describe("publishing and arming from the canvas", () => {
     await waitFor(() =>
       expect(screen.getByText("large enough?")).toBeInTheDocument(),
     );
+    giveReason();
     fireEvent.click(screen.getByText("Publish"));
     await waitFor(() =>
       expect(screen.getByText(/frozen and inspectable, not live/)).toBeInTheDocument(),
@@ -1068,6 +1095,7 @@ describe("publishing and arming from the canvas", () => {
     await waitFor(() =>
       expect(screen.getByText("large enough?")).toBeInTheDocument(),
     );
+    giveReason();
     fireEvent.click(screen.getByText("Publish"));
     await waitFor(() =>
       expect(screen.getByText(/cannot publish from retired/)).toBeInTheDocument(),
@@ -1099,5 +1127,85 @@ describe("publishing and arming from the canvas", () => {
     const publish = screen.getByText("Publish").closest("button")!;
     expect(publish).toBeDisabled();
     expect(publish.title).toContain("refusal");
+  });
+});
+
+// ENG-1176: the lifecycle and save controls ask useCommandGate, a transition
+// carries an audited reason and a command_id, and a retry of the same intent
+// reuses the id.
+describe("canvas mutations follow the command rules", () => {
+  beforeEach(() => {
+    getPipeline.mockReset();
+    dryRunPipeline.mockReset();
+    transitionPipeline.mockReset();
+    savePipeline.mockReset();
+    dryRunPipeline.mockResolvedValue({
+      refused: "", run_id: "r", samples: 0,
+      effects: [], duplicates: [], terminations: [], failures: [], elapsed_ms: 0,
+      source: "", node_examples: [],
+    });
+    getPipeline.mockResolvedValue({
+      refused: "",
+      summary: summary({ state: "draft" }),
+      graph_json: JSON.stringify(GRAPH),
+      refusals: [],
+      reads: [],
+      field_schema_json: "",
+    });
+  });
+
+  async function renderDraft() {
+    render(
+      <PipelineCanvas pipeline={summary({ state: "draft" })} onClose={() => {}} onDryRun={() => {}} />,
+    );
+    await waitFor(() => expect(screen.getByText("large enough?")).toBeInTheDocument());
+  }
+
+  it("a viewer sees Publish disabled with the gate's reason", async () => {
+    hydrateAs("viewer");
+    await renderDraft();
+    const publish = screen.getByText("Publish").closest("button")!;
+    expect(publish).toBeDisabled();
+    expect(publish.title).toContain("Operator role required");
+  });
+
+  it("a reconnecting session cannot publish", async () => {
+    hydrateAs("operator", "reconnecting");
+    await renderDraft();
+    expect(screen.getByText("Publish").closest("button")!).toBeDisabled();
+  });
+
+  it("Publish waits for an audited reason, then sends it with a command_id", async () => {
+    hydrateAs("operator");
+    transitionPipeline.mockResolvedValue({
+      refused: "", pipeline_id: "ingress:usgs", revision: 2, state: "published",
+    });
+    await renderDraft();
+    const publish = screen.getByText("Publish").closest("button")!;
+    expect(publish).toBeDisabled();
+    expect(publish.title).toContain("reason");
+    giveReason();
+    expect(publish).not.toBeDisabled();
+    fireEvent.click(publish);
+    await waitFor(() => expect(transitionPipeline).toHaveBeenCalledTimes(1));
+    const [id, to, , reason, commandId] = transitionPipeline.mock.calls[0];
+    expect([id, to, reason]).toEqual(["ingress:usgs", "published", REASON]);
+    expect(typeof commandId).toBe("string");
+    expect((commandId as string).length).toBeGreaterThan(0);
+  });
+
+  it("a retry of the same transition reuses its command_id", async () => {
+    hydrateAs("operator");
+    transitionPipeline
+      .mockRejectedValueOnce(new Error("transport: unavailable"))
+      .mockResolvedValueOnce({ refused: "", pipeline_id: "ingress:usgs", revision: 2, state: "published" });
+    await renderDraft();
+    giveReason();
+    fireEvent.click(screen.getByText("Publish"));
+    await waitFor(() => expect(transitionPipeline).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.getByText("Publish").closest("button")!).not.toBeDisabled());
+    fireEvent.click(screen.getByText("Publish"));
+    await waitFor(() => expect(transitionPipeline).toHaveBeenCalledTimes(2));
+    expect(transitionPipeline.mock.calls[1][4]).toBe(transitionPipeline.mock.calls[0][4]);
   });
 });

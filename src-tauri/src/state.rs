@@ -420,15 +420,6 @@ pub struct ToolSummary {
     pub effects_inferred: bool,
 }
 
-#[derive(Clone, Serialize, Default)]
-pub struct SkillSummary {
-    pub id: String,
-    pub description: String,
-    pub scope_tags: Vec<String>,
-    pub loaded_in_count: i32,
-    pub last_loaded_at: String,
-}
-
 // MCPServerSummary is GONE (2026-08-11): the field existed since UI-IMPL-21a
 // and nothing ever wrote to it — no snapshot carries MCP servers and no feed op
 // folds them, so the /mcp screen read an empty list on every deployment. The
@@ -687,100 +678,6 @@ impl From<pb::ConversationOp> for ConversationSummary {
 }
 
 // ============================================================================
-// P2: Lifecycle
-// ============================================================================
-
-#[derive(Clone, Serialize, Default)]
-pub struct ConsolidationJob {
-    pub timestamp: String,
-    pub duration_ms: i64,
-    pub status: String,
-}
-
-#[derive(Clone, Serialize, Default)]
-pub struct DormancyEvent {
-    pub agent_id: String,
-    pub event_type: String,
-    pub timestamp: String,
-}
-
-#[derive(Clone, Serialize, Default)]
-pub struct LifecycleState {
-    pub scheduler_state: String,
-    pub pending_jobs: i32,
-    pub last_consolidation: Option<ConsolidationJob>,
-    pub dormancy_events: Vec<DormancyEvent>,
-}
-
-// ============================================================================
-// P2: Verifier Pool
-// ============================================================================
-
-#[derive(Clone, Serialize, Default)]
-pub struct VerifierPoolAgent {
-    pub agent_id: String,
-    pub merit_score: f64,
-}
-
-#[derive(Clone, Serialize, Default)]
-pub struct VerifierRound {
-    pub task_id: String,
-    pub verifier_id: String,
-    pub target_agent: String,
-    pub quality_score: f64,
-    pub cross_verification_status: String,
-}
-
-#[derive(Clone, Serialize, Default)]
-pub struct SurveillanceTrigger {
-    pub agent_id: String,
-    pub reason: String,
-    pub fired_at: String,
-}
-
-#[derive(Clone, Serialize, Default)]
-pub struct VerifierPoolState {
-    pub pool_agents: Vec<VerifierPoolAgent>,
-    pub recent_rounds: Vec<VerifierRound>,
-    pub surveillance_triggers: Vec<SurveillanceTrigger>,
-}
-
-// ============================================================================
-// P2: Cost & Energy
-// ============================================================================
-
-#[derive(Clone, Serialize, Default)]
-pub struct CircuitBreaker {
-    pub model_id: String,
-    pub state: String,
-    pub reason: String,
-}
-
-#[derive(Clone, Serialize, Default)]
-pub struct PriceLedgerEntry {
-    pub model_id: String,
-    pub cost_per_token: f64,
-    pub currency: String,
-}
-
-#[derive(Clone, Serialize, Default)]
-pub struct AcquireOutcome {
-    pub model_id: String,
-    pub acquired: bool,
-    pub latency_ms: i64,
-    pub timestamp: String,
-}
-
-#[derive(Clone, Serialize, Default)]
-pub struct CostDashboard {
-    pub spend_rate_usd: f64,
-    pub circuit_breakers: Vec<CircuitBreaker>,
-    pub max_energy_per_step: f64,
-    pub price_ledger: Vec<PriceLedgerEntry>,
-    pub recent_acquires: Vec<AcquireOutcome>,
-}
-
-// ============================================================================
 // Memory ingest observability (contract 0057 MemoryWrittenOp)
 // ============================================================================
 
@@ -911,9 +808,10 @@ impl StateOfRecord {
 /// Who is signed in (ADR-0142 D1). Display data only — never a token.
 ///
 /// `role_source` is honest about where the plane role came from: `kernel` when
-/// the kernel said so (LoginResponse), `probe` when the console inferred it
-/// from which RPCs the kernel lets this bearer call — the operator plane has no
-/// WhoAmI yet (T-20261106-operator-plane-has-no-whoami-an-oidc-signed-in).
+/// the kernel said so (LoginResponse, or WhoAmI after an OIDC sign-in — contract
+/// 0102), `probe` only against an older kernel without WhoAmI, where the console
+/// infers it from which RPCs the kernel lets this bearer call
+/// (T-20261106-operator-plane-has-no-whoami-an-oidc-signed-in).
 #[derive(Clone, Serialize, Default, Debug, PartialEq)]
 pub struct Identity {
     /// "password" | "oidc"
@@ -968,6 +866,19 @@ impl Identity {
             ..Default::default()
         }
     }
+
+    /// Fold the kernel's WhoAmI answer into an OIDC identity (contract 0102): the
+    /// principal, role set and role become the KERNEL's, so `role_source` is
+    /// "kernel". The registry display name wins over the ID-token claim when the
+    /// kernel has one; the claims (email, subject, issuer) stay for display.
+    pub fn apply_whoami(&mut self, r: &pb::WhoAmIResponse) {
+        self.principal = r.principal.clone();
+        self.roles = r.roles.clone();
+        if !r.display_name.is_empty() {
+            self.display_name = r.display_name.clone();
+        }
+        self.role_source = "kernel".into();
+    }
 }
 
 #[derive(Clone, Serialize, Default)]
@@ -1000,12 +911,8 @@ pub struct StateOfRecord {
     // UI-IMPL-21a: subsystem caches (projected from snapshots/events)
     pub agents: Vec<AgentSummary>,
     pub tools: Vec<ToolSummary>,
-    pub skills: Vec<SkillSummary>,
     pub scope: HashMap<String, ScopeSummary>,
     pub watch_configs: Vec<WatchConfigSummary>,
-    pub lifecycle: LifecycleState,
-    pub verifier_pool: VerifierPoolState,
-    pub cost_dashboard: CostDashboard,
     /// Bounded tail of `MemoryWrittenOp`s — the ingest queue's status lane.
     pub memory_written: Vec<MemoryWrittenEvent>,
     /// Plans that have gone terminal, newest first, bounded.
@@ -1135,16 +1042,12 @@ impl StateOfRecord {
         // authoritative).
         self.agents.clear();
         self.tools.clear();
-        self.skills.clear();
         self.scope.clear();
         // Live readings do not survive a resync: they describe what is
         // happening now, and the kernel republishes a full snapshot on connect.
         self.pipeline_meters.clear();
         self.pipeline_steps.clear();
         self.watch_configs.clear();
-        self.lifecycle = LifecycleState::default();
-        self.verifier_pool = VerifierPoolState::default();
-        self.cost_dashboard = CostDashboard::default();
         self.memory_written.clear();
         self.completed_plans.clear();
         // Progress is live-only: a snapshot never carries it, and a resync means
@@ -2481,6 +2384,10 @@ pub struct ConfigSchema {
     /// key → "default" | "tuning.json" | "store" | "env:CAMBRIAN_…" | "runtime".
     /// An "env:" source means a write to this key will be SHADOWED.
     pub value_source: std::collections::HashMap<String, String>,
+    /// Contract 0104 (ADR-0101 D8): for a stored key a config file also states,
+    /// that file layer and its value there. Empty from a pre-0104 kernel.
+    pub overrides_file: std::collections::HashMap<String, String>,
+    pub overrides_file_value: std::collections::HashMap<String, String>,
 }
 
 #[derive(Clone, Serialize, Default)]
@@ -2524,7 +2431,8 @@ pub struct AuthoredStep {
     pub max_energy: f64,
     pub recommended_model: String,
     pub checkpoint_after: bool,
-    pub checkpoint_query: String,
+    // checkpoint_query is gone: contract 0102 reserved AuthoredStepOp field 7
+    // (domain.Step.CheckpointQuery deleted, ENG-1313).
     pub is_thought: bool,
     /// SOFT pin — goes first, ranking still runs behind it.
     pub preferred_agent: String,

@@ -70,6 +70,21 @@ export function SourceCard({ hit, index, className }: SourceCardProps) {
         </p>
       </button>
 
+      {hit.fact_matches && hit.fact_matches.length > 0 && (
+        <div aria-label="Matched facts" className="flex flex-col gap-0.5 text-[10px] text-[var(--fg-secondary)]">
+          <span className="text-[var(--fg-muted)]">
+            Found through {hit.fact_matches.length === 1 ? 'a fact' : 'facts'}
+            {typeof hit.fact_match === 'number' && hit.fact_match > 0 && ` (match ${hit.fact_match.toFixed(2)})`}
+            {hit.fact_current ? ' · holds now' : ''}
+          </span>
+          {hit.fact_matches.map((f) => (
+            <span key={f} className="font-mono">
+              {f}
+            </span>
+          ))}
+        </div>
+      )}
+
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] text-[var(--fg-muted)]">
         {hit.tags.map((tag) => (
           <span key={tag} className="font-mono">

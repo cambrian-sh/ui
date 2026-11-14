@@ -57,6 +57,7 @@ export const ALL_CAPABILITIES = [
   'ingress-studio',
   'substrate-query',
   'links',
+  'telemetry-admin',
 ];
 
 // ---------------------------------------------------------------------------
@@ -73,13 +74,6 @@ export function scenarioState(base: t.StateOfRecord, scenario: MockScenario): t.
       return {
         ...populated,
         contract_skew: 1,
-        cost_dashboard: {
-          ...populated.cost_dashboard,
-          circuit_breakers: [
-            ...populated.cost_dashboard.circuit_breakers.slice(1),
-            { model_id: 'openrouter/qwen3-235b', state: 'err', reason: '5 consecutive 429 responses' },
-          ],
-        },
       };
     case 'viewer':
       return { ...populated, role: 'viewer' };
@@ -302,10 +296,6 @@ function populatedState(base: t.StateOfRecord): t.StateOfRecord {
       { id: 'read-statement', description: 'Read a card or bank statement by period.', danger: false, granted_agent_count: 2, recent_invocation_count: 31, last_cost: 0.001, classification_tags: ['finance'], effects: ['read'] },
       { id: 'send-email', description: 'Send an email from the operations mailbox.', danger: true, granted_agent_count: 0, recent_invocation_count: 0, last_cost: 0, classification_tags: ['external'], effects: ['write', 'external'] },
     ],
-    skills: [
-      { id: 'refund-review', description: 'Review and cite evidence for duplicate refunds.', scope_tags: ['finance'], loaded_in_count: 1, last_loaded_at: ago(42 * MIN) },
-      { id: 'weekly-brief', description: 'Assemble the weekly operations brief.', scope_tags: ['operations'], loaded_in_count: 2, last_loaded_at: ago(3 * HOUR) },
-    ],
     scope: {
       'cognitive-analyst': { agent_id: 'cognitive-analyst', effective_scope_summary: 'read:ledger, write:reports', default_write_tags: ['reports'], last_scope_change_at: ago(5 * DAY) },
       'model-summarizer': { agent_id: 'model-summarizer', effective_scope_summary: 'read:operations', default_write_tags: [], last_scope_change_at: ago(2 * DAY) },
@@ -321,23 +311,6 @@ function populatedState(base: t.StateOfRecord): t.StateOfRecord {
       { id: 'watch-1', target_streams: ['telegram', 'schedule'], last_fire_at: ago(12 * MIN), last_fire_status: 'ok', error_count: 0 },
       { id: 'watch-2', target_streams: ['ingress:acme-webhook'], last_fire_at: ago(3 * HOUR), last_fire_status: 'error', error_count: 2 },
     ],
-    lifecycle: {
-      ...base.lifecycle,
-      scheduler_state: 'running',
-      pending_jobs: 2,
-      last_consolidation: { timestamp: ago(6 * HOUR), duration_ms: 48_000, status: 'completed' },
-    },
-    verifier_pool: {
-      ...base.verifier_pool,
-    },
-    cost_dashboard: {
-      ...base.cost_dashboard,
-      spend_rate_usd: 0.87,
-      circuit_breakers: [
-        { model_id: 'claude-sonnet-5-5', state: 'ok', reason: '' },
-        { model_id: 'qwen3:14b', state: 'ok', reason: '' },
-      ],
-    },
   };
 }
 
@@ -709,9 +682,11 @@ export const mcpServers: t.MCPServerConfig[] = [
 export const telemetry: t.TelemetryConfig = {
   host: 'https://cloud.langfuse.com',
   project: 'cambrian-ops',
+  enabled: true,
   public_key_configured: true,
   public_key_last_four: '7c1e',
   secret_key_configured: true,
+  secret_key_last_four: 'a9f0',
   sample_rate: 0.25,
   send_structure_and_timings: true,
   send_prompts_and_outputs: false,

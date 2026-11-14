@@ -18,8 +18,11 @@ import { QueryClient } from '@tanstack/react-query';
  * What DOES belong here is the request/response half that is not on the feed:
  *   - every mutation (useMutation), for `isPending` / `error` / retry
  *   - `answerMemory` — a question is an action, not a cache key
- *   - `queryAudit` — the one genuinely paginated read (useInfiniteQuery)
  *   - `explainAccess`, `listClassificationTags`, `statFile` — static-ish reads
+ *
+ * (The audit log is NOT a query here: AuditConsole reads the feed's `audit_tail`
+ * from the projection and exports the rows already loaded. No paginated
+ * useInfiniteQuery read exists today.)
  *
  * The defaults below are deliberately inert: every automatic refetch is off, so
  * a future `useQuery` cannot start polling the kernel by accident. Turning any

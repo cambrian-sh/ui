@@ -29,20 +29,19 @@ export function realSteps(plan: PlanInFlight): PlanStep[] {
  *
  * Snapshots do not carry the graph, so there is genuinely nothing to draw yet.
  * This renders the step *count* the snapshot does give, rather than an empty
- * surface that reads as "this plan has no steps".
+ * surface that reads as "this plan has no steps" — and every row says its state
+ * is not reported yet. It used to mark earlier steps done and the last one
+ * running, which the kernel never said.
  */
 export function placeholderSteps(plan: PlanInFlight): PlanStep[] {
   const total = plan.step_count;
-  return Array.from({ length: total }, (_, i) => {
-    const isActive = plan.active_agent !== null && i === Math.max(0, total - 1);
-    return {
-      step_id: `${plan.plan_id}-step-${i}`,
-      index: i,
-      query: `Step ${i + 1} of ${total} — subject: ${plan.subject}`,
-      status: isActive ? 'running' : i < total - 1 ? 'done' : 'pending',
-      agent: isActive ? plan.active_agent : null,
-    } satisfies PlanStep;
-  });
+  return Array.from({ length: total }, (_, i) => ({
+    step_id: `${plan.plan_id}-step-${i}`,
+    index: i,
+    query: `Step ${i + 1} of ${total} — subject: ${plan.subject}`,
+    status: 'unreported',
+    agent: null,
+  }) satisfies PlanStep);
 }
 
 /** The steps for a plan, from the DAG when there is one. */

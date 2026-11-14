@@ -27,9 +27,6 @@ export const SHORTCUTS: Shortcut[] = [
   { keys: 'Esc', label: 'Close panel / palette', scope: 'global' },
   { keys: '/', label: 'Focus filter bar', scope: 'global' },
   { keys: 'n', label: 'New tag', scope: 'memory' },
-  { keys: 'a', label: 'Approve HITL', scope: 'global' },
-  { keys: 'r', label: 'Reject HITL', scope: 'global' },
-  { keys: 'e', label: 'Edit HITL', scope: 'global' },
   { keys: '+', label: 'Zoom in', scope: 'plan' },
   { keys: '-', label: 'Zoom out', scope: 'plan' },
   { keys: '0', label: 'Reset zoom', scope: 'plan' },
@@ -43,10 +40,11 @@ export const SHORTCUTS: Shortcut[] = [
 // `components/NavChords.tsx` (mounted once in Shell). Labels use the rail's
 // names for the destination.
 //
-// SHORTCUTS above is NOT bound beyond what Shell.tsx binds (mod+k, shift+/,
-// mod+i): its single-key entries need a focus model, and a/r/e need the HITL
-// reason gate and confirm step, so whether to bind or drop them is open
-// (T-20261113-advertised-keyboard-shortcuts-g-chords-a-r-e-on).
+// SHORTCUTS above is bound by `components/ShortcutKeys.tsx` (c, i, /, n, j/k,
+// Enter, +/-/0, Mod+g; owner decision 2026-11-14) and Shell.tsx (mod+k,
+// shift+/, mod+i); Esc is native on dialogs. Approve/reject/edit stay
+// mouse-only — an approval needs its reason and confirm step — so a/r/e are
+// not on the sheet (T-20261113-advertised-keyboard-shortcuts-g-chords-a-r-e-on).
 export const NAV_SHORTCUTS: Array<{ keys: string; label: string; path: string }> = [
   { keys: 'g c', label: 'Go to Chat', path: '/chat' },
   { keys: 'g i', label: 'Go to Inbox', path: '/inbox' },
@@ -54,7 +52,7 @@ export const NAV_SHORTCUTS: Array<{ keys: string; label: string; path: string }>
   { keys: 'g n', label: 'Go to Integrations', path: '/integrations' },
   { keys: 'g s', label: 'Go to Tasks', path: '/tasks' },
   { keys: 'g a', label: 'Go to Runtime — Agents', path: '/agents' },
-  { keys: 'g t', label: 'Go to Runtime — Tools & Skills', path: '/tools' },
+  { keys: 'g t', label: 'Go to Runtime — Tools', path: '/tools' },
   { keys: 'g m', label: 'Go to Runtime — MCP', path: '/mcp' },
   { keys: 'g y', label: 'Go to Memory', path: '/memory' },
   { keys: 'g o', label: 'Go to Access policy', path: '/scope' },

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { GitBranch, ArrowCounterClockwise } from "@phosphor-icons/react";
+import { GitBranch, RotateCcw } from "lucide-react";
 import { Button } from "@/design-system/components";
 import { useKernelQuery } from "@/lib/useKernelQuery";
 import { ipc } from "@/ipc";
@@ -240,7 +240,7 @@ function Promotion({
       style={{ "--tint": "var(--status-warn)" } as React.CSSProperties}
     >
       <div className="mb-1.5 flex items-center gap-2">
-        <ArrowCounterClockwise
+        <RotateCcw
           aria-hidden="true"
           size={13}
           className="flex-none text-[var(--status-warn)]"

@@ -8,9 +8,10 @@
 //! Two things are load-bearing:
 //!
 //! * The catalog read ([`Transport::list_skills_full`]) carries EVERY `SkillOp`
-//!   field through. The older `list_skills` maps to the lossy `SkillSummary` the
-//!   feed projection holds, which filled `loaded_in_count`/`last_loaded_at` with
-//!   zeros the kernel never sent; the skills screen reads this one instead.
+//!   field through. It is the only skills read: the older `list_skills` and its
+//!   lossy `SkillSummary` feed projection (zeros for `loaded_in_count` /
+//!   `last_loaded_at` the kernel never sent) were removed 2026-11-15 with the old
+//!   Tools & Skills tab (T-20261106-runtime-tools-skills-tab-still-shows-the-old).
 //! * Every mutation generates its own `command_id` here and carries the caller's
 //!   mandatory `reason`. The `command_id` never crosses the IPC bridge (see
 //!   `links.rs` for why a webview-chosen key is wrong).

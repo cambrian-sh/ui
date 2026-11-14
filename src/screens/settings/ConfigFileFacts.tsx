@@ -150,17 +150,22 @@ export function RevertToFile({
  * ADR-0101 D8: a console write goes into the file that sets the key whenever
  * that file is writable, removing the stored override. So a key still reported
  * as `store` is either an override of a file the kernel could not write (later
- * edits of that file are ignored) or a key no file sets. GetConfigSchema does not
- * yet say WHICH file a stored key overrides, so this names the layer, not the
- * file — and does not pretend to know more. Reverting removes the stored value;
+ * edits of that file are ignored) or a key no file sets. Since contract 0104
+ * GetConfigSchema names the file a stored key overrides and that file's value
+ * (`overridesFile` / `overridesFileValue`); against an older kernel this names the
+ * layer only and does not pretend to know more. Reverting removes the stored value;
  * the file, else the default, supplies the key again.
  */
 export function StoredOverrides({
   valueSource,
   currentValues,
+  overridesFile = {},
+  overridesFileValue = {},
 }: {
   valueSource: Record<string, string>;
   currentValues: Record<string, number>;
+  overridesFile?: Record<string, string>;
+  overridesFileValue?: Record<string, string>;
 }) {
   const stored = Object.keys(valueSource)
     .filter((k) => valueSource[k] === 'store')
@@ -191,6 +196,17 @@ export function StoredOverrides({
                 store · wins over files
               </span>
             </span>
+            {overridesFile[key] && (
+              <span className="text-[11px] text-[var(--fg-muted)]">
+                overrides <code className="font-mono">{overridesFile[key]}</code>
+                {overridesFileValue[key] !== undefined && (
+                  <>
+                    {' '}
+                    (file value <code className="font-mono">{overridesFileValue[key]}</code>)
+                  </>
+                )}
+              </span>
+            )}
             <RevertToFile configKey={key} />
           </li>
         ))}

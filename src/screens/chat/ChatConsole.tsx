@@ -10,6 +10,7 @@ import {
 import { ErrorState } from '@/design-system/components/cambrian/error-state';
 import { cn } from '@/design-system/lib/utils';
 import { ipc } from '@/ipc';
+import { useShortcut } from '@/components/ShortcutKeys';
 import { errorMessage } from '@/lib/errorMessage';
 import { useMutation } from '@/lib/useMutation';
 import { useStore } from '@/store/useStore';
@@ -356,7 +357,10 @@ export function ChatConsole() {
    * Submit, honouring the composer's affordances.
    *
    * `skipProposal` is ⌘⏎ — "run without proposing", for the operator who already
-   * knows what they want. It is deliberately the only path that commits directly.
+   * knows what they want: it skips the plan proposal and sends the text as a
+   * conversation turn, which the single-agent lane (ADR-0150 D3) runs with the
+   * person's tools. Committing an authored plan is the proposal's own path
+   * (submitPlan), never this one.
    */
   const submit = useCallback(
     async (skipProposal: boolean) => {
@@ -373,7 +377,9 @@ export function ChatConsole() {
         return;
       }
       if (skipProposal && !alwaysPropose) {
-        // Straight to the planner. The classification banner is still shown, so
+        // No proposal: a conversation turn (the same sendTurn as the chat branch;
+        // ADR-0150 D3 — the turn's agent does the work itself, there is no
+        // planner hand-off here). The classification banner is still shown, so
         // the operator sees what it was read as even on the fast path.
         await sendTurn(body);
         return;
@@ -809,6 +815,10 @@ function Composer({
   busy: boolean;
   onSubmit: (skipProposal: boolean) => void;
 }) {
+  // Shortcut `c` (components/ShortcutKeys): focus the message input.
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const focusInput = useCallback(() => inputRef.current?.focus(), []);
+  useShortcut('chat', focusInput);
   return (
     <div className={cn(CHAT_COLUMN, 'flex-none pb-4 pt-2')}>
       <div
@@ -818,6 +828,7 @@ function Composer({
         )}
       >
         <textarea
+          ref={inputRef}
           value={text}
           onChange={(e) => onText(e.target.value)}
           onKeyDown={(e) => {

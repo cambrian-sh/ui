@@ -77,6 +77,12 @@ const ROLE_NOTE: Record<GeneratorRole, string> = {
   verifier: 'Scores completed work. Its labels are what per-capability merit is built from.',
   router: 'Resolves a capability contract to an eligible agent.',
   memory: 'Answers grounded questions over the corpus.',
+  facts:
+    'Extracts memory facts from ingested chunks (ADR-0136). Unassigned, it uses the default generator.',
+  thought:
+    'Runs in-kernel thought steps. Unassigned, it borrows the planner’s generator.',
+  retrieval_planner:
+    'Plans sub-queries for agentic retrieval. Unassigned, it borrows the memory role’s generator.',
 };
 
 /**

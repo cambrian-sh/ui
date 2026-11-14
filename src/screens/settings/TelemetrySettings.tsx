@@ -9,14 +9,16 @@ import { ipc } from '@/ipc';
 import { useKernelQuery } from '@/lib/useKernelQuery';
 import { useMutation } from '@/lib/useMutation';
 import { cn } from '@/design-system/lib/utils';
-import type { TelemetryConfig, TestTraceResult } from '@/ipc/types';
+import type { TelemetryAck, TelemetryConfig, TestTraceResult } from '@/ipc/types';
 
 const BLANK: TelemetryConfig = {
   host: '',
   project: '',
+  enabled: false,
   public_key_configured: false,
   public_key_last_four: '',
   secret_key_configured: false,
+  secret_key_last_four: '',
   sample_rate: 1,
   send_structure_and_timings: true,
   send_prompts_and_outputs: false,
@@ -33,8 +35,10 @@ const BLANK: TelemetryConfig = {
  */
 export function TelemetrySettings({ canMutate }: { canMutate: boolean }) {
   const gate = useReasonGate();
+  const secretGate = useReasonGate();
   const [draft, setDraft] = useState<TelemetryConfig | null>(null);
   const [secret, setSecret] = useState('');
+  const [warning, setWarning] = useState('');
 
   const config = useKernelQuery(['telemetry-config'], () => ipc.getTelemetryConfig(), {
     retry: 0,
@@ -45,14 +49,26 @@ export function TelemetrySettings({ canMutate }: { canMutate: boolean }) {
     setTestResult(r);
     return r;
   });
-  const save = useMutation(async (c: TelemetryConfig, reason: string) =>
-    ipc.setTelemetryConfig(c, reason),
-  );
-  const saveSecret = useMutation(async (key: string) => {
-    const out = await ipc.setTelemetrySecretKey(key);
-    setSecret('');
-    if (!out.ok) throw new Error(out.error);
+  // A TelemetryAck refusal is an authoring outcome: surface its error inline; a
+  // warning is something saved but not yet in effect (e.g. an env key still wins).
+  const accept = (out: TelemetryAck) => {
+    if (!out.ok) throw new Error(out.error || 'The kernel refused the change.');
+    setWarning(out.warning);
     return out;
+  };
+  const save = useMutation(async (c: TelemetryConfig, reason: string) => {
+    const out = accept(await ipc.setTelemetryConfig(c, reason));
+    void config.refetch();
+    return out;
+  });
+  const saveSecret = useMutation(async (key: string, reason: string) => {
+    try {
+      const out = accept(await ipc.setTelemetrySecretKey(key, reason));
+      void config.refetch();
+      return out;
+    } finally {
+      setSecret('');
+    }
   });
 
   const live = draft ?? config.data ?? BLANK;
@@ -83,6 +99,31 @@ export function TelemetrySettings({ canMutate }: { canMutate: boolean }) {
           </span>
         </p>
       )}
+
+      {warning && (
+        <p
+          className="max-w-[660px] rounded-md p-2.5 text-[12px] leading-[1.55] tint-wash tint-ring"
+          style={{ '--tint': 'var(--status-warn)' } as React.CSSProperties}
+        >
+          {warning}
+        </p>
+      )}
+
+      {/* The master switch, first: every save carries it (owner decision 2026-11-15). */}
+      <section className="flex flex-col gap-2 rounded-[var(--radius-lg)] bg-[var(--bg-surface)] p-3.5 shadow-[var(--elevation-1)]">
+        <Switch
+          checked={live.enabled}
+          onChange={(v) => set({ enabled: v })}
+          disabled={!canMutate}
+          tone="var(--status-live)"
+          label="Send traces"
+          body={
+            live.enabled
+              ? 'Tracing is on: the kernel sends traces to Langfuse, limited by the switches below.'
+              : 'Tracing is off: nothing is sent, whatever the switches below say.'
+          }
+        />
+      </section>
 
       {/* What leaves the box. */}
       <section className="flex flex-col gap-3 rounded-[var(--radius-lg)] bg-[var(--bg-surface)] p-3.5 shadow-[var(--elevation-1)]">
@@ -163,7 +204,7 @@ export function TelemetrySettings({ canMutate }: { canMutate: boolean }) {
           <span className="text-[11.5px] text-[var(--fg-secondary)]">Secret key</span>
           {live.secret_key_configured ? (
             <span className="font-mono text-[11.5px] text-[var(--fg-secondary)]">
-              A key is stored · ····{live.public_key_last_four || '••••'}
+              A key is stored · ····{live.secret_key_last_four || '••••'}
             </span>
           ) : (
             <span className="text-[12px] text-[var(--status-warn)]">No key stored.</span>
@@ -181,12 +222,17 @@ export function TelemetrySettings({ canMutate }: { canMutate: boolean }) {
             />
             <Button
               size="sm"
-              disabled={!canMutate || !secret.trim() || saveSecret.isLoading}
-              onClick={() => void saveSecret.mutate(secret)}
+              disabled={
+                !canMutate || !secret.trim() || !secretGate.satisfied || saveSecret.isLoading
+              }
+              onClick={() => void saveSecret.mutate(secret, secretGate.reason.trim())}
             >
               Save key
             </Button>
           </div>
+          {secret.trim() && (
+            <ReasonField gate={secretGate} id="telemetry-secret-reason" disabled={!canMutate} />
+          )}
           {saveSecret.error && <ErrorState reason={saveSecret.error} />}
           <p className="text-[11px] text-[var(--fg-muted)]">
             Write-only, like every other credential here: it is stored by the core and never
@@ -219,7 +265,9 @@ export function TelemetrySettings({ canMutate }: { canMutate: boolean }) {
             style={{ color: testResult.ok ? 'var(--status-live)' : 'var(--status-err)' }}
           >
             {testResult.ok
-              ? `Accepted in ${testResult.round_trip_ms}ms.`
+              ? `Accepted by ${testResult.host || 'the host'} in ${testResult.latency_ms}ms${
+                  testResult.trace_id ? ` · trace ${testResult.trace_id}` : ''
+                }.`
               : testResult.error || 'The endpoint refused it.'}
           </p>
         )}

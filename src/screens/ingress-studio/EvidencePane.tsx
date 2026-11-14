@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { PushPin } from "@phosphor-icons/react";
+import { Pin } from "lucide-react";
 import { useKernelQuery } from "@/lib/useKernelQuery";
 import { ipc } from "@/ipc";
 import { cn } from "@/design-system/lib/utils";
@@ -41,7 +41,7 @@ export function EvidencePane({
   return (
     <div className="flex flex-col gap-3.5 pb-8">
       <div className="flex items-center gap-2.5">
-        <PushPin
+        <Pin
           aria-hidden="true"
           size={12}
           className="flex-none text-[var(--fg-muted)]"

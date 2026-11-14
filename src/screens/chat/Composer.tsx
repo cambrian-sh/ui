@@ -1,4 +1,5 @@
-import { useRef } from 'react';
+import { useCallback, useRef } from 'react';
+import { useShortcut } from '@/components/ShortcutKeys';
 import { ArrowUp } from 'lucide-react';
 import { Button } from '@/design-system/components/ui/button';
 import {
@@ -47,6 +48,17 @@ export function Composer({
   className,
 }: ComposerProps) {
   const ref = useRef<HTMLTextAreaElement>(null);
+  // Shortcuts c / i (ShortcutKeys): switch to the mode and focus the input.
+  const focusMessage = useCallback(() => {
+    onModeChange('message');
+    ref.current?.focus();
+  }, [onModeChange]);
+  const focusInject = useCallback(() => {
+    onModeChange('inject');
+    ref.current?.focus();
+  }, [onModeChange]);
+  useShortcut('chat', focusMessage);
+  useShortcut('inject', focusInject);
 
   const submit = () => {
     const trimmed = value.trim();

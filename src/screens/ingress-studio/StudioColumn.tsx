@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { WarningCircle } from "@phosphor-icons/react";
+import { CircleAlert } from "lucide-react";
 import { Button } from "@/design-system/components";
 import { useKernelQuery } from "@/lib/useKernelQuery";
 import { useMutation } from "@/lib/useMutation";
@@ -452,7 +452,7 @@ export function StudioColumn({
 
           {/* ── The sticky bar: one next action, one blocker ────────── */}
           <div className="flex flex-none items-center gap-3 border-t border-[var(--border-subtle)] bg-[var(--bg-base)] px-5 py-2.5">
-            <WarningCircle
+            <CircleAlert
               aria-hidden="true"
               size={15}
               className={cn(

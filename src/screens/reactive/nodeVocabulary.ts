@@ -263,16 +263,34 @@ export function deliveryMode(kind: string): string | null {
     // before the acknowledgement was lost.
     case "notify":
     case "emit_event":
-    case "dispatch_agent":
-    case "start_plan":
     case "fetch":
       return "at-least-once";
+    // ADR-0155 stage 3 (ENG-1265, owner 2026-11-14): an agent call whose
+    // outcome is unknown is recorded for review, never re-sent; and one plan
+    // key starts at most one plan (a retry after an unknown outcome reports
+    // "already started").
+    case "dispatch_agent":
+    case "start_plan":
+      return "at-most-once";
     // ClassDecision: it costs money per attempt, and a repeat is a new answer.
     case "decide":
       return "at-most-once";
     default:
       return null;
   }
+}
+
+/**
+ * The constraint the kernel refuses an effect node with when no runtime in THIS
+ * deployment can execute it (ADR-0155 D3, ENG-1265). The canvas greys such a
+ * node out rather than letting it look like an ordinary step: it would fail
+ * every item if armed, and Validate/Arm refuse it.
+ */
+export const NO_DISPATCHER = "no-dispatcher";
+
+/** True when one of a node's refusals says it cannot run in this deployment. */
+export function isUnavailableHere(refusals: ReadonlyArray<{ constraint: string }>): boolean {
+  return refusals.some((r) => r.constraint === NO_DISPATCHER);
 }
 
 /**
@@ -284,6 +302,8 @@ export function deliveryMode(kind: string): string | null {
  */
 export function refusalAction(constraint: string): string | null {
   switch (constraint) {
+    case NO_DISPATCHER:
+      return "Remove it — not wired in this deployment";
     case "unwired-port":
       return "Wire it to a node";
     case "unnamed-discard":

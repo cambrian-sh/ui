@@ -227,6 +227,32 @@ describe('the contradictions pane', () => {
   });
 });
 
+// ENG-468 (owner decision 2026-11-14): kernel-reserved memory_fact is never queried
+// for contradictions — two people's memories are not a business-object conflict.
+describe('the contradictions pane and reserved kinds', () => {
+  it('never queries memory_fact', async () => {
+    vi.mocked(ipc.knowledgeQuery).mockClear();
+    render(
+      <ContradictionsPane
+        kinds={[
+          { kind: 'memory_fact', count: 900 },
+          { kind: 'commitment', count: 6 },
+        ]}
+      />,
+    );
+    await waitFor(() => expect(ipc.knowledgeQuery).toHaveBeenCalled());
+    const kinds = vi.mocked(ipc.knowledgeQuery).mock.calls.map((c) => c[0].item_kind);
+    expect(kinds).toEqual(['commitment']);
+  });
+
+  it('says there is nothing to compare when only memory facts exist', () => {
+    vi.mocked(ipc.knowledgeQuery).mockClear();
+    render(<ContradictionsPane kinds={[{ kind: 'memory_fact', count: 900 }]} />);
+    expect(screen.getByText(/No business-object kinds are modelled yet/)).toBeInTheDocument();
+    expect(ipc.knowledgeQuery).not.toHaveBeenCalled();
+  });
+});
+
 // ---------------------------------------------------------------------------
 // Row rendering: dynamic columns, undecodable rows stay visible
 // ---------------------------------------------------------------------------

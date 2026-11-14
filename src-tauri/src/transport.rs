@@ -29,7 +29,7 @@ use crate::state::{DuplicateEffectKey, NodeItem, NodeReads, PipelineDryRun, Pipe
     ConversationSummary, GeneratorSpec, GeneratorTestResult, InterviewOption, InterviewQuestion,
     MCPServerConfigSpec, MCPServerTestResult,
     PlanProposal, PlanProposalResponse, PlanValidationIssue, PreviewCandidate, PreviewRanked,
-    PreviewRouteResult, RoleAssignment, SkillSummary, StateOfRecord, SubmitPlanResult, ToolSummary,
+    PreviewRouteResult, RoleAssignment, StateOfRecord, SubmitPlanResult, ToolSummary,
     WatchAction, WatchBacktestVerdict, WatchConfigFull, WatchConfigSummary, WatchDeadLetter,
     WatchMetrics,
 };
@@ -148,6 +148,12 @@ pub struct MemoryHit {
     pub tags: Vec<String>,
     #[serde(flatten)]
     pub time: EventTime,
+    /// Why the ADR-0136 fact lane reached this hit (contract 0104): the matched
+    /// fact lines, the best fact cosine, and whether a matched fact holds now.
+    /// Empty / 0 / false for a hit the fact lane did not touch.
+    pub fact_matches: Vec<String>,
+    pub fact_match: f64,
+    pub fact_current: bool,
 }
 
 /// When a hit or citation's content HAPPENED (ADR-0134, contract 0099).
@@ -323,6 +329,9 @@ impl From<pb::MemoryOp> for MemoryHit {
                 m.time_source,
                 m.time_precision,
             ),
+            fact_matches: m.fact_matches,
+            fact_match: m.fact_match,
+            fact_current: m.fact_current,
         }
     }
 }
@@ -1173,6 +1182,26 @@ impl Transport {
         Ok(ack.deduped)
     }
 
+    /// End a live run TERMINALLY (contract 0102, capability "run-cancel";
+    /// T-20261106-operator-closesession-only-pauses-a-live-plan). Unlike pause, the
+    /// kernel cancels the run's context and records it cancelled (not resumable);
+    /// writes already dispatched are not rolled back. `session_id` and/or `run_id`
+    /// name the run; FailedPrecondition when nothing matching is live.
+    pub async fn cancel_run(&self, session_id: String, run_id: String, reason: String) -> Result<bool, String> {
+        let mut client = self.client().await?;
+        let ack = client
+            .cancel_run(Request::new(pb::CancelRunRequest {
+                command_id: new_command_id(),
+                reason,
+                session_id,
+                run_id,
+            }))
+            .await
+            .map_err(map_status)?
+            .into_inner();
+        Ok(ack.deduped)
+    }
+
     pub async fn resolve_hitl(
         &self,
         intervention_id: String,
@@ -1446,39 +1475,6 @@ impl Transport {
         }
         self.emit_state(app).await;
         Ok(tools)
-    }
-
-    pub async fn list_skills(&self, app: &AppHandle) -> Result<Vec<SkillSummary>, String> {
-        let mut client = self.client().await?;
-        let resp = client
-            .list_skills(Request::new(pb::ListSkillsOpRequest {
-                page: 0,
-                page_size: 0,
-                query: String::new(),
-                // ADR-0139 D13 lifecycle filters: defaults (active + stale, every
-                // source) keep this the listing it was before the fields existed.
-                ..Default::default()
-            }))
-            .await
-            .map_err(map_status)?
-            .into_inner();
-        let skills: Vec<SkillSummary> = resp
-            .skills
-            .into_iter()
-            .map(|s| SkillSummary {
-                id: s.name,
-                description: s.description,
-                scope_tags: s.scope_tags,
-                loaded_in_count: 0,
-                last_loaded_at: String::new(),
-            })
-            .collect();
-        {
-            let mut st = self.state.lock().await;
-            st.skills = skills.clone();
-        }
-        self.emit_state(app).await;
-        Ok(skills)
     }
 
     // ── Reactive: the six watch RPCs that were on the contract but unwired ───
@@ -2301,13 +2297,37 @@ impl Transport {
         app: &AppHandle,
         mut stream: tonic::Streaming<pb::OperatorEvent>,
     ) -> bool {
+        use crate::emit_coalesce::{is_control, StateEmitCoalescer, STATE_EMIT_WINDOW};
+        use std::time::Instant;
+        // kernel://state emits are coalesced: control-class events go out at once,
+        // high-frequency ones at most once per STATE_EMIT_WINDOW with the trailing
+        // change always delivered (owner decision on
+        // T-20261113-studio-rust-core-emits-full-state-per-feed). Tokens are not
+        // coalesced here; the webview batches them.
+        let mut coalesce = StateEmitCoalescer::new(STATE_EMIT_WINDOW);
         loop {
             // A quiet kernel would otherwise park us in `message()` indefinitely,
             // so a disconnect has to be able to interrupt the await itself.
+            let deadline = coalesce.deadline();
             let next = tokio::select! {
                 msg = stream.message() => msg,
                 _ = self.stop_notify.notified() => return true,
+                _ = async {
+                    match deadline {
+                        Some(d) => tokio::time::sleep_until(d.into()).await,
+                        None => std::future::pending::<()>().await,
+                    }
+                } => {
+                    if coalesce.flush_due(Instant::now()) {
+                        self.emit_state(app).await;
+                    }
+                    continue;
+                }
             };
+            // Whatever ends the stream, the webview must not keep a held change.
+            if !matches!(next, Ok(Some(_))) && coalesce.flush_due(Instant::now()) {
+                self.emit_state(app).await;
+            }
             match next {
                 Ok(Some(ev)) => {
                     use pb::operator_event::Payload;
@@ -2319,6 +2339,7 @@ impl Transport {
                                 tracing::warn!("resync snapshot failed: {e}");
                             }
                             self.emit_state(app).await;
+                            coalesce.emitted(Instant::now());
                         }
                         Some(Payload::Token(t)) => {
                             // live-only lane — never folded, never replayed.
@@ -2343,7 +2364,7 @@ impl Transport {
                                 let mut s = self.state.lock().await;
                                 s.fold(&ev)
                             };
-                            if structural {
+                            if structural && coalesce.on_change(Instant::now(), is_control(&ev)) {
                                 self.emit_state(app).await;
                             }
                         }
@@ -2929,6 +2950,8 @@ impl Transport {
             kernel_only_keys: resp.kernel_only_keys,
             current_values: resp.current_values,
             value_source: resp.value_source,
+            overrides_file: resp.overrides_file,
+            overrides_file_value: resp.overrides_file_value,
         })
     }
 
@@ -3049,7 +3072,6 @@ fn authored_step_from_pb(s: pb::AuthoredStepOp) -> AuthoredStep {
         max_energy: s.max_energy,
         recommended_model: s.recommended_model,
         checkpoint_after: s.checkpoint_after,
-        checkpoint_query: s.checkpoint_query,
         is_thought: s.is_thought,
         preferred_agent: s.preferred_agent,
         agent_pin: s.agent_pin,
@@ -3069,7 +3091,6 @@ fn authored_step_to_pb(s: AuthoredStep) -> pb::AuthoredStepOp {
         max_energy: s.max_energy,
         recommended_model: s.recommended_model,
         checkpoint_after: s.checkpoint_after,
-        checkpoint_query: s.checkpoint_query,
         is_thought: s.is_thought,
         preferred_agent: s.preferred_agent,
         agent_pin: s.agent_pin,

@@ -21,14 +21,16 @@ export function MobileRuntime() {
 
   const agents = state?.agents ?? [];
   const tools = state?.tools ?? [];
-  const skills = state?.skills ?? [];
+  // Skills are request/response state (ListSkills, ADR-0139 D13), not a feed
+  // projection — the same read the /skills screen renders.
+  const skillsQ = useKernelQuery(['skills', 'full'], () => ipc.listSkillsFull());
+  const skills = skillsQ.data ?? [];
   // MCP servers are request/response state (contract 0097), not a feed
   // projection — this read is the same one the /mcp screen renders.
   const mcp = useKernelQuery(['mcp-server-configs'], () => ipc.listMCPServerConfigs());
   const servers = mcp.data ?? [];
   const watches = state?.watch_configs ?? [];
 
-  const surveilled = state?.verifier_pool.surveillance_triggers.length ?? 0;
   const inferred = tools.filter((t) => t.effects_inferred).length;
   const serversDown = servers.filter((s) => !s.connected).length;
   const failingWatches = watches.filter((w) => w.last_fire_status === 'error').length;
@@ -45,13 +47,10 @@ export function MobileRuntime() {
       <Tile
         label="Agents"
         value={String(agents.length)}
-        tone={surveilled > 0 ? 'var(--status-warn)' : undefined}
         sentence={
           agents.length === 0
             ? 'None have reported. Agents appear when they announce readiness, so this is quiet rather than empty.'
-            : surveilled > 0
-              ? `${surveilled} under surveillance — being verified on every task until their outcomes recover.`
-              : 'All ranking normally; none under surveillance.'
+            : `${agents.length === 1 ? 'One has' : `${agents.length} have`} announced readiness.`
         }
       />
 

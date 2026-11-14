@@ -7,8 +7,7 @@
 //! - The PREMIUM planes, each mounted on the same kernel server behind the same
 //!   operator auth interceptors (ADR-0073/0088) and gated on its capability:
 //!   [`authz`], [`telegram`], [`ingress`], [`substrate`], [`accounts`], [`org`] and
-//!   `cambrian.premium.telemetry` (compiled by `build.rs`; no module here yet,
-//!   because no Rust code calls the telemetry plane).
+//!   [`telemetry`].
 
 tonic::include_proto!("cambrian");
 
@@ -28,6 +27,12 @@ pub mod authz {
 /// answers `Unimplemented`, which the UI surfaces as "not available" rather than an error.
 pub mod telegram {
     tonic::include_proto!("cambrian.premium.telegram");
+}
+
+/// The premium telemetry (Langfuse) administration plane (contract 0078, PREM-0019),
+/// behind Settings > Telemetry and the `telemetry-admin` capability.
+pub mod telemetry {
+    tonic::include_proto!("cambrian.premium.telemetry");
 }
 
 /// The premium Ingress Studio plane (ADR-0112 §13) — the full ingress
@@ -251,7 +256,24 @@ pub const RETENTION_FEED_CAPABILITY: &str = "retention-feed";
 ///   vendored here) `SpawnSubagent`, `GetMemoryNotes`, `ProposeMemoryNote`,
 ///   `ProposeSkill`. The console renders no notes or lifecycle surface yet; the
 ///   bump only keeps it off the skew banner against a 0101 kernel.
-pub const PINNED_CONTRACT_VERSION: &str = "0101";
+/// - **0102** owner decisions 2026-11-14, additive: `WhoAmI` (principal, display
+///   name, plane role, role set, `role_source`, issuer; open to every role incl.
+///   member) — an OIDC sign-in asks it instead of probing Snapshot
+///   (T-20261106-operator-plane-has-no-whoami-an-oidc-signed-in); `CancelRun`
+///   (capability `run-cancel`) ends a live run terminally, unlike pause/close
+///   (T-20261106-operator-closesession-only-pauses-a-live-plan). The task page
+///   renders a "Cancel run" control behind the capability.
+/// - **0103** owner decision 2026-11-14, additive: read-only fact inspection
+///   `ListFacts` / `GetFactChain` / `GetFactCoverage` (capability `facts-inspect`;
+///   T-20261103-operator-plane-cannot-inspect-facts-no-rpc). The console renders no
+///   facts surface yet; the bump keeps it off the skew banner against a 0103 kernel.
+/// - **0104** 2026-11-15, additive: `MemoryOp.fact_matches` / `fact_match` /
+///   `fact_current` (rendered on the memory source card; ENG-461) and
+///   `ConfigSchemaOp.overrides_file` / `overrides_file_value` (ADR-0101 D8; ENG-257).
+///   The agent-plane `ExecuteToolResponse.annotations` (ENG-629) is not vendored here.
+///   Also `IngestMemoryOpRequest.source_kind` / `title` / `author` and
+///   `MemoryPartOp.speaker` (ADR-0136 A3.5; ENG-460) — the console sends none yet.
+pub const PINNED_CONTRACT_VERSION: &str = "0104";
 
 /// The plugin versions this console was BUILT against, by plugin id (ADR-0089).
 ///

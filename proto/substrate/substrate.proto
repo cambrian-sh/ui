@@ -112,6 +112,29 @@ service SubstrateLane {
   // directions, aliases, recent timeline, evidence. NotFound for an id that is
   // not an object and for one the caller may not know exists alike.
   rpc GetObject(GetObjectRequest) returns (GetObjectResponse);
+
+  // ── Listings (T-20261113-link-building-suite-reads-the-kernel-s-postgres,
+  // owner decision 2026-11-14). What the identity plane produced, readable by a
+  // black-box client: the links, the minted handles, and which event a source
+  // record became. Before these a client could see links only one entity at a
+  // time (the entity op) or as the review queue, so the link_building benchmark
+  // read the substrate tables directly. All three run as the system principal
+  // on this plane (the Query rule: the owner fence applies), are confined to one
+  // namespace, paged in id order with an opaque page_token, and fenced in core
+  // (domain.SubstrateCatalog): a row resting on evidence the reader may not
+  // read is never listed. A page can come back short; next_page_token is empty
+  // only when nothing follows.
+
+  // ListLinks lists a namespace's link assertions, optionally by state and
+  // producer prefix. Retracted assertions are left out unless asked for.
+  rpc ListLinks(ListLinksRequest) returns (ListLinksResponse);
+
+  // ListEvents lists a namespace's events by source_ref prefix: which event
+  // a source record became. Retired events are never listed.
+  rpc ListEvents(ListEventsRequest) returns (ListEventsResponse);
+
+  // ListEntityHandles lists a namespace's minted entity handles.
+  rpc ListEntityHandles(ListEntityHandlesRequest) returns (ListEntityHandlesResponse);
 }
 
 // ── Objects (ADR-0149 D6, D7) ────────────────────────────────────────────────
@@ -291,6 +314,12 @@ message GetObjectResponse {
   repeated ObjectTimelineEntry timeline = 12;
   // Every evidence id the page cites, once.
   repeated string evidence = 13;
+  // An OPEN kind's undeclared properties (the row's extra values), read-only and
+  // ordered by name. Each is fenced by its OWN classification and parties, so a
+  // caller sees exactly the extras it may read. Never filterable in ListObjects
+  // and never what makes an object exist for a caller. Additive (ENG-1109, owner
+  // decision 2026-11-15); an older kernel sends none.
+  repeated ObjectProperty extra_properties = 14;
 }
 
 message GetOntologyRequest {
@@ -674,4 +703,72 @@ message EventRow {
   google.protobuf.Timestamp occurred_at = 3;
   map<string, string> roles = 4;
   string evidence_id = 5;
+}
+
+// ── Listings (ListLinks, ListEvents, ListEntityHandles) ─────────────────────
+
+message ListLinksRequest {
+  string namespace_id = 1;      // "" = "default"
+  repeated string states = 2;   // candidate | confirmed; empty = all
+  string producer_prefix = 3;   // literal prefix of the producer (name@version)
+  bool include_retracted = 4;
+  string page_token = 5;
+  int32 limit = 6;              // 0 = 50; capped by the kernel
+}
+
+message LinkRow {
+  string id = 1;
+  string family = 2;     // identity | relation | lineage
+  string from_ref = 3;
+  string to_ref = 4;
+  string relation = 5;
+  string state = 6;
+  string mechanism = 7;
+  string producer = 8;
+  double confidence = 9;
+  string evidence_id = 10;
+  google.protobuf.Timestamp valid_from = 11;   // unset = unbounded
+  google.protobuf.Timestamp valid_to = 12;     // unset = unbounded
+  google.protobuf.Timestamp retracted_at = 13; // set only with include_retracted
+  google.protobuf.Timestamp recorded_at = 14;
+}
+
+message ListLinksResponse {
+  repeated LinkRow links = 1;
+  string next_page_token = 2;
+}
+
+message ListEventsRequest {
+  string namespace_id = 1;      // "" = "default"
+  string source_ref_prefix = 2; // literal; "" = every event that has a source_ref
+  string page_token = 3;
+  int32 limit = 4;              // 0 = 50; capped by the kernel
+}
+
+message ListedEvent {
+  string id = 1;
+  string event_type = 2;
+  string source_ref = 3;
+  google.protobuf.Timestamp occurred_at = 4;
+}
+
+message ListEventsResponse {
+  repeated ListedEvent events = 1;
+  string next_page_token = 2;
+}
+
+message ListEntityHandlesRequest {
+  string namespace_id = 1; // "" = "default"
+  string page_token = 2;
+  int32 limit = 3;         // 0 = 50; capped by the kernel
+}
+
+message EntityHandle {
+  string id = 1;
+  string kind = 2;
+}
+
+message ListEntityHandlesResponse {
+  repeated EntityHandle entities = 1;
+  string next_page_token = 2;
 }

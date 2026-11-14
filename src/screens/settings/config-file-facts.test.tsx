@@ -105,6 +105,22 @@ describe('StoredOverrides', () => {
     expect(screen.getAllByRole('button', { name: /to file/ })).toHaveLength(1);
   });
 
+  // Contract 0104 (ADR-0101 D8): the file a stored key overrides, with its value.
+  it('names the file a stored key overrides and the file value there', () => {
+    render(
+      <StoredOverrides
+        valueSource={{ 'execution.ewma_alpha': 'store', 'execution.tool_menu_k': 'store' }}
+        currentValues={{ 'execution.ewma_alpha': 0.3 }}
+        overridesFile={{ 'execution.ewma_alpha': 'tuning.json' }}
+        overridesFileValue={{ 'execution.ewma_alpha': '0.5' }}
+      />,
+    );
+    expect(screen.getByText('tuning.json')).toBeInTheDocument();
+    expect(screen.getByText('0.5')).toBeInTheDocument();
+    // A stored key no file states names no file.
+    expect(screen.getAllByText(/^overrides/)).toHaveLength(1);
+  });
+
   it('renders nothing when the store supplies no key', () => {
     const { container } = render(
       <StoredOverrides valueSource={{ a: 'default' }} currentValues={{}} />,

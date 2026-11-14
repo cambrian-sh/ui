@@ -59,7 +59,8 @@ message TelemetryConfig {
   bool   secret_key_configured = 6;
   string secret_key_last_four = 7;
 
-  // sample_rate in [0,1].
+  // sample_rate in [0,1]: the share of traces kept, decided deterministically
+  // per trace id (every observation of one trace is kept or dropped together).
   double sample_rate = 8;
 
   // ── The three disclosure switches ────────────────────────────────────────
@@ -77,8 +78,12 @@ message TelemetryConfig {
   // whatever the caller could read.
   bool send_prompts_and_outputs = 10;
 
-  // send_from_enforcing_surfaces: whether traces are sent for work done under an
-  // ENFORCED access policy. Off by default, and the default is the point.
+  // send_from_enforcing_surfaces: whether prompt/completion CONTENT is sent for
+  // work done under an ENFORCED access policy. Off by default, and the default
+  // is the point. With it off, enforced work still sends a structure-only trace
+  // (names, timings, token counts — no text) when send_structure_and_timings is
+  // on. Kernel organs and ingestion that run with no scope or with the explicit
+  // Bypass are not enforcing surfaces (owner decision 2026-11-14).
   //
   // Anything the access policy protects inside Cambrian is NOT protected once it
   // is a trace. A closed label exists precisely so content does not travel;

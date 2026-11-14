@@ -2,7 +2,12 @@ import { Badge } from '@/design-system/components/ui/badge';
 import { cn } from '@/design-system/lib/utils';
 import type { DispatchTrace } from '@/ipc/types';
 
-export type PlanStepStatus = 'pending' | 'running' | 'done' | 'failed' | 'skipped';
+/**
+ * `unreported`: the kernel has not said. A plan seen only via Snapshot carries a
+ * step COUNT but no per-step state until its first PlanState event; rendering
+ * those rows as done/running would invent progress (T-20261106-snapshot-only-plans-render-fabricated-step).
+ */
+export type PlanStepStatus = 'pending' | 'running' | 'done' | 'failed' | 'skipped' | 'unreported';
 
 export interface PlanStep {
   step_id: string;
@@ -33,8 +38,9 @@ function StepDot({ status }: { status: PlanStepStatus }) {
       />
     );
   }
-  if (status === 'pending') {
+  if (status === 'pending' || status === 'unreported') {
     // A ring, not a disc: pending is an outline of a step, not a filled one.
+    // An unreported step draws the same ring: nothing is known to have happened.
     return (
       <span
         aria-hidden="true"
@@ -115,6 +121,7 @@ const STATUS_TAG: Record<
   done: { label: 'Done', variant: 'neutral' },
   failed: { label: 'Failed', variant: 'err' },
   skipped: { label: 'Skipped', variant: 'neutral' },
+  unreported: { label: 'Not reported yet', variant: 'outline' },
 };
 
 export function PlanStepList({
@@ -172,7 +179,8 @@ export function PlanStepList({
                   'flex-1 truncate text-[13.5px]',
                   s.status === 'running' && 'font-medium text-[var(--fg-primary)]',
                   s.status === 'done' && 'text-[var(--fg-primary)] opacity-60',
-                  s.status === 'pending' && 'text-[var(--fg-primary)] opacity-[0.42]',
+                  (s.status === 'pending' || s.status === 'unreported') &&
+                    'text-[var(--fg-primary)] opacity-[0.42]',
                   s.status === 'failed' && 'text-[var(--status-err)]',
                   s.status === 'skipped' && 'text-[var(--fg-muted)] line-through',
                 )}

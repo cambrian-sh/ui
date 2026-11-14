@@ -1,4 +1,4 @@
-import { Check, CaretDown } from "@phosphor-icons/react";
+import { Check, ChevronDown } from "lucide-react";
 import { cn } from "@/design-system/lib/utils";
 import type { Stage } from "./studioStages";
 
@@ -48,7 +48,7 @@ export function Receipt({
           <Check
             aria-hidden="true"
             size={13}
-            weight="bold"
+            strokeWidth={2.5}
             className="flex-none text-[var(--color-accent-400)]"
           />
           <span className="flex-none text-[12.5px] font-medium">
@@ -58,7 +58,7 @@ export function Receipt({
             {stage.line}
           </span>
           {children !== undefined && (
-            <CaretDown
+            <ChevronDown
               aria-hidden="true"
               size={10}
               className={cn(

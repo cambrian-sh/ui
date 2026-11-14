@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useStore } from "zustand";
 import { projectionStore } from "@/store/projection";
-import { Button, ScrollArea } from "@/design-system/components";
+import { Button, ReasonField, ScrollArea, useReasonGate } from "@/design-system/components";
+import type { ReasonGate } from "@/design-system/components";
+import { useCommandGate } from "@/lib/useCommandGate";
 import { ipc } from "@/ipc";
 import { useKernelQuery } from "@/lib/useKernelQuery";
 import { cn } from "@/design-system/lib/utils";
@@ -103,6 +105,15 @@ export function PipelineCanvas({
   const [draftRefusals, setDraftRefusals] = useState<PipelineRefusal[] | null>(null);
   /** The DRAFT's field projection, from the same validate call. */
   const [draftFields, setDraftFields] = useState<FieldSchema | null>(null);
+  // ui/AGENTS.md: a mutating command asks useCommandGate, carries a client
+  // command_id that a retry of the SAME intent reuses, and (where the contract
+  // has one) a mandatory reason that lands in the audit log. Before ENG-1176 the
+  // canvas sent neither, and a viewer or a reconnecting session saw live
+  // Save/Publish/Arm controls — arming makes a revision live.
+  const commandGate = useCommandGate("change pipelines");
+  const reasonGate = useReasonGate();
+  const saveCmd = useRef<{ key: string; id: string } | null>(null);
+  const transitionCmd = useRef<{ key: string; id: string } | null>(null);
   /** A field being followed across the graph, if any. */
   const [followedField, setFollowedField] = useState<string | null>(null);
 
@@ -434,7 +445,9 @@ export function PipelineCanvas({
     if (!draft) return;
     setSaving(true);
     try {
-      const res = await ipc.savePipeline(JSON.stringify(draft));
+      const json = JSON.stringify(draft);
+      const res = await ipc.savePipeline(json, commandIdFor(saveCmd, json));
+      saveCmd.current = null; // answered: the next save is a new intent
       if (res.refused !== "") {
         setNotice(res.refused);
         return;
@@ -454,6 +467,10 @@ export function PipelineCanvas({
       setDraftRefusals(null);
       setDraftFields(null);
       void graph.refetch();
+    } catch (err) {
+      // No answer from the kernel: the intent stands, and pressing again
+      // re-sends it under the SAME command_id, so it cannot act twice.
+      setNotice(`Could not reach the kernel (${String(err)}). Try again — the retry is the same command.`);
     } finally {
       setSaving(false);
     }
@@ -461,19 +478,26 @@ export function PipelineCanvas({
 
   /** Move this pipeline along its lifecycle (contract 0093). */
   async function transition(toState: string) {
+    if (commandGate !== undefined || !reasonGate.satisfied) return; // the button says why
+    const revision = savedRevision ?? pipeline.revision;
+    const reason = reasonGate.reason.trim();
     setTransitioning(true);
     try {
       const res = await ipc.transitionPipeline(
         pipeline.pipeline_id,
         toState,
-        savedRevision ?? pipeline.revision,
+        revision,
+        reason,
+        commandIdFor(transitionCmd, `${pipeline.pipeline_id}|${toState}|${revision}|${reason}`),
       );
+      transitionCmd.current = null;
       if (res.refused !== "") {
         // The gate that held, in the registry's own words.
         setNotice(res.refused);
         return;
       }
       setLiveState(res.state);
+      reasonGate.reset();
       setNotice(
         res.state === "armed"
           ? `Revision ${res.revision} is LIVE — every new delivery now runs through this graph.`
@@ -482,6 +506,10 @@ export function PipelineCanvas({
             : `Revision ${res.revision} is now ${res.state}.`,
       );
       void graph.refetch();
+    } catch (err) {
+      // No answer from the kernel: the intent stands, and pressing again
+      // re-sends it under the SAME command_id, so it cannot act twice.
+      setNotice(`Could not reach the kernel (${String(err)}). Try again — the retry is the same command.`);
     } finally {
       setTransitioning(false);
     }
@@ -494,6 +522,8 @@ export function PipelineCanvas({
         liveState={liveState}
         transitioning={transitioning}
         onTransition={(to) => void transition(to)}
+        commandGate={commandGate}
+        reasonGate={reasonGate}
         doc={doc}
         refusals={refusals}
         editing={editing}
@@ -766,12 +796,18 @@ function LifecycleButton({
   refusals,
   transitioning,
   onTransition,
+  commandGate,
+  reasonMissing = false,
 }: {
   state: string;
   blocked: boolean;
   refusals: number;
   transitioning: boolean;
   onTransition: (toState: string) => void;
+  /** useCommandGate's refusal, when this session may not mutate. */
+  commandGate?: string;
+  /** No audited reason yet: the kernel records why a revision moved. */
+  reasonMissing?: boolean;
 }) {
   const next =
     state === "draft" || state === "validated"
@@ -787,10 +823,14 @@ function LifecycleButton({
   return (
     <Button
       size="sm"
-      disabled={held || transitioning}
+      disabled={held || transitioning || commandGate !== undefined || reasonMissing}
       title={
-        held
+        commandGate !== undefined
+          ? commandGate
+          : held
           ? `${refusals} ${refusals === 1 ? "refusal stands" : "refusals stand"} — fix them and this unlocks`
+          : reasonMissing
+          ? "Give a reason first — every lifecycle change is audited"
           : next.to === "armed"
             ? "Arming makes this revision the live one: every new delivery runs through it"
             : undefined
@@ -821,7 +861,13 @@ function Header({
   onEdit,
   onDiscard,
   onSave,
+  commandGate,
+  reasonGate,
 }: {
+  /** useCommandGate's refusal, when this session may not mutate. */
+  commandGate?: string;
+  /** The audited reason a lifecycle transition carries. */
+  reasonGate?: ReasonGate;
   pipeline: PipelineSummary;
   /** The state after a transition this session — outranks the stale summary. */
   liveState?: string | null;
@@ -900,7 +946,12 @@ function Header({
               {/* Save stays available while refusals stand. An operator
                   mid-edit needs to keep their work, and a draft cannot run —
                   what refusals hold is Publish. */}
-              <Button size="sm" onClick={onSave} disabled={saving}>
+              <Button
+                size="sm"
+                onClick={onSave}
+                disabled={saving || commandGate !== undefined}
+                title={commandGate}
+              >
                 {saving ? "Saving…" : "Save as draft"}
               </Button>
             </>
@@ -923,6 +974,15 @@ function Header({
               publishes, a published revision arms, an armed one pauses.
               Refusals hold it — a graph that breaks rules cannot move — and
               the kernel's gates each still get their say server-side. */}
+          {!editing && !isNew && onTransition && state !== "retired" && reasonGate && (
+            <ReasonField
+              gate={reasonGate}
+              id="pipeline-transition-reason"
+              label="Reason for the lifecycle change"
+              disabled={transitioning || commandGate !== undefined}
+              className="min-w-[16rem]"
+            />
+          )}
           {!editing && !isNew && onTransition && (
             <LifecycleButton
               state={state}
@@ -930,6 +990,8 @@ function Header({
               refusals={refusals.length}
               transitioning={transitioning}
               onTransition={onTransition}
+              commandGate={commandGate}
+              reasonMissing={reasonGate !== undefined && !reasonGate.satisfied}
             />
           )}
           <Button size="sm" variant="ghost" onClick={onClose}>
@@ -1285,3 +1347,19 @@ export function portCounts(dry: PipelineDryRun | undefined): Counts {
 }
 
 export { FAMILY_LABEL };
+
+/**
+ * The command_id for one intent (ui/AGENTS.md): a retry of the SAME intent
+ * (same key) reuses the id it was first sent with, so the kernel can answer a
+ * replay with its first answer instead of acting twice; a different intent gets
+ * a fresh id. The caller clears the ref once the kernel has answered.
+ */
+function commandIdFor(ref: { current: { key: string; id: string } | null }, key: string): string {
+  if (ref.current?.key === key) return ref.current.id;
+  const id =
+    typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : `cmd-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+  ref.current = { key, id };
+  return id;
+}

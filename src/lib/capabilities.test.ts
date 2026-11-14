@@ -38,6 +38,8 @@ const KERNEL_ADVERTISES = [
   // OSS base: contract 0099
   'logout',
   'memory-event-time',
+  // OSS base: contract 0102
+  'run-cancel',
   // conditional: contract 0100
   'upload-replace',
   // conditional: contract 0101 (ADR-0139 + integrations), each when its store is wired

@@ -7,6 +7,7 @@ import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { HeaderBar } from "@/components/HeaderBar";
 import { MobileTabBar } from "@/components/MobileTabBar";
 import { NavChords } from "@/components/NavChords";
+import { ShortcutKeys } from "@/components/ShortcutKeys";
 import { useInspectorHost } from "@/components/InspectorSlot";
 import { NavRail } from "@/design-system/components";
 import { CommandPalette, ShortcutPalette } from "@/screens/palette/CommandPalette";
@@ -32,7 +33,7 @@ import { useBreakpoint } from "@/lib/useBreakpoint";
  *  2. The bottom status strip is gone. Its contents moved to where they are
  *     read — connection and cursor into the header pill, plans onto the rail.
  *     (Spend and breaker readouts went with it and have no screen today: they
- *     read a `cost_dashboard` the Rust fold never populates — see HeaderBar.)
+ *     read a `cost_dashboard` the Rust fold never populated — see HeaderBar.)
  *  3. The rail is grouped and carries the "Needs you" inbox, so the operator's
  *     one blocking question is visible from every screen.
  */
@@ -221,6 +222,7 @@ export function Shell() {
       {isMobile && <MobileTabBar needsYouCount={needsYouCount} role={role} />}
 
       <NavChords />
+      <ShortcutKeys />
       {paletteOpen && <CommandPalette onClose={() => setPaletteOpen(false)} />}
       {shortcutOpen && <ShortcutPalette onClose={() => setShortcutOpen(false)} />}
     </div>,

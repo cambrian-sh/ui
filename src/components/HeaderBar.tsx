@@ -28,7 +28,8 @@ const CONNECTION_COPY: Record<ConnectionStatus, { label: string; tone: string; d
  * The connection, as one honest object: a word and a dot in the bar, and the
  * details — endpoint, versions, the cursor — one click away instead of always
  * printed at low contrast. (Spend and breaker readouts were removed 2026-11-06:
- * they read a `cost_dashboard` the Rust fold never populates, so they always
+ * they read a `cost_dashboard` the Rust fold never populated (the field itself
+ * was removed 2026-11-15), so they always
  * said 0.)
  */
 function ConnectionStatusButton({

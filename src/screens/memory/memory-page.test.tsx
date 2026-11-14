@@ -75,18 +75,8 @@ function makeState(overrides: Partial<StateOfRecord> = {}): StateOfRecord {
     pending_hitl: [],
     agents: [],
     tools: [],
-    skills: [],
     scope: {},
     watch_configs: [],
-    lifecycle: { scheduler_state: 'idle', pending_jobs: 0, last_consolidation: null, dormancy_events: [] },
-    verifier_pool: { pool_agents: [], recent_rounds: [], surveillance_triggers: [] },
-    cost_dashboard: {
-      spend_rate_usd: 0,
-      circuit_breakers: [],
-      max_energy_per_step: 0.5,
-      price_ledger: [],
-      recent_acquires: [],
-    },
     memory_written: [],
     ...overrides,
   };
@@ -116,6 +106,24 @@ describe('SourceCard', () => {
     render(<SourceCard hit={makeHit()} index={1} />);
     expect(screen.getByLabelText('Section path')).toHaveTextContent('Ops Review › 3.2 Incidents');
     expect(screen.getByLabelText('score 0.82')).toBeInTheDocument();
+  });
+
+  // Contract 0104 (ENG-461): a hit the fact lane reached says so, with its facts.
+  it('shows the matched facts of a fact-lane hit', () => {
+    render(
+      <SourceCard
+        hit={makeHit({ fact_matches: ['user home_city = Paris'], fact_match: 0.81, fact_current: true })}
+        index={1}
+      />,
+    );
+    const facts = screen.getByLabelText('Matched facts');
+    expect(facts).toHaveTextContent('Found through a fact (match 0.81) · holds now');
+    expect(facts).toHaveTextContent('user home_city = Paris');
+  });
+
+  it('shows no fact block for an ordinary hit', () => {
+    render(<SourceCard hit={makeHit()} index={1} />);
+    expect(screen.queryByLabelText('Matched facts')).not.toBeInTheDocument();
   });
 
   it('hides the breadcrumb for a flat document', () => {

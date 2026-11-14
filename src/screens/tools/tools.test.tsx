@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, within, fireEvent, waitFor } from '@testing-library/react';
-import { ToolsSkillsConsole } from '@/screens/tools/ToolsSkillsConsole';
+import { ToolsConsole } from '@/screens/tools/ToolsConsole';
 import { projectionStore } from '@/store/projection';
-import type { ToolSummary, SkillSummary, StateOfRecord } from '@/ipc/types';
+import type { ToolSummary, StateOfRecord } from '@/ipc/types';
 
 const searchState: { focus?: string; tab?: string } = {};
 const navigateMock = vi.fn((opts: { to?: string; search?: { focus?: string; tab?: string }; replace?: boolean }) => {
@@ -13,6 +13,11 @@ const navigateMock = vi.fn((opts: { to?: string; search?: { focus?: string; tab?
 vi.mock('@tanstack/react-router', () => ({
   useNavigate: () => navigateMock,
   useSearch: () => searchState,
+  Link: ({ to, children, ...rest }: { to: string; children: React.ReactNode }) => (
+    <a href={to} {...rest}>
+      {children}
+    </a>
+  ),
 }));
 
 function makeTool(overrides: Partial<ToolSummary> = {}): ToolSummary {
@@ -27,18 +32,7 @@ function makeTool(overrides: Partial<ToolSummary> = {}): ToolSummary {
   };
 }
 
-function makeSkill(overrides: Partial<SkillSummary> = {}): SkillSummary {
-  return {
-    id: `skill-${Math.random().toString(36).slice(2, 8)}`,
-    description: 'A test skill',
-    scope_tags: [],
-    loaded_in_count: 0,
-    last_loaded_at: new Date().toISOString(),
-    ...overrides,
-  };
-}
-
-function makeState(tools: ToolSummary[] = [], skills: SkillSummary[] = []): StateOfRecord {
+function makeState(tools: ToolSummary[] = []): StateOfRecord {
   return {
     connection: { status: 'live', endpoint: null, last_known_state_at: null, reason: null },
     role: 'operator',
@@ -54,25 +48,21 @@ function makeState(tools: ToolSummary[] = [], skills: SkillSummary[] = []): Stat
     pending_hitl: [],
     agents: [],
     tools,
-    skills,
     scope: {},
     watch_configs: [],
-    lifecycle: { scheduler_state: 'idle', pending_jobs: 0, last_consolidation: null, dormancy_events: [] },
-    verifier_pool: { pool_agents: [], recent_rounds: [], surveillance_triggers: [] },
-    cost_dashboard: { spend_rate_usd: 0, circuit_breakers: [], max_energy_per_step: 0.5, price_ledger: [], recent_acquires: [] },
   };
 }
 
-describe('ToolsSkillsConsole', () => {
+describe('ToolsConsole', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     searchState.focus = undefined;
     searchState.tab = undefined;
   });
 
-  it('renders the empty state when there are no tools or skills', () => {
+  it('renders the empty state when there are no tools', () => {
     projectionStore.setState({ state: makeState() });
-    render(<ToolsSkillsConsole />);
+    render(<ToolsConsole />);
     expect(screen.getByText('No tools registered')).toBeInTheDocument();
   });
 
@@ -83,7 +73,7 @@ describe('ToolsSkillsConsole', () => {
       makeTool({ id: 'tool-3', danger: false }),
     ];
     projectionStore.setState({ state: makeState(tools) });
-    render(<ToolsSkillsConsole />);
+    render(<ToolsConsole />);
 
     const list = screen.getByRole('list', { name: 'Tools' });
     expect(within(list).getAllByRole('button')).toHaveLength(3);
@@ -98,7 +88,7 @@ describe('ToolsSkillsConsole', () => {
   it('shows the detail panel when a tool is selected', () => {
     const tools = [makeTool({ id: 'tool-1' })];
     projectionStore.setState({ state: makeState(tools) });
-    render(<ToolsSkillsConsole />);
+    render(<ToolsConsole />);
 
     const list = screen.getByRole('list', { name: 'Tools' });
     const row = within(list).getByRole('button');
@@ -106,47 +96,31 @@ describe('ToolsSkillsConsole', () => {
 
     expect(navigateMock).toHaveBeenCalledWith({
       to: '/tools',
-      search: { focus: 'tool-1', tab: 'tools' },
+      search: { focus: 'tool-1' },
       replace: true,
     });
   });
 
-  it('switches to skills tab and shows skills', () => {
-    const skills = [makeSkill({ id: 'skill-1' })];
-    projectionStore.setState({ state: makeState([], skills) });
-    render(<ToolsSkillsConsole />);
-
-    const skillsTab = screen.getByRole('tab', { name: 'Skills' });
-    fireEvent.mouseDown(skillsTab);
-    fireEvent.click(skillsTab);
-
-    expect(navigateMock).toHaveBeenCalledWith({
-      to: '/tools',
-      search: { tab: 'skills', focus: undefined },
-      replace: true,
-    });
-
-    // Simulate the router updating the search state
-    searchState.tab = 'skills';
-    render(<ToolsSkillsConsole />);
-
-    const list = screen.getByRole('list', { name: 'Skills' });
-    expect(within(list).getAllByRole('button')).toHaveLength(1);
-    expect(within(list).getByText('skill-1')).toBeInTheDocument();
+  it('has no skills tab; it points at the /skills screen instead', () => {
+    projectionStore.setState({ state: makeState([makeTool({ id: 'tool-1' })]) });
+    render(<ToolsConsole />);
+    expect(screen.queryByRole('tab', { name: 'Skills' })).toBeNull();
+    expect(screen.queryByRole('list', { name: 'Skills' })).toBeNull();
+    expect(screen.getByRole('link', { name: 'Skills' })).toHaveAttribute('href', '/skills');
   });
 
   it('scrubs stale focus param when the tool is no longer in the list', async () => {
     searchState.focus = 'ghost-tool';
     projectionStore.setState({ state: makeState([]) });
 
-    render(<ToolsSkillsConsole />);
+    render(<ToolsConsole />);
 
     await waitFor(() =>
       expect(navigateMock).toHaveBeenCalledWith(
         expect.objectContaining({
           to: '/tools',
           replace: true,
-          search: { tab: 'tools', focus: undefined },
+          search: { focus: undefined },
         }),
       ),
     );

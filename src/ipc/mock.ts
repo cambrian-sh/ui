@@ -59,27 +59,8 @@ class MockIPC {
       pending_hitl: [],
       agents: [],
       tools: [],
-      skills: [],
       scope: {},
       watch_configs: [],
-      lifecycle: {
-        scheduler_state: 'idle',
-        pending_jobs: 0,
-        last_consolidation: null,
-        dormancy_events: [],
-      },
-      verifier_pool: {
-        pool_agents: [],
-        recent_rounds: [],
-        surveillance_triggers: [],
-      },
-      cost_dashboard: {
-        spend_rate_usd: 0,
-        circuit_breakers: [],
-        max_energy_per_step: 0.5,
-        price_ledger: [],
-        recent_acquires: [],
-      },
       memory_written: [],
     };
   }
@@ -278,6 +259,21 @@ class MockIPC {
       ...this.state,
       sessions: this.state.sessions.map((s) =>
         s.session_id === params.session_id ? { ...s, state: 'paused' } : s,
+      ),
+    };
+    this.emitState();
+    return { deduped: false };
+  }
+
+  async cancelRun(params: t.CancelRunParams): Promise<t.CommandAck> {
+    // The mock has no runs of its own: a cancelled session's plans read as failed,
+    // which is what the console shows once the kernel reports the run cancelled.
+    this.state = {
+      ...this.state,
+      plans: this.state.plans.map((p) =>
+        p.session_id === params.session_id && (p.status === 'running' || p.status === 'forming')
+          ? { ...p, status: 'failed' }
+          : p,
       ),
     };
     this.emitState();
@@ -578,10 +574,6 @@ class MockIPC {
     return { ...summary, manifest_version: '1.0', schema_json: '{}', granted_agents: [] };
   }
 
-  async listSkills(): Promise<t.SkillSummary[]> {
-    return this.state.skills;
-  }
-
   // ── ADR-0139 D13/D14 + skill grants: in-memory fixtures for the dev preview ──
 
   private mockSkills: t.SkillRecord[] = [
@@ -819,12 +811,6 @@ class MockIPC {
         approved: true,
       },
     ];
-  }
-
-  async getSkill(skillId: string): Promise<t.SkillDetail> {
-    const summary = this.state.skills.find((s) => s.id === skillId);
-    if (!summary) throw new Error(`Skill not found: ${skillId}`);
-    return { ...summary, skill_md: '# Skill', bundled_tool_grants: [], where_loaded: [] };
   }
 
   async getScope(agentId: string): Promise<t.ScopeDetail> {
@@ -1099,6 +1085,7 @@ class MockIPC {
     toState: string,
     revision = 0,
     _reason = '',
+    _commandId = '',
   ): Promise<t.PipelineTransitioned> {
     return { refused: '', pipeline_id: pipelineId, revision: revision || 1, state: toState };
   }
@@ -1561,16 +1548,20 @@ class MockIPC {
   async getTelemetryConfig(): Promise<t.TelemetryConfig> {
     return this.fx.telemetry;
   }
-  async setTelemetryConfig(config: t.TelemetryConfig, _reason: string): Promise<t.CommandAck> {
+  async setTelemetryConfig(config: t.TelemetryConfig, _reason: string): Promise<t.TelemetryAck> {
     this.fx.telemetry = config;
-    return this.ack();
+    return { ok: true, error: '', warning: '' };
   }
-  async setTelemetrySecretKey(_key: string): Promise<t.SaveOutcome> {
-    this.fx.telemetry = { ...this.fx.telemetry, secret_key_configured: true };
-    return this.saved();
+  async setTelemetrySecretKey(key: string, _reason: string): Promise<t.TelemetryAck> {
+    this.fx.telemetry = {
+      ...this.fx.telemetry,
+      secret_key_configured: true,
+      secret_key_last_four: key.slice(-4),
+    };
+    return { ok: true, error: '', warning: '' };
   }
   async sendTestTrace(): Promise<t.TestTraceResult> {
-    return { ok: true, round_trip_ms: 212, error: '' };
+    return { ok: true, latency_ms: 212, error: '', trace_id: 'mock-trace', host: this.fx.telemetry.host };
   }
 
   // ---- Chat routing and the plan builder ----
@@ -1612,7 +1603,6 @@ class MockIPC {
       max_energy: 0.5,
       recommended_model: '',
       checkpoint_after: false,
-      checkpoint_query: '',
       preferred_agent: '',
       agent_pin: '',
       is_thought: false,
@@ -1739,11 +1729,6 @@ class MockIPC {
     this.emitState();
   }
 
-  __seedSkills(skills: t.SkillSummary[]) {
-    this.state = { ...this.state, skills };
-    this.emitState();
-  }
-
   __seedScope(scope: Record<string, t.ScopeSummary>) {
     this.state = { ...this.state, scope };
     this.emitState();
@@ -1768,21 +1753,6 @@ class MockIPC {
         { ...ev, seq: this.memoryWrittenSeq++, written_at: new Date().toISOString() },
       ],
     };
-    this.emitState();
-  }
-
-  __seedLifecycle(lifecycle: t.LifecycleState) {
-    this.state = { ...this.state, lifecycle };
-    this.emitState();
-  }
-
-  __seedVerifierPool(pool: t.VerifierPoolState) {
-    this.state = { ...this.state, verifier_pool: pool };
-    this.emitState();
-  }
-
-  __seedCostDashboard(dashboard: t.CostDashboard) {
-    this.state = { ...this.state, cost_dashboard: dashboard };
     this.emitState();
   }
 

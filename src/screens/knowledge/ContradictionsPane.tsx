@@ -13,8 +13,15 @@ import { ErrorState } from '@/design-system/components';
 import { useKernelQuery } from '@/lib/useKernelQuery';
 import { formatCell, type KnowledgeRow, parseRows } from './rows';
 
+// Kernel-reserved knowledge kinds (cambrian-core domain.IsReservedKnowledgeKind):
+// memory_fact is keyed per WRITING principal, so two people remembering different
+// values is two memories, not a business-object conflict. Owner decision
+// 2026-11-14 (ENG-468): contradictions here mean business-object conflicts only.
+// Keep in step with the core predicate.
+export const RESERVED_KNOWLEDGE_KINDS: ReadonlySet<string> = new Set(['memory_fact']);
+
 export function ContradictionsPane({ kinds }: { kinds: KnowledgeKindCount[] }) {
-  const kindNames = kinds.map((k) => k.kind);
+  const kindNames = kinds.map((k) => k.kind).filter((k) => !RESERVED_KNOWLEDGE_KINDS.has(k));
   const query = useKernelQuery(
     ['knowledge', 'contradictions', kindNames.join(',')],
     async () => {
@@ -32,7 +39,9 @@ export function ContradictionsPane({ kinds }: { kinds: KnowledgeKindCount[] }) {
   if (kindNames.length === 0) {
     return (
       <p className="px-[var(--page-gutter)] py-6 text-[13px] text-[var(--fg-muted)]">
-        No knowledge kinds are modelled yet, so there is nothing to disagree about.
+        No business-object kinds are modelled yet, so there is nothing to disagree about.
+        (Memory facts are per-person memories, not business records, and are not compared
+        here.)
       </p>
     );
   }

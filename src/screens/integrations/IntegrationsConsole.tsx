@@ -1,5 +1,4 @@
 import { useMemo, useState } from 'react';
-import { Link } from '@tanstack/react-router';
 import {
   Button,
   Dialog,
@@ -40,6 +39,7 @@ import { ago, useCapability, useCommandGate } from '@/lib/useCommandGate';
 import { projectionStore } from '@/store/projection';
 import { useStore } from '@/store/useStore';
 import { ConfirmMutationDialog } from '@/screens/tasks/ConfirmMutationDialog';
+import { CustomServers } from './CustomServers';
 import { IntegrationsSettings } from './IntegrationsSettings';
 import { SystemsList } from './SystemsList';
 
@@ -79,7 +79,7 @@ export function IntegrationsConsole() {
           <>
             <p className="text-[12.5px] leading-[1.6] text-[var(--fg-secondary)]">
               This kernel does not serve the integration catalog (capability <code>integrations</code>). The servers
-              configured for this deployment are listed below; manage them in Runtime › MCP.
+              configured for this deployment are listed below, and can be added or changed here.
             </p>
             <IntegrationsSettings capabilities={capabilities} />
           </>
@@ -150,14 +150,11 @@ function Catalog() {
             );
           })}
         </ul>
-        <p className="text-[11.5px] text-[var(--fg-muted)]">
-          Need a server that is not listed? Add it in{' '}
-          <Link to="/mcp" search={{ focus: undefined }} className="underline underline-offset-4 hover:text-[var(--fg-primary)]">
-            Runtime › MCP
-          </Link>
-          . Local (stdio) servers run with the kernel's own privileges; there is no sandbox yet.
-        </p>
       </section>
+
+      {/* Owner decision 2026-11-15: custom (non-catalog) servers are changed here too —
+          Integrations owns every MCP server change; Runtime › MCP is read-only. */}
+      <CustomServers exclude={list.map((i) => i.id)} />
 
       {installing && (
         <InstallDialog

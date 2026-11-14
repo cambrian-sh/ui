@@ -39,7 +39,10 @@ export function ReceiptInspector({ evidenceId }: { evidenceId: string }) {
     ['source surface', row.source_id],
     ['source key', row.source_key],
     ['source revision', row.source_revision],
-    ['source time', row.source_time],
+    // ENG-285: evidence.source_time is the RECEIVE/CAPTURE time (the archive
+    // clock, ADR-0105/0112), not when the event happened — that lives on the
+    // typed rows (ADR-0147). Labelled for what it is.
+    ['received / captured at', row.source_time],
     ['ingested at', row.ingested_at],
     ['content hash', row.content_hash],
     ['content bytes', row.content_bytes],

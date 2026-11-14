@@ -116,6 +116,32 @@ describe('Explore card through GetObject', () => {
     expect(await axe(container)).toHaveNoViolations();
   });
 
+  // ENG-1109: an open kind's undeclared values show read-only in their own
+  // section, never mixed into the declared properties; absent when there are none.
+  it('shows undeclared properties read-only in their own section', async () => {
+    vi.mocked(ipc.getObject).mockResolvedValue({
+      ...page,
+      extra_properties: [
+        { property: 'carrier', value: { type: 'text', display: 'dhl' }, at: '2026-11-15T09:00:00Z',
+          source: 'erp', evidence_id: 'ev-9', conflict: false, alternatives: [] },
+      ],
+    });
+    const { container } = renderPane('order/O-1');
+    const extras = await screen.findByRole('table', { name: 'Undeclared properties' });
+    expect(extras.textContent).toContain('carrier');
+    expect(extras.textContent).toContain('dhl');
+    expect(screen.getByRole('table', { name: 'Properties' }).textContent).not.toContain('carrier');
+    expect(screen.getByRole('button', { name: 'Open receipt ev-9' })).toBeTruthy();
+    expect(await axe(container)).toHaveNoViolations();
+  });
+
+  it('has no undeclared section when the kernel sends none', async () => {
+    vi.mocked(ipc.getObject).mockResolvedValue(page);
+    renderPane('order/O-1');
+    await screen.findByRole('table', { name: 'Properties' });
+    expect(screen.queryByRole('region', { name: 'Undeclared properties' })).toBeNull();
+  });
+
   it('falls back to the query-plane card when the entity is not an object', async () => {
     vi.mocked(ipc.getObject).mockResolvedValue(null);
     vi.mocked(ipc.listKnowledgeEntities).mockResolvedValue([

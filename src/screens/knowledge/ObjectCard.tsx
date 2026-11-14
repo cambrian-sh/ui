@@ -147,6 +147,33 @@ export function ObjectCard({
         )}
       </section>
 
+      {(page.extra_properties?.length ?? 0) > 0 && (
+        <section aria-label="Undeclared properties" className="flex flex-col gap-2">
+          <h3 className="type-section-title text-[var(--fg-primary)]">Undeclared properties</h3>
+          <p className="text-[11.5px] text-[var(--fg-muted)]">
+            Values the source sent that this kind does not declare. Read-only, and not usable as
+            filters until the property is declared.
+          </p>
+          <table className="w-full text-left text-[12.5px]" aria-label="Undeclared properties">
+            <tbody>
+              {page.extra_properties!.map((p) => (
+                <tr key={p.property} className="align-top">
+                  <td className="py-1 pr-3 font-mono text-[var(--fg-muted)]">{p.property}</td>
+                  <td className="py-1 pr-3">
+                    <Value value={p.value} onSelectEntity={onSelectEntity} />
+                  </td>
+                  <td className="py-1 pr-3 text-[var(--fg-muted)]">{shortTime(p.at)}</td>
+                  <td className="py-1 pr-3 text-[var(--fg-muted)]">{p.source}</td>
+                  <td className="py-1">
+                    <Receipt id={p.evidence_id} onOpenReceipt={onOpenReceipt} />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </section>
+      )}
+
       {page.aliases.length > 0 && (
         <section aria-label="Aliases" className="flex flex-col gap-2">
           <h3 className="type-section-title text-[var(--fg-primary)]">Aliases</h3>

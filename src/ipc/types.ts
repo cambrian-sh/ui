@@ -28,9 +28,10 @@ export interface Identity {
   /** The full role SET when the kernel reported it (password login); [] otherwise. */
   roles: string[];
   /**
-   * 'kernel' when the kernel said which role this is; 'probe' when the console
-   * inferred it (the operator plane has no WhoAmI yet,
-   * T-20261106-operator-plane-has-no-whoami-an-oidc-signed-in).
+   * 'kernel' when the kernel said which role this is (LoginResponse, or WhoAmI
+   * after an OIDC sign-in, contract 0102); 'probe' only against an older kernel
+   * without WhoAmI, where the console inferred the role by probing Snapshot
+   * (T-20261106-operator-plane-has-no-whoami-an-oidc-signed-in).
    */
   role_source: 'kernel' | 'probe';
   /** When the access token expires (OIDC; 0 for a password session). */
@@ -178,6 +179,13 @@ export interface ConfigSchema {
    * that silently does nothing.
    */
   value_source: Record<string, string>;
+  /**
+   * Contract 0104 (ADR-0101 D8): for a key the store overrides AND a config file
+   * also states, the file layer ("tuning.json", …) and the file's value there.
+   * Absent from a pre-0104 kernel.
+   */
+  overrides_file?: Record<string, string>;
+  overrides_file_value?: Record<string, string>;
 }
 
 // ============================================================================
@@ -256,6 +264,17 @@ export interface InjectCorrectionParams {
 
 export interface PauseSessionParams {
   session_id: string;
+  reason: string;
+}
+
+/**
+ * CancelRun (contract 0102, capability 'run-cancel'): end a live run terminally.
+ * At least one of session_id / run_id; '' means "any". The kernel requires the
+ * reason and refuses every role but operator.
+ */
+export interface CancelRunParams {
+  session_id: string;
+  run_id: string;
   reason: string;
 }
 
@@ -338,9 +357,10 @@ export interface PlanStepNode {
   /**
    * The capability contract this step requires (ADR-0100).
    *
-   * Optional because the field arrives with the P6 contract bump that retires
-   * `AuctionEventOp`. Until then the kernel sends nothing here and the UI says
-   * so rather than inventing a capability — see `DispatchTrace`.
+   * Optional because PlanStateOp does not carry it yet (contract 0102 retired
+   * `AuctionEventOp` for `SelectionEventOp` without adding it here). Until it
+   * does, the kernel sends nothing and the UI says so rather than inventing a
+   * capability — see `DispatchTrace`.
    */
   required_capabilities?: string[];
   dispatch?: DispatchTrace;
@@ -549,12 +569,8 @@ export interface StateOfRecord {
   // UI-IMPL-21a: subsystem entity caches (projected from snapshots/events)
   agents: AgentSummary[];
   tools: ToolSummary[];
-  skills: SkillSummary[];
   scope: Record<string, ScopeSummary>;
   watch_configs: WatchConfigSummary[];
-  lifecycle: LifecycleState;
-  verifier_pool: VerifierPoolState;
-  cost_dashboard: CostDashboard;
   /**
    * Bounded tail of MemoryWrittenOps. Optional because a core predating the
    * memory page omits it entirely — read sites must tolerate `undefined` rather
@@ -763,20 +779,6 @@ export interface ToolDetail extends ToolSummary {
   manifest_version: string;
   schema_json: string;
   granted_agents: string[];
-}
-
-export interface SkillSummary {
-  id: string;
-  description: string;
-  scope_tags: string[];
-  loaded_in_count: number;
-  last_loaded_at: string; // ISO 8601
-}
-
-export interface SkillDetail extends SkillSummary {
-  skill_md: string;
-  bundled_tool_grants: string[];
-  where_loaded: string[];
 }
 
 // MCPServerSummary / MCPServerDetail (the mock-era feed-projection shapes) are
@@ -992,89 +994,6 @@ export interface WatchFire {
 }
 
 // ============================================================================
-// P2: Lifecycle (PRD-06 §12)
-// ============================================================================
-
-export interface LifecycleState {
-  scheduler_state: string; // "idle" | "consolidating" | "dormant"
-  pending_jobs: number;
-  last_consolidation: ConsolidationJob | null;
-  dormancy_events: DormancyEvent[];
-}
-
-export interface ConsolidationJob {
-  timestamp: string; // ISO 8601
-  duration_ms: number;
-  status: string; // "running" | "completed" | "failed"
-}
-
-export interface DormancyEvent {
-  agent_id: string;
-  event_type: string; // "dormant" | "reactivated"
-  timestamp: string; // ISO 8601
-}
-
-// ============================================================================
-// P2: Verifier Pool (PRD-06 §13)
-// ============================================================================
-
-export interface VerifierPoolState {
-  pool_agents: VerifierPoolAgent[];
-  recent_rounds: VerifierRound[];
-  surveillance_triggers: SurveillanceTrigger[];
-}
-
-export interface VerifierPoolAgent {
-  agent_id: string;
-  merit_score: number;
-}
-
-export interface VerifierRound {
-  task_id: string;
-  verifier_id: string;
-  target_agent: string;
-  quality_score: number;
-  cross_verification_status: string; // "pending" | "passed" | "failed"
-}
-
-export interface SurveillanceTrigger {
-  agent_id: string;
-  reason: string;
-  fired_at: string; // ISO 8601
-}
-
-// ============================================================================
-// P2: Cost & Energy (PRD-06 §14, UI-014)
-// ============================================================================
-
-export interface CostDashboard {
-  spend_rate_usd: number;
-  circuit_breakers: CircuitBreaker[];
-  max_energy_per_step: number;
-  price_ledger: PriceLedgerEntry[];
-  recent_acquires: AcquireOutcome[];
-}
-
-export interface CircuitBreaker {
-  model_id: string;
-  state: string; // "ok" | "warn" | "err"
-  reason: string;
-}
-
-export interface PriceLedgerEntry {
-  model_id: string;
-  cost_per_token: number;
-  currency: string;
-}
-
-export interface AcquireOutcome {
-  model_id: string;
-  acquired: boolean;
-  latency_ms: number;
-  timestamp: string; // ISO 8601
-}
-
-// ============================================================================
 // Token chunks (live-only lane; per EC-4 + ADR-0018).
 // Never replayed; live-only.
 // ============================================================================
@@ -1134,6 +1053,14 @@ export interface MemoryHit extends EventTimeFields {
   source: string;
   importance: number;
   tags: string[];
+  /**
+   * Why the ADR-0136 fact lane reached this hit (contract 0104): the matched fact
+   * lines, the best fact cosine and whether a matched fact holds now. Absent from a
+   * pre-0104 kernel; empty / 0 / false for a hit the fact lane did not touch.
+   */
+  fact_matches?: string[];
+  fact_match?: number;
+  fact_current?: boolean;
 }
 
 /**
@@ -2098,16 +2025,30 @@ export interface MCPServerTestResult {
 }
 
 /**
- * The roles a generator can be pointed at. `interview` was retired 2026-11-05 with
- * the LLM agent interview; the kernel no longer lists or accepts it.
+ * The roles a generator can be pointed at — the kernel's `assignableRoles`
+ * (cambrian-core app/config_write_source.go). `interview` was retired 2026-11-05 with
+ * the LLM agent interview; the kernel no longer lists or accepts it. `facts`,
+ * `thought` and `retrieval_planner` were accepted by the kernel but missing here, so
+ * the fact-extraction model could not be seen or assigned from the console
+ * (T-20261103-ui-settings-generatorrole-omits-facts-so-the).
  */
-export type GeneratorRole = 'planner' | 'verifier' | 'router' | 'memory';
+export type GeneratorRole =
+  | 'planner'
+  | 'verifier'
+  | 'router'
+  | 'memory'
+  | 'facts'
+  | 'thought'
+  | 'retrieval_planner';
 
 export const GENERATOR_ROLES: GeneratorRole[] = [
   'planner',
   'verifier',
   'router',
   'memory',
+  'facts',
+  'thought',
+  'retrieval_planner',
 ];
 
 /** Which generator serves each organ, plus the live fallback when one is open. */
@@ -2158,14 +2099,23 @@ export interface GeneratorTestResult {
 // contract requests, with the reasoning for each field.
 // ============================================================================
 
-/** `10c` Langfuse. The three switches are separate disclosure decisions. */
+/**
+ * `10c` Langfuse — premium `TelemetryAdmin.GetTelemetryConfig` (contract 0078),
+ * field for field. The three disclosure switches are separate decisions.
+ */
 export interface TelemetryConfig {
   host: string;
   project: string;
+  /**
+   * The master switch: does the kernel send traces at all. A save always carries
+   * it, so a form that dropped it would switch tracing off.
+   */
+  enabled: boolean;
   public_key_configured: boolean;
   public_key_last_four: string;
   /** Whether a secret is stored. NEVER the secret. */
   secret_key_configured: boolean;
+  secret_key_last_four: string;
   sample_rate: number;
   /** Plan/step shape, latency, token counts. No content. */
   send_structure_and_timings: boolean;
@@ -2175,10 +2125,23 @@ export interface TelemetryConfig {
   send_from_enforcing_surfaces: boolean;
 }
 
+/** `TelemetryAdmin.SendTestTrace`. */
 export interface TestTraceResult {
   ok: boolean;
-  round_trip_ms: number;
+  latency_ms: number;
   error: string;
+  trace_id: string;
+  host: string;
+}
+
+/**
+ * `TelemetryAck`: a refusal is an authoring outcome in `error`, not a transport
+ * failure; `warning` names what was saved but is not yet in effect.
+ */
+export interface TelemetryAck {
+  ok: boolean;
+  error: string;
+  warning: string;
 }
 
 /**
@@ -2350,7 +2313,6 @@ export interface AuthoredStep {
   max_energy: number;
   recommended_model: string;
   checkpoint_after: boolean;
-  checkpoint_query: string;
   /** Soft pin — goes first, ranking still behind it, a crash cascades normally. */
   preferred_agent: string;
   /** Hard pin — this agent or nothing; the step dies if it is unavailable. */
@@ -3058,6 +3020,12 @@ export interface ObjectPage {
   links: ObjectLink[];
   timeline: ObjectTimelineEntry[];
   evidence: string[];
+  /**
+   * An open kind's undeclared properties (ENG-1109): read-only, each already
+   * fenced kernel-side by its own classification; not filterable. Absent from an
+   * older kernel.
+   */
+  extra_properties?: ObjectProperty[];
 }
 
 // ── The identity plane's review lane (contract 0098) ──────────────────────
