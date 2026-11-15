@@ -86,6 +86,10 @@ pub const COMMANDS: &[&str] = &[
     "op_knowledge_entities",
     "op_get_ontology_draft",
     "op_get_object",
+    "op_get_ontology",
+    "op_apply_ontology_change",
+    "op_list_ontology_violations",
+    "op_list_objects",
     "op_studio_create_ingress",
     "op_studio_list_ingresses",
     "op_studio_get_ingress",
@@ -107,6 +111,12 @@ pub const COMMANDS: &[&str] = &[
     "op_studio_preview",
     "op_studio_shadow_reprocess",
     "op_studio_promote_repair",
+    "op_studio_set_history_lane",
+    "op_studio_start_backfill",
+    "op_studio_get_backfill",
+    "op_studio_cancel_backfill",
+    "op_studio_list_gaps",
+    "op_studio_get_repair",
     "op_studio_set_credential",
     "op_studio_clear_credential",
     "op_studio_set_egress_policy",
@@ -183,6 +193,7 @@ pub const COMMANDS: &[&str] = &[
     "op_set_integration_enabled",
     "op_test_integration",
     "op_remove_integration",
+    "op_set_integration_trust_tier",
     "op_revert_integration_to_file",
     "op_org_list_units",
     "op_org_list_people",
@@ -894,6 +905,35 @@ pub async fn dispatch(
             let a: A = parse(args)?;
             reply(super::super::op_get_object(app.state::<Transport>(), a.entity_id).await)
         }
+        "op_get_ontology" => {
+            reply(super::super::op_get_ontology(app.state::<Transport>()).await)
+        }
+        "op_apply_ontology_change" => {
+            #[derive(serde::Deserialize)]
+            struct A {
+                change_json: String,
+                reason: String,
+                dry_run: bool,
+            }
+            let a: A = parse(args)?;
+            reply(super::super::op_apply_ontology_change(app.state::<Transport>(), a.change_json, a.reason, a.dry_run).await)
+        }
+        "op_list_ontology_violations" => {
+            #[derive(serde::Deserialize)]
+            struct A {
+                limit: Option<i32>,
+            }
+            let a: A = parse(args)?;
+            reply(super::super::op_list_ontology_violations(app.state::<Transport>(), a.limit).await)
+        }
+        "op_list_objects" => {
+            #[derive(serde::Deserialize)]
+            struct A {
+                input: crate::substrate::ObjectsListInput,
+            }
+            let a: A = parse(args)?;
+            reply(super::super::op_list_objects(app.state::<Transport>(), a.input).await)
+        }
         "op_studio_create_ingress" => {
             #[derive(serde::Deserialize)]
             struct A {
@@ -1095,6 +1135,59 @@ pub async fn dispatch(
             }
             let a: A = parse(args)?;
             reply(super::super::op_studio_promote_repair(app.state::<Transport>(), a.ingress_id, a.mapping_revision, a.limit, a.reason).await)
+        }
+        "op_studio_set_history_lane" => {
+            #[derive(serde::Deserialize)]
+            struct A {
+                ingress_id: String,
+                history_transport_revision: i32,
+                reason: String,
+            }
+            let a: A = parse(args)?;
+            reply(super::super::op_studio_set_history_lane(app.state::<Transport>(), a.ingress_id, a.history_transport_revision, a.reason).await)
+        }
+        "op_studio_start_backfill" => {
+            #[derive(serde::Deserialize)]
+            struct A {
+                ingress_id: String,
+                from: String,
+                reason: String,
+            }
+            let a: A = parse(args)?;
+            reply(super::super::op_studio_start_backfill(app.state::<Transport>(), a.ingress_id, a.from, a.reason).await)
+        }
+        "op_studio_get_backfill" => {
+            #[derive(serde::Deserialize)]
+            struct A {
+                ingress_id: String,
+            }
+            let a: A = parse(args)?;
+            reply(super::super::op_studio_get_backfill(app.state::<Transport>(), a.ingress_id).await)
+        }
+        "op_studio_cancel_backfill" => {
+            #[derive(serde::Deserialize)]
+            struct A {
+                ingress_id: String,
+                reason: String,
+            }
+            let a: A = parse(args)?;
+            reply(super::super::op_studio_cancel_backfill(app.state::<Transport>(), a.ingress_id, a.reason).await)
+        }
+        "op_studio_list_gaps" => {
+            #[derive(serde::Deserialize)]
+            struct A {
+                ingress_id: String,
+            }
+            let a: A = parse(args)?;
+            reply(super::super::op_studio_list_gaps(app.state::<Transport>(), a.ingress_id).await)
+        }
+        "op_studio_get_repair" => {
+            #[derive(serde::Deserialize)]
+            struct A {
+                ingress_id: String,
+            }
+            let a: A = parse(args)?;
+            reply(super::super::op_studio_get_repair(app.state::<Transport>(), a.ingress_id).await)
         }
         "op_studio_set_credential" => {
             #[derive(serde::Deserialize)]
@@ -1739,6 +1832,16 @@ pub async fn dispatch(
             }
             let a: A = parse(args)?;
             reply(super::super::op_remove_integration(app.state::<Transport>(), a.id, a.keep_secrets, a.reason).await)
+        }
+        "op_set_integration_trust_tier" => {
+            #[derive(serde::Deserialize)]
+            struct A {
+                id: String,
+                trust_tier: String,
+                reason: String,
+            }
+            let a: A = parse(args)?;
+            reply(super::super::op_set_integration_trust_tier(app.state::<Transport>(), a.id, a.trust_tier, a.reason).await)
         }
         "op_revert_integration_to_file" => {
             #[derive(serde::Deserialize)]

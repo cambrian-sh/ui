@@ -63,6 +63,10 @@ pub struct CompiledQuery {
     /// 0 = the kernel's default window (72 h).
     pub correlation_window_seconds: i64,
     pub correlation_roles: Vec<String>,
+    /// ENG-1045: point/history/events also return RETIRED typed rows (marked
+    /// `retired` with reason/by/at). Operator plane only — the kernel refuses
+    /// it for every agent principal.
+    pub include_retired: bool,
 }
 
 /// One executed query's answer: the §14 guarantee label plus the rows.
@@ -84,11 +88,65 @@ pub struct AskOutcome {
     pub answered: bool,
     pub guarantee: String,
     pub rows: Vec<String>,
-    /// Present exactly when answered: the query that actually ran.
+    /// Present when an AST query answered: the query that actually ran.
     pub compiled: Option<CompiledQuery>,
+    /// Present when the ask answered with an objects request instead
+    /// (ADR-0149 D6, ENG-1092): what ran, rendered for the compiled chip. The
+    /// rows above carry the same answer, one row per object or group.
+    pub compiled_objects: Option<CompiledObjects>,
     pub refusal_reason: String,
     /// "memory" when the corpus lane is the right tool for the question.
     pub lane_hint: String,
+}
+
+/// The ListObjects request an ask ran, flattened for display: each condition,
+/// order key and metric as one readable string ("total gt 50000").
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct CompiledObjects {
+    pub kind: String,
+    pub conditions: Vec<String>,
+    pub links: Vec<String>,
+    pub order_by: Vec<String>,
+    pub group_by: Vec<String>,
+    pub metrics: Vec<String>,
+    pub page_size: i32,
+}
+
+fn condition_text(c: &pb::substrate::ObjectCondition) -> String {
+    let values: Vec<String> = c
+        .values
+        .iter()
+        .map(|v| value_from_wire(Some(v.clone())).display)
+        .collect();
+    format!("{} {} {}", c.property, c.op, values.join(", ")).trim_end().to_string()
+}
+
+fn compiled_objects_from_wire(r: pb::substrate::ListObjectsRequest) -> CompiledObjects {
+    CompiledObjects {
+        kind: r.kind,
+        conditions: r.r#where.iter().map(condition_text).collect(),
+        links: r
+            .links
+            .iter()
+            .map(|l| {
+                let cond = l.r#where.as_ref().map(condition_text).unwrap_or_default();
+                format!("{} → {}", l.path.join("."), cond)
+            })
+            .collect(),
+        order_by: r
+            .order_by
+            .iter()
+            .map(|o| format!("{}{}", o.property, if o.desc { " desc" } else { "" }))
+            .collect(),
+        group_by: r.group_by,
+        metrics: r
+            .metrics
+            .iter()
+            .map(|m| if m.property.is_empty() { m.r#fn.clone() } else { format!("{}({})", m.r#fn, m.property) })
+            .collect(),
+        page_size: r.page_size,
+    }
 }
 
 /// What one source surface (ingress/stream) has contributed, with the
@@ -184,6 +242,7 @@ fn to_wire(q: &CompiledQuery) -> pb::substrate::QueryRequest {
         include_correlation: q.include_correlation,
         correlation_window_seconds: q.correlation_window_seconds,
         correlation_roles: q.correlation_roles.clone(),
+        include_retired: q.include_retired,
     }
 }
 
@@ -204,6 +263,7 @@ fn from_wire(q: pb::substrate::QueryRequest) -> CompiledQuery {
         include_correlation: q.include_correlation,
         correlation_window_seconds: q.correlation_window_seconds,
         correlation_roles: q.correlation_roles,
+        include_retired: q.include_retired,
     }
 }
 
@@ -228,6 +288,7 @@ impl Transport {
             guarantee: resp.guarantee,
             rows: resp.rows,
             compiled: resp.compiled.map(from_wire),
+            compiled_objects: resp.compiled_objects.map(compiled_objects_from_wire),
             refusal_reason: resp.refusal_reason,
             lane_hint: resp.lane_hint,
         })
@@ -619,6 +680,256 @@ fn draft_from_wire(r: pb::substrate::GetOntologyDraftResponse) -> OntologyDraftV
     }
 }
 
+// ── Ontology and objects (ADR-0149 D2, D6; ENG-1395) ─────────────────────────
+//
+// The operator's governance surface over the live model layer: the current
+// declarations, a dry-run-then-apply change (Operator only, through the
+// kernel's RunOperatorMutation with a command id minted here and a mandatory
+// reason), the violations report, and the objects list. Every rule is
+// kernel-side; these are mappings.
+
+/// The current declarations of one namespace, as the kernel's JSON
+/// (`{"kinds":[…],"relations":[…]}`), with the version they are at.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct OntologyView {
+    pub namespace: String,
+    pub version: i64,
+    pub declarations_json: String,
+}
+
+/// What an apply (or its dry run) classified and did.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct OntologyApplyOutcome {
+    pub command_id: String,
+    pub deduped: bool,
+    pub applied: bool,
+    pub version: i64,
+    /// additive | tightening | breaking — the most severe among `changes`.
+    pub class: String,
+    pub changes: Vec<OntologyChangeLine>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct OntologyViolationRow {
+    pub rule: String,
+    pub subject: String,
+    /// The offending item, link or entity id.
+    pub reference: String,
+    pub detail: String,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct OntologyViolationsView {
+    pub version: i64,
+    pub violations: Vec<OntologyViolationRow>,
+    pub truncated: bool,
+}
+
+/// A typed literal as the webview enters it: `type` is date | number | text |
+/// entity and `value` its text; parsed here into the wire's typed value.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct ObjectValueInput {
+    pub r#type: String,
+    pub value: String,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct ObjectConditionInput {
+    pub property: String,
+    pub op: String,
+    pub values: Vec<ObjectValueInput>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct ObjectOrderInput {
+    pub property: String,
+    pub desc: bool,
+}
+
+/// The objects list the console asks for: one kind, ANDed conditions, sort,
+/// keyset paging. (Link filters and grouping stay on the list_objects tool.)
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct ObjectsListInput {
+    pub kind: String,
+    pub conditions: Vec<ObjectConditionInput>,
+    pub order_by: Vec<ObjectOrderInput>,
+    pub fields: Vec<String>,
+    pub page_size: i32,
+    pub page_token: String,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ObjectListValue {
+    pub property: String,
+    pub value: ObjectValue,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ObjectListRow {
+    pub entity_id: String,
+    pub values: Vec<ObjectListValue>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ObjectsList {
+    pub kind: String,
+    pub decl_version: i64,
+    pub rows: Vec<ObjectListRow>,
+    pub next_page_token: String,
+}
+
+/// A literal the operator typed, as the wire's typed value. A number or date
+/// that does not parse is refused here with the field named, rather than sent
+/// as text the kernel would refuse less helpfully.
+fn typed_value_input(v: &ObjectValueInput) -> Result<pb::substrate::TypedValue, String> {
+    use pb::substrate::typed_value::Value;
+    let value = match v.r#type.as_str() {
+        "number" => Value::Number(
+            v.value
+                .trim()
+                .parse::<f64>()
+                .map_err(|_| format!("{:?} is not a number", v.value))?,
+        ),
+        "date" => Value::Date(
+            iso_ts(v.value.trim()).ok_or_else(|| format!("{:?} is not an RFC 3339 date", v.value))?,
+        ),
+        "entity" => Value::EntityId(v.value.clone()),
+        _ => Value::Text(v.value.clone()),
+    };
+    Ok(pb::substrate::TypedValue { value: Some(value) })
+}
+
+fn list_request(input: &ObjectsListInput) -> Result<pb::substrate::ListObjectsRequest, String> {
+    let mut conditions = Vec::with_capacity(input.conditions.len());
+    for c in &input.conditions {
+        let mut values = Vec::with_capacity(c.values.len());
+        for v in &c.values {
+            values.push(typed_value_input(v).map_err(|e| format!("{} {}: {}", c.property, c.op, e))?);
+        }
+        conditions.push(pb::substrate::ObjectCondition {
+            property: c.property.clone(),
+            op: c.op.clone(),
+            values,
+        });
+    }
+    Ok(pb::substrate::ListObjectsRequest {
+        namespace: String::new(),
+        kind: input.kind.clone(),
+        r#where: conditions,
+        order_by: input
+            .order_by
+            .iter()
+            .map(|o| pb::substrate::ObjectOrder { property: o.property.clone(), desc: o.desc })
+            .collect(),
+        fields: input.fields.clone(),
+        page_size: input.page_size,
+        page_token: input.page_token.clone(),
+        ..Default::default()
+    })
+}
+
+fn objects_list_from_wire(r: pb::substrate::ListObjectsResponse) -> ObjectsList {
+    ObjectsList {
+        kind: r.kind,
+        decl_version: r.decl_version,
+        rows: r
+            .rows
+            .into_iter()
+            .map(|row| ObjectListRow {
+                entity_id: row.entity_id,
+                values: row
+                    .values
+                    .into_iter()
+                    .map(|v| ObjectListValue { property: v.property, value: value_from_wire(v.value) })
+                    .collect(),
+            })
+            .collect(),
+        next_page_token: r.next_page_token,
+    }
+}
+
+impl Transport {
+    pub async fn get_ontology(&self) -> Result<OntologyView, String> {
+        let mut client = self.substrate_client().await?;
+        let r = client
+            .get_ontology(Request::new(pb::substrate::GetOntologyRequest { namespace: String::new() }))
+            .await
+            .map_err(map_status)?
+            .into_inner();
+        Ok(OntologyView { namespace: r.namespace, version: r.version, declarations_json: r.declarations_json })
+    }
+
+    /// Dry run (classify only: no audit, no dedupe, no command id) or apply
+    /// (a fresh command id, the reason audited before the kernel applies).
+    pub async fn apply_ontology_change(
+        &self,
+        change_json: String,
+        reason: String,
+        dry_run: bool,
+    ) -> Result<OntologyApplyOutcome, String> {
+        let mut client = self.substrate_client().await?;
+        let command_id = if dry_run { String::new() } else { crate::transport::new_command_id() };
+        let r = client
+            .apply_ontology_change(Request::new(pb::substrate::ApplyOntologyChangeRequest {
+                command_id,
+                reason,
+                namespace: String::new(),
+                change_json,
+                dry_run,
+            }))
+            .await
+            .map_err(map_status)?
+            .into_inner();
+        Ok(OntologyApplyOutcome {
+            command_id: r.command_id,
+            deduped: r.deduped,
+            applied: r.applied,
+            version: r.version,
+            class: r.class,
+            changes: change_lines(r.changes),
+        })
+    }
+
+    pub async fn ontology_violations(&self, limit: i32) -> Result<OntologyViolationsView, String> {
+        let mut client = self.substrate_client().await?;
+        let r = client
+            .list_ontology_violations(Request::new(pb::substrate::ListOntologyViolationsRequest {
+                namespace: String::new(),
+                limit,
+            }))
+            .await
+            .map_err(map_status)?
+            .into_inner();
+        Ok(OntologyViolationsView {
+            version: r.version,
+            truncated: r.truncated,
+            violations: r
+                .violations
+                .into_iter()
+                .map(|v| OntologyViolationRow { rule: v.rule, subject: v.subject, reference: v.r#ref, detail: v.detail })
+                .collect(),
+        })
+    }
+
+    pub async fn list_objects(&self, input: ObjectsListInput) -> Result<ObjectsList, String> {
+        let req = list_request(&input)?;
+        let mut client = self.substrate_client().await?;
+        let r = client.list_objects(Request::new(req)).await.map_err(map_status)?.into_inner();
+        Ok(objects_list_from_wire(r))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -800,5 +1111,102 @@ mod tests {
         assert!(back.include_correlation && back.correlation_window_seconds == 3600);
         // Default stays off: the stored-lineage answer is what a plain ask gets.
         assert!(!to_wire(&CompiledQuery::default()).include_correlation);
+    }
+
+    #[test]
+    fn objects_list_input_maps_typed_literals_and_refuses_bad_ones() {
+        let input = ObjectsListInput {
+            kind: "order".into(),
+            conditions: vec![
+                ObjectConditionInput {
+                    property: "total".into(),
+                    op: "gt".into(),
+                    values: vec![ObjectValueInput { r#type: "number".into(), value: " 50000 ".into() }],
+                },
+                ObjectConditionInput {
+                    property: "due".into(),
+                    op: "lt".into(),
+                    values: vec![ObjectValueInput { r#type: "date".into(), value: "2026-12-01T00:00:00Z".into() }],
+                },
+            ],
+            order_by: vec![ObjectOrderInput { property: "total".into(), desc: true }],
+            page_size: 25,
+            page_token: "tok".into(),
+            ..Default::default()
+        };
+        let req = list_request(&input).expect("valid input");
+        assert_eq!(req.kind, "order");
+        assert_eq!(req.r#where.len(), 2);
+        use pb::substrate::typed_value::Value;
+        assert_eq!(req.r#where[0].values[0].value, Some(Value::Number(50000.0)));
+        assert!(matches!(req.r#where[1].values[0].value, Some(Value::Date(_))));
+        assert!(req.order_by[0].desc);
+        assert_eq!((req.page_size, req.page_token.as_str()), (25, "tok"));
+
+        let mut bad = input.clone();
+        bad.conditions[0].values[0].value = "lots".into();
+        let err = list_request(&bad).unwrap_err();
+        assert!(err.contains("total gt") && err.contains("not a number"), "{err}");
+    }
+
+    #[test]
+    fn objects_list_maps_rows_and_paging() {
+        use pb::substrate::{typed_value::Value, ObjectRow, PropertyValue, TypedValue};
+        let out = objects_list_from_wire(pb::substrate::ListObjectsResponse {
+            kind: "order".into(),
+            decl_version: 4,
+            rows: vec![ObjectRow {
+                entity_id: "order/O-1".into(),
+                values: vec![PropertyValue {
+                    property: "total".into(),
+                    value: Some(TypedValue { value: Some(Value::Number(72000.0)) }),
+                }],
+            }],
+            next_page_token: "next".into(),
+            ..Default::default()
+        });
+        assert_eq!(out.rows[0].entity_id, "order/O-1");
+        assert_eq!(out.rows[0].values[0].value.display, "72000");
+        assert_eq!((out.decl_version, out.next_page_token.as_str()), (4, "next"));
+    }
+
+    #[test]
+    fn compiled_objects_render_every_part() {
+        use pb::substrate::{typed_value::Value, ObjectCondition, ObjectMetric, ObjectOrder, TypedValue};
+        let c = compiled_objects_from_wire(pb::substrate::ListObjectsRequest {
+            kind: "order".into(),
+            r#where: vec![ObjectCondition {
+                property: "total".into(),
+                op: "gt".into(),
+                values: vec![TypedValue { value: Some(Value::Number(50000.0)) }],
+            }],
+            order_by: vec![ObjectOrder { property: "total".into(), desc: true }],
+            group_by: vec!["status".into()],
+            metrics: vec![ObjectMetric { r#fn: "count".into(), property: String::new() }],
+            page_size: 20,
+            ..Default::default()
+        });
+        assert_eq!(c.kind, "order");
+        assert_eq!(c.conditions, vec!["total gt 50000".to_string()]);
+        assert_eq!(c.order_by, vec!["total desc".to_string()]);
+        assert_eq!(c.group_by, vec!["status".to_string()]);
+        assert_eq!(c.metrics, vec!["count".to_string()]);
+        assert_eq!(c.page_size, 20);
+    }
+
+    #[test]
+    fn include_retired_round_trips_the_wire_and_defaults_off() {
+        let q = CompiledQuery {
+            kind: "history".into(),
+            entity_id: "order/SO-1".into(),
+            predicate: "qty".into(),
+            include_retired: true,
+            ..Default::default()
+        };
+        let wire = to_wire(&q);
+        assert!(wire.include_retired);
+        assert!(from_wire(wire).include_retired);
+        // A plain query never asks for retired rows.
+        assert!(!to_wire(&CompiledQuery::default()).include_retired);
     }
 }

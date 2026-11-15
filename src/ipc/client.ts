@@ -256,6 +256,9 @@ export const ipc = {
   removeIntegration: (p: { id: string; keep_secrets?: boolean; reason: string }): Promise<t.IntegrationMutation> =>
     invoke<t.IntegrationMutation>('op_remove_integration', { ...p }),
 
+  /** ADR-0139 D8: set (or, with "", clear) a server's sandbox tier; audited by the kernel. */
+  setIntegrationTrustTier: (p: { id: string; trust_tier: string; reason: string }): Promise<t.IntegrationMutation> =>
+    invoke<t.IntegrationMutation>('op_set_integration_trust_tier', { ...p }),
   revertIntegrationToFile: (p: { id: string; reason: string }): Promise<t.IntegrationMutation> =>
     invoke<t.IntegrationMutation>('op_revert_integration_to_file', { ...p }),
 
@@ -626,11 +629,29 @@ export const ipc = {
     invoke<string>('op_studio_shadow_reprocess', {
       ingress_id: ingressId, mapping_revision: mappingRevision, limit,
     }),
-  /** Applies the reviewed diff. Reason is mandatory. */
+  /** Starts the promotion of the reviewed diff as a background job. Reason is mandatory. */
   studioPromoteRepair: (ingressId: string, mappingRevision: number, reason: string, limit = 0): Promise<t.StudioAck> =>
     invoke<t.StudioAck>('op_studio_promote_repair', {
       ingress_id: ingressId, mapping_revision: mappingRevision, limit, reason,
     }),
+  /** Pins a transport revision on the history lane (0 clears it). Reason mandatory. */
+  studioSetHistoryLane: (ingressId: string, historyTransportRevision: number, reason: string): Promise<t.StudioAck> =>
+    invoke<t.StudioAck>('op_studio_set_history_lane', {
+      ingress_id: ingressId, history_transport_revision: historyTransportRevision, reason,
+    }),
+  /** Starts a history fill; `from` is the source's own cursor ('' = earliest, or resume). */
+  studioStartBackfill: (ingressId: string, from: string, reason: string): Promise<t.StudioAck> =>
+    invoke<t.StudioAck>('op_studio_start_backfill', { ingress_id: ingressId, from, reason }),
+  studioGetBackfill: (ingressId: string): Promise<t.StudioBackfillStatus> =>
+    invoke<t.StudioBackfillStatus>('op_studio_get_backfill', { ingress_id: ingressId }),
+  /** Stops a running fill. Reason mandatory. */
+  studioCancelBackfill: (ingressId: string, reason: string): Promise<t.StudioAck> =>
+    invoke<t.StudioAck>('op_studio_cancel_backfill', { ingress_id: ingressId, reason }),
+  studioListGaps: (ingressId: string): Promise<t.StudioGap[]> =>
+    invoke<t.StudioGap[]>('op_studio_list_gaps', { ingress_id: ingressId }),
+  /** The ingress's latest repair promotion job and its progress. */
+  studioGetRepair: (ingressId: string): Promise<t.StudioRepairStatus> =>
+    invoke<t.StudioRepairStatus>('op_studio_get_repair', { ingress_id: ingressId }),
   /** Write-only — nothing returns the value, by design. */
   studioSetCredential: (ingressId: string, name: string, value: string): Promise<t.StudioAck> =>
     invoke<t.StudioAck>('op_studio_set_credential', { ingress_id: ingressId, name, value }),
@@ -894,6 +915,26 @@ export const ipc = {
    *  object of a declared table kind (the Explore card falls back). */
   getObject: (entityId: string): Promise<t.ObjectPage | null> =>
     invoke<t.ObjectPage | null>('op_get_object', { entity_id: entityId }),
+
+  /** The live ontology's declarations (ADR-0149 D2). */
+  getOntology: (): Promise<t.OntologyView> => invoke<t.OntologyView>('op_get_ontology'),
+
+  /** Classify (dryRun) or apply an ontology change. Operator only; an apply
+   *  carries a core-minted command id and the reason, audited before it applies. */
+  applyOntologyChange: (changeJson: string, reason: string, dryRun: boolean): Promise<t.OntologyApplyOutcome> =>
+    invoke<t.OntologyApplyOutcome>('op_apply_ontology_change', {
+      change_json: changeJson,
+      reason,
+      dry_run: dryRun,
+    }),
+
+  /** Rows the current declarations would refuse if written now. */
+  listOntologyViolations: (limit = 0): Promise<t.OntologyViolationsView> =>
+    invoke<t.OntologyViolationsView>('op_list_ontology_violations', { limit }),
+
+  /** One page of the objects list (ADR-0149 D6). */
+  listObjects: (input: t.ObjectsListInput): Promise<t.ObjectsList> =>
+    invoke<t.ObjectsList>('op_list_objects', { input }),
 
   listRoleAssignments: (): Promise<t.RoleAssignment[]> =>
     invoke<t.RoleAssignment[]>('op_list_role_assignments'),

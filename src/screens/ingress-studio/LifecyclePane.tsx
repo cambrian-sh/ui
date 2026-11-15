@@ -328,8 +328,11 @@ function CredentialList({
               <span className="text-[var(--status-warn)]">not configured — deliveries answer 503</span>
             )}
           </div>
-          {/* ADR-0141: an outbound credential may come from an org account instead (inbound secrets stay here). */}
-          <AccountPicker ingressId={ingressId} slot={c.name} readOnly={readOnly} />
+          {/* ADR-0141 D4: an OUTBOUND credential may come from an org account instead; an
+              inbound secret (a webhook signing secret) is never an account, so it gets no
+              picker. A kernel older than ingress-studio 0.2.0 sends no direction: the picker
+              stays, as before, rather than disappearing from outbound slots. */}
+          {c.direction !== 'inbound' && <AccountPicker ingressId={ingressId} slot={c.name} readOnly={readOnly} />}
           {!readOnly && (
             <div className="flex items-center gap-2">
               <Input

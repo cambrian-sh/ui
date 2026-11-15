@@ -16,15 +16,17 @@
 > one file and an agent reading the other derived opposite rules. The content below
 > is the correct, current version.
 
-## Knowledge substrate & tickets (MANDATORY — every task)
+## Knowledge & tickets in HQ (MANDATORY — every task)
 
-The full protocol is root [`../AGENTS.md` §0](../AGENTS.md) — read it. **Live status lives in HQ**
-on a cut-over machine (`../cambrian-knowledge/.hq-cutover` exists — the owner's machine): use the
-`hq` MCP tools (`ready`, `create_ticket`, `update_ticket`, `list_tickets`, `brief`, `record_finding`,
-`verify_card`, `list_decisions` / `set_decision_status`, the benchmark tools) or
-`C:/Users/afsin/Dev/hq/bin/hq.exe … --config ../hq.yaml`. There the old `bin/ticket` / `bin/bench`
-scripts and the codebase-memory-mcp ticket tools **refuse writes**. Without the marker, the file
-workflow of root §0.4/§0.5 applies. In short, for every change in this repo, however small:
+The full protocol is root [`../AGENTS.md` §0](../AGENTS.md) — read it. **All project knowledge and
+all live status live in HQ**: ADRs, decisions, investigations, research and knowledge cards are
+versioned HQ documents (the `cambrian-knowledge/` repo is read-only until it is archived — never edit
+it), and tickets, ADR status, card freshness and benchmark runs are HQ records. Use the `hq` MCP
+tools (`ready`, `create_ticket`, `update_ticket`, `list_tickets`, `brief`, `read_doc`, `search_docs`,
+`write_doc`, `record_finding`, `verify_card`, `list_decisions` / `set_decision_status`, the benchmark
+tools) or `C:/Users/afsin/Dev/hq/bin/hq.exe … --config ../hq.yaml`. Every call carries your HQ token
+(MCP header; the CLI and hooks read `~/.hq/token-cambrian`) — never print it. In short, for every
+change in this repo, however small:
 
 1. **Before editing:** `ready` / `list_tickets` (`repo: "ui"`) → `create_ticket` if the work is
    not ticketed → `update_ticket` action `claim`. `brief <path>` (or the card that loads when you
@@ -32,21 +34,23 @@ workflow of root §0.4/§0.5 applies. In short, for every change in this repo, h
    touch; a drifted card or stale ADR is a claim to re-verify against code before relying on it.
 2. **While working:** `log` findings, dead ends and `decision:` lines on the ticket. A bug or
    follow-up you will not fix now gets its own `create_ticket` (`triage=true`), immediately.
-3. **Decisions:** architectural → `cambrian-knowledge/adrs/NNNN-slug.md` (proposed, per
-   `cambrian-knowledge/meta/SCHEMA.md`; its lifecycle status is set in HQ, not the frontmatter);
-   operating rule → `cambrian-knowledge/decisions/`; tradeoff → the ADR's `tradeoffs:`. **Never
-   write ADRs to `docs/adr/`** — no sub-repo has that directory; ADRs live in `cambrian-knowledge/adrs/`.
+3. **Decisions:** architectural → document `adrs/NNNN-slug.md` via `write_doc` (`status: proposed`,
+   template `meta/SCHEMA.md`; its lifecycle status is set in HQ, not the frontmatter); operating rule
+   → document `decisions/<slug>.md`; tradeoff → the ADR's `tradeoffs:`. ADR and decision writes are
+   **drafts** only the owner approves — never approve one yourself. **Never write ADRs to
+   `docs/adr/`** — no sub-repo has that directory.
 4. **Before reporting done:** benchmark runs → a run record each (`record_benchmark_run`; the
    procedure is root `../AGENTS.md` §0.5); other numbers you produced → the ADR's `measurements:`;
-   gotchas → `observations:`; re-verified ADRs → `last_verified` + `verified_at_rev`; cards you
-   re-read against code → `verify_card` (the Stop hook blocks while a card your edit drifted is
-   unverified); `CONTEXT.md` if architecture or gaps changed (never edit between the
-   `<!-- hq:cards:start -->` / `<!-- hq:cards:end -->` markers — `hq context` generates that block).
-   Then `close` the ticket with a resolution (files changed, ADRs updated, tests run and result) —
-   or, if unfinished, `log` where you stopped and `release`.
+   gotchas → `observations:` (ADR drafts) or `record_finding` on the card; re-verified ADRs →
+   `last_verified` + `verified_at_rev`; cards you re-read against code → `verify_card` (the Stop hook
+   blocks while a card your edit drifted is unverified); architecture, behaviour or gaps changed →
+   the area's card via `read_doc` → `write_doc` (with `base_rev` and a reason; never an empty or
+   truncated text). `CONTEXT.md` here is a short stub — never add facts to it. Then `close` the
+   ticket with a resolution (files changed, documents written with their revisions, drafts left for
+   the owner, tests run and result) — or, if unfinished, `log` where you stopped and `release`.
 
-Pass `by: "agent:<name>"` on ticket calls. Never hand-edit `cambrian-knowledge/tickets/`; tickets
-never close from commit messages.
+Pass `by: "agent:<name>"` on HQ calls (you are recorded as `agent:<name>@<person>`). Tickets never
+close from commit messages.
 
 **Default execution lane (ADR-0150, owner decision 2026-11-13).** A request runs in the
 **single-agent lane** by default: one agent holds the person's tools and answers itself, fanning
@@ -54,20 +58,20 @@ out read-only work through the kernel-run `run_subtasks` tool (`execution.lane.d
 single_agent`, `cambrian-core/internal/config/lane.go`). The ADR-0145 **multi-agent research lane** (planner →
 Gatekeeper → Dispatcher → DAG, coverage, verifier) runs only under `execution.lane.default:
 planner` and is kept for research — so plan views, dispatch events and Gatekeeper scoring appear
-only in that lane. See [`decisions/default-lane-single-agent-with-fan-out.md`](../cambrian-knowledge/decisions/default-lane-single-agent-with-fan-out.md).
+only in that lane. See document `decisions/default-lane-single-agent-with-fan-out.md`.
 
 ## Session Bootstrap (REQUIRED)
 
 Every new session MUST start by reading, in full:
-1. **`CONTEXT.md`** (this directory) — the project source of truth: architecture, layer responsibilities, status, decisions, glossary.
+1. **The knowledge cards for the area you will touch** — `brief <path>` in HQ (e.g. `brief ui/src-tauri`, `brief ui/src/screens/inbox`); `brief card.subsystem.operator-ui` for the whole picture. Cards (`card.ui.*`) are the source of truth for architecture, layer responsibilities, decisions and gotchas; `CONTEXT.md` here is only a stub.
 2. **`docs/prd/web-ui-prd.md`** — the product spec (what to build: 53 user stories, 24 use cases, the V1 demo path, out of scope).
 3. **`proto/operator.proto`** — the vendored, pinned gRPC contract. The *only* API to the runtime.
 
 Then read the **layer file for the layer you are working in**, and its `AGENTS.md`:
-- Working in the **Rust core / transport / state** → `src-tauri/CONTEXT.md` + `src-tauri/AGENTS.md`.
-- Working in the **webview / UI / projection** → `src/CONTEXT.md` + `src/AGENTS.md`.
+- Working in the **Rust core / transport / state** → `src-tauri/AGENTS.md` + `brief ui/src-tauri` (`card.ui.operator-transport`, `card.ui.auth-sessions`, `card.ui.dev-bridge`).
+- Working in the **webview / UI / projection** → `src/AGENTS.md` + `brief ui/src` (`card.ui.shell-routing`, `card.ui.capability-gating`, `card.ui.design-system`, the screen cards).
 
-Do not assume anything about the runtime, the transport, or the domain terminology without consulting these. For runtime-side rationale, `cambrian-knowledge/adrs/0047-operator-transport-plane-a-sequenced-grpc-surface-for-the-ca.md` is the authority (this UI consumes ADR-0047's Operator Transport Plane).
+Do not assume anything about the runtime, the transport, or the domain terminology without consulting these. For runtime-side rationale, document `adrs/0047-operator-transport-plane-a-sequenced-grpc-surface-for-the-ca.md` is the authority (this UI consumes ADR-0047's Operator Transport Plane).
 
 ## The architecture in one paragraph
 
@@ -78,8 +82,8 @@ This is a **Tauri 2** desktop app: a **Rust core** + a **React 19 / TypeScript**
 - **Only the operator plane.** The runtime is reachable through the pinned `OperatorConsole` service in `proto/operator.proto`, **plus** any premium-owned service mounted on the same kernel server behind the same operator auth interceptors — vendored under `proto/<plugin>/`, spoken over the same connection and token (ADR-0073/0088). Never call the agent-facing `Orchestrator`/`AgentService`. Never carry an `x-agent-id` principal for a human. Never bypass the kernel (no direct DB, no parallel store). The UI is a **controller over the kernel's boundary, not a back door**.
 - **A premium surface is capability-gated, never probed.** Render a plugin's panel only when `capabilities[]` from the handshake carries its string (`access-policy`, `chat`, `memory-answer`, …). The kernel forwards plugin capabilities without interpreting them (ADR-0082 D2), so this is the whole rendering contract. When the capability is absent, say what the deployment **is** — an unscoped OSS kernel is correct, not broken — and never turn the empty state into an upsell.
 - **gRPC lives in the Rust core only.** Put `tonic`/`prost` and all kernel I/O in `src-tauri`. The webview gets typed data via Tauri commands/events. Do NOT add gRPC-Web, Envoy, `protobuf.js`, or browser sockets — they are unnecessary and forbidden by the architecture (the kernel speaks native HTTP/2 gRPC, which the Rust core handles).
-- **The vendored proto is pinned and read-only.** Do not hand-edit `proto/operator.proto`. Re-vendor from the kernel repo (`api/proto/operator.proto`) when the contract bumps, and update the pinned-version header + `CONTEXT.md`.
-- **Use the kernel's vocabulary verbatim** (Substrate, ExecutionPlan, Gatekeeper, Dispatcher, TrustScore, HITL, Inject, Plans in Flight, …). Never invent synonyms. See `CONTEXT.md §10`.
+- **The vendored proto is pinned and read-only.** Do not hand-edit `proto/operator.proto`. Re-vendor from the kernel repo (`api/proto/operator.proto`) when the contract bumps, and update the pinned-version header + `card.concept.contract-version` / `card.ui.operator-transport` (`write_doc`).
+- **Use the kernel's vocabulary verbatim** (Substrate, ExecutionPlan, Gatekeeper, Dispatcher, TrustScore, HITL, Inject, Plans in Flight, …). Never invent synonyms. See `card.concept.glossary` (`brief card.concept.glossary`).
   - **Auctioneer is not in that list any more.** ADR-0100 P3 deleted the auction; `domain.Auctioneer` is `domain.StepDispatcher` and selection is capability-typed dispatch. Contract 0102 renamed the wire too: the feed payload is `SelectionEventOp` (oneof `selection`, field 35; field 10 `auction` is reserved), its candidates are `SelectionCandidateOp` (with `merit`, not a bid confidence) and the semantic gate verdict is `SemanticGateOp`. There are no bids to render.
   - **One deliberate exception: a kernel `session` is called a TASK in the UI.** Every ask an operator makes is registered as a session, and "task" is what that is to a human. The rename is presentation-only — the wire keeps `session_id`, `SessionSummary`, `op_*_session`, and the route is `/tasks`. Do not "correct" the visible copy back to Session, and do not rename the wire to Task.
 - **Realtime by default.** No "click to refresh" anywhere. State updates by folding the `StreamEvents` feed. The status of the connection (live / reconnecting / down) and what is stale must always be honest and visible.
@@ -107,7 +111,7 @@ This is a **Tauri 2** desktop app: a **Rust core** + a **React 19 / TypeScript**
 - **Account sign-in opens the SYSTEM browser from the Rust core.** `op_start_account_connect` opens the kernel's single-use start URL itself (http/https only) and returns only flow id / provider / scopes / expiry; never put the URL in webview state, a webview, or a log. Self-service account actions use `useCommandGate(action, { selfService: true })` (any role); everything org-wide is Operator-only.
 - **External systems are one page each** (ADR-0141 D9). Account, data-in and agent-action logic lives in `lib/accounts.ts`; add a new account surface there and render it on the system page, not as a second accounts screen.
 - **State of record = Rust core; projection = webview.** High-frequency event classes are batched at the core→webview seam; control classes (HITL, audit, errors, health, session lifecycle, terminal plans) are delivered immediately and un-batched. As built: `kernel://state` emits are coalesced in the Rust core to at most one per 100 ms (`src-tauri/src/emit_coalesce.rs`, `STATE_EMIT_WINDOW`; `is_control` decides the class; a control event flushes anything held, and the trailing change is always delivered). Token chunks go out on `kernel://token` one by one and the webview batches them (`createChunkBatcher`, `lib/stepOutput.ts`). Keep both halves: a new event payload gets a class in `is_control`.
-- After changing how the UI talks to the runtime (transport, recovery, auth, the consumed contract), **update `CONTEXT.md`** so it always reflects the current integration.
+- After changing how the UI talks to the runtime (transport, recovery, auth, the consumed contract), **update the card(s) for that area** (`card.ui.operator-transport`, `card.ui.auth-sessions`, …; `read_doc` → `write_doc`, then `verify_card`) so they always reflect the current integration.
 
 ## Generated files
 
@@ -116,4 +120,4 @@ This is a **Tauri 2** desktop app: a **Rust core** + a **React 19 / TypeScript**
 
 ## What works today (so you can build against reality)
 
-The runtime's Operator Transport Plane is fully implemented: all `OperatorConsole` RPCs respond; the feed carries auction / agent-ready / session-lifecycle / memory-written / HITL-raised / verifier-round / LLM-health / plan-state / audit / (best-effort) token events; commands have real effects; audit is durable. Deferred kernel-side items (design around them): always-on PauseController on the execute path, the LLM inject-planner, precise token `step_index`. See `CONTEXT.md §11`.
+The runtime's Operator Transport Plane is fully implemented: all `OperatorConsole` RPCs respond; the feed carries auction / agent-ready / session-lifecycle / memory-written / HITL-raised / verifier-round / LLM-health / plan-state / audit / (best-effort) token events; commands have real effects; audit is durable. Deferred kernel-side items (design around them): always-on PauseController on the execute path, the LLM inject-planner, precise token `step_index`. See `card.ui.operator-transport` and the open tickets `brief ui/src-tauri` lists.

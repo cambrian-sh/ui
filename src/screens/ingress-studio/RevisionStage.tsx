@@ -1,5 +1,7 @@
 import { useState } from "react";
 import { GitBranch, RotateCcw } from "lucide-react";
+import { RepairJobStatus } from "./RepairJobStatus";
+import { queryClient } from "@/lib/queryClient";
 import { Button } from "@/design-system/components";
 import { useKernelQuery } from "@/lib/useKernelQuery";
 import { ipc } from "@/ipc";
@@ -217,16 +219,20 @@ function Promotion({
   const [reason, setReason] = useState("");
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
+  const [started, setStarted] = useState(false);
 
   const promote = async () => {
     setBusy(true);
     try {
       const res = await ipc.studioPromoteRepair(ingressId, draftRevision, reason);
-      setNotice(
-        res.ok
-          ? `Promoted r${draftRevision}. What arrives from now on uses it; the ${affected.toLocaleString()} already-stored records are unchanged.`
-          : res.error,
-      );
+      // The kernel's own words: PromoteRepair STARTS a background job that
+      // re-projects the preserved deliveries under this revision; it is not
+      // finished when the call returns (RepairJobStatus follows it).
+      setNotice(res.ok ? res.detail : res.error);
+      if (res.ok) {
+        setStarted(true);
+        void queryClient.invalidateQueries({ queryKey: ["studio-repair", ingressId] });
+      }
     } catch (e) {
       setNotice(String(e));
     } finally {
@@ -296,6 +302,11 @@ function Promotion({
         <p className="mt-2 text-[11.5px] leading-[1.55] text-[var(--fg-secondary)]">
           {notice}
         </p>
+      )}
+      {started && (
+        <div className="mt-1.5">
+          <RepairJobStatus ingressId={ingressId} />
+        </div>
       )}
     </div>
   );

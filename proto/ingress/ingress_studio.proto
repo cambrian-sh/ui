@@ -107,8 +107,14 @@ service IngressStudioAdmin {
 
   // ── Repair (plan D11/D14) ──
   rpc ShadowReprocess(ReprocessRequest) returns (RepairPreviewResponse);
-  // PromoteRepair applies the reviewed diff; reason required.
+  // PromoteRepair applies the reviewed diff; reason required. It STARTS a
+  // background job and returns at once (Ack.detail names the job): the
+  // promotion pages the preserved deliveries and records its progress, which
+  // GetRepair reports. Promoting the same revision again after a failed or
+  // interrupted job resumes from its cursor.
   rpc PromoteRepair(ReprocessRequest) returns (Ack);
+  // GetRepair returns the ingress's most recent repair promotion job.
+  rpc GetRepair(IngressRef) returns (RepairStatus);
 
   // ── Credentials & egress ──
   // SetCredential stores ingress:<ingress_id>:<name> encrypted; the caller
@@ -298,6 +304,12 @@ message CredentialStatus {
   bool configured = 2;
   // last_four only — a presence indicator, never the value.
   string last_four = 3;
+  // direction ∈ inbound | outbound (ADR-0141 D4). An OUTBOUND credential is
+  // what this ingress presents to a source it reads (poller, websocket): an
+  // account reference, bound through the account picker. An INBOUND one is a
+  // secret a source presents to us (a webhook signing secret), stored as
+  // ingress:<id>:in:<name> and never an account.
+  string direction = 4;
 }
 
 message TransitionRequest {
@@ -796,6 +808,31 @@ message RepairPreviewResponse {
   bool ok = 1;
   string error = 2;
   string preview_json = 3;
+}
+
+// RepairStatus is one repair promotion job. An ingress never repaired answers
+// with state "" and a detail saying so.
+message RepairStatus {
+  string ingress_id = 1;
+  string repair_id = 2;
+  int32 mapping_revision = 3;
+  // state ∈ running | done | failed | interrupted.
+  string state = 4;
+  // examined counts deliveries read; promoted those whose candidate outputs
+  // were applied; skipped those whose record is deleted at the source or whose
+  // original bytes are not addressable (no content hash, preserved before
+  // DW-1R) — skipped deliveries keep their current outputs.
+  int64 examined = 5;
+  int64 promoted = 6;
+  int64 skipped = 7;
+  // limit is how many deliveries the job may examine; 0 = all.
+  int32 limit = 8;
+  string reason = 9;
+  // detail says why a job stopped.
+  string detail = 10;
+  string started_at = 11;
+  string updated_at = 12;
+  string finished_at = 13;
 }
 
 message SetCredentialRequest {

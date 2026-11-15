@@ -234,6 +234,11 @@ export interface IntegrationCatalogEntry {
   notes: string;
   source: string;
   multi_instance: boolean;
+  /** ADR-0140: shared | per_user | either — known before install. */
+  credential_scope: string;
+  /** The account provider each person connects (empty for shared). */
+  provider: string;
+  scopes: string[];
 }
 
 export interface IntegrationCatalog {
@@ -290,6 +295,24 @@ export interface Integration {
   classification_tags: string[];
   trust_tier: string;
   passthrough_env: string[];
+  /** ADR-0139 D8: a stdio server's effective containment; null for http/sse. */
+  containment: IntegrationContainment | null;
+}
+
+/** IntegrationContainmentOp: one stdio server's effective process containment. */
+export interface IntegrationContainment {
+  tier: string;
+  tier_source: string;
+  runner: string;
+  mechanisms: string[];
+  enforced: string[];
+  /** "control: reason" for wanted controls this platform could not enforce. */
+  missing: string[];
+  notes: string[];
+  refused: boolean;
+  disabled: boolean;
+  /** The one-line rendering; policy_summary ends with "; " + this text. */
+  summary: string;
 }
 
 export interface Integrations {

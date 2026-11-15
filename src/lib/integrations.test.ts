@@ -11,7 +11,7 @@ const integration = (o: Partial<Integration> = {}): Integration => ({
   editable: true, enabled: true, transport: 'stdio', command: 'npx', args: [], url: '', settings: {}, secrets: [],
   health: null, installed_version: '', update_available: false, missing_required: [], tool_policies: [],
   has_default_policy: false, default_policy: null, policy_summary: '', classification_tags: [], trust_tier: 'official',
-  passthrough_env: [], ...o,
+  passthrough_env: [], containment: null, ...o,
 });
 
 const entry: IntegrationCatalogEntry = {
@@ -25,6 +25,7 @@ const entry: IntegrationCatalogEntry = {
   ],
   tool_policies: [], has_default_policy: true, default_policy: null, policy_summary: '', probe_tool: '', notes: '',
   source: 'builtin', multi_instance: false,
+  credential_scope: 'shared', provider: '', scopes: [],
 };
 
 describe('integrations', () => {

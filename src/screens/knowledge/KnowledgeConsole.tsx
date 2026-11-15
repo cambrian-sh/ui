@@ -10,6 +10,9 @@
 //   Explore — the holdings overview per source surface, the entity browser,
 //     and the co-participation graph.
 //   Contradictions — the standing disagreement list, returned not resolved.
+//   Objects — the objects list of a declared kind (ADR-0149 D6, ENG-1395).
+//   Ontology — the live declarations, a dry-run-then-apply change, and the
+//     violations report (ADR-0149 D2, ENG-1395).
 //
 // This is a FULL-VISIBILITY surface: operator reads see everything, including
 // classified material, by design (ADR-0118 v1). Agent reads elsewhere are
@@ -28,6 +31,8 @@ import { cn } from '@/design-system/lib/utils';
 import { AskPane } from './AskPane';
 import { ExplorePane } from './ExplorePane';
 import { ContradictionsPane } from './ContradictionsPane';
+import { ObjectsPane } from './ObjectsPane';
+import { OntologyPane } from './OntologyPane';
 import { OverviewStrip } from './OverviewStrip';
 import { ReceiptInspector } from './ReceiptInspector';
 
@@ -38,6 +43,8 @@ const TABS = [
   { id: 'ask', label: 'Ask' },
   { id: 'explore', label: 'Explore' },
   { id: 'contradictions', label: 'Contradictions' },
+  { id: 'objects', label: 'Objects' },
+  { id: 'ontology', label: 'Ontology' },
 ] as const;
 
 export type KnowledgeTab = (typeof TABS)[number]['id'];
@@ -143,6 +150,8 @@ function KnowledgeSurfaces() {
         {tab === 'contradictions' && (
           <ContradictionsPane kinds={overviewQuery.data?.kinds ?? []} />
         )}
+        {tab === 'objects' && <ObjectsPane />}
+        {tab === 'ontology' && <OntologyPane />}
       </div>
 
       {/*

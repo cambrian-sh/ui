@@ -1309,6 +1309,42 @@ async fn op_get_object(
     transport.inner().clone().get_object(entity_id).await
 }
 
+/// The live ontology's current declarations (ADR-0149 D2; ENG-1395).
+#[tauri::command(rename_all = "snake_case")]
+async fn op_get_ontology(transport: State<'_, Transport>) -> Result<crate::substrate::OntologyView, String> {
+    transport.inner().clone().get_ontology().await
+}
+
+/// Classify (dry_run) or apply an ontology change. Operator only on the
+/// kernel; an apply carries a command id minted in the core and a reason.
+#[tauri::command(rename_all = "snake_case")]
+async fn op_apply_ontology_change(
+    transport: State<'_, Transport>,
+    change_json: String,
+    reason: String,
+    dry_run: bool,
+) -> Result<crate::substrate::OntologyApplyOutcome, String> {
+    transport.inner().clone().apply_ontology_change(change_json, reason, dry_run).await
+}
+
+/// Rows the current declarations would refuse if written now (ADR-0149 D2).
+#[tauri::command(rename_all = "snake_case")]
+async fn op_list_ontology_violations(
+    transport: State<'_, Transport>,
+    limit: Option<i32>,
+) -> Result<crate::substrate::OntologyViolationsView, String> {
+    transport.inner().clone().ontology_violations(limit.unwrap_or(0)).await
+}
+
+/// One page of the objects list (ADR-0149 D6).
+#[tauri::command(rename_all = "snake_case")]
+async fn op_list_objects(
+    transport: State<'_, Transport>,
+    input: crate::substrate::ObjectsListInput,
+) -> Result<crate::substrate::ObjectsList, String> {
+    transport.inner().clone().list_objects(input).await
+}
+
 // ── Ingress Studio (ADR-0112 §13) ──
 // Thin pass-throughs; every rule lives kernel-side. `op_studio_set_credential`
 // follows the write-only discipline: the value crosses these functions and is
@@ -1542,6 +1578,59 @@ async fn op_studio_promote_repair(
     reason: String,
 ) -> Result<crate::ingress_studio::StudioAck, String> {
     transport.inner().clone().studio_promote_repair(ingress_id, mapping_revision, limit, reason).await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_studio_set_history_lane(
+    transport: State<'_, Transport>,
+    ingress_id: String,
+    history_transport_revision: i32,
+    reason: String,
+) -> Result<crate::ingress_studio::StudioAck, String> {
+    transport.inner().clone().studio_set_history_lane(ingress_id, history_transport_revision, reason).await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_studio_start_backfill(
+    transport: State<'_, Transport>,
+    ingress_id: String,
+    from: String,
+    reason: String,
+) -> Result<crate::ingress_studio::StudioAck, String> {
+    transport.inner().clone().studio_start_backfill(ingress_id, from, reason).await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_studio_get_backfill(
+    transport: State<'_, Transport>,
+    ingress_id: String,
+) -> Result<crate::ingress_studio::StudioBackfillStatus, String> {
+    transport.inner().clone().studio_get_backfill(ingress_id).await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_studio_cancel_backfill(
+    transport: State<'_, Transport>,
+    ingress_id: String,
+    reason: String,
+) -> Result<crate::ingress_studio::StudioAck, String> {
+    transport.inner().clone().studio_cancel_backfill(ingress_id, reason).await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_studio_list_gaps(
+    transport: State<'_, Transport>,
+    ingress_id: String,
+) -> Result<Vec<crate::ingress_studio::StudioGap>, String> {
+    transport.inner().clone().studio_list_gaps(ingress_id).await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_studio_get_repair(
+    transport: State<'_, Transport>,
+    ingress_id: String,
+) -> Result<crate::ingress_studio::StudioRepairStatus, String> {
+    transport.inner().clone().studio_get_repair(ingress_id).await
 }
 
 #[tauri::command(rename_all = "snake_case")]
@@ -2407,6 +2496,16 @@ async fn op_remove_integration(
 }
 
 #[tauri::command(rename_all = "snake_case")]
+async fn op_set_integration_trust_tier(
+    transport: State<'_, Transport>,
+    id: String,
+    trust_tier: String,
+    reason: String,
+) -> Result<integrations::IntegrationMutation, String> {
+    transport.inner().clone().set_integration_trust_tier(id, trust_tier, reason).await
+}
+
+#[tauri::command(rename_all = "snake_case")]
 async fn op_revert_integration_to_file(
     transport: State<'_, Transport>,
     id: String,
@@ -2954,6 +3053,10 @@ pub fn run() {
             op_knowledge_entities,
             op_get_ontology_draft,
             op_get_object,
+            op_get_ontology,
+            op_apply_ontology_change,
+            op_list_ontology_violations,
+            op_list_objects,
             op_telegram_list_bots,
             op_telegram_add_bot,
             op_telegram_remove_bot,
@@ -2978,6 +3081,12 @@ pub fn run() {
             op_studio_preview,
             op_studio_shadow_reprocess,
             op_studio_promote_repair,
+            op_studio_get_repair,
+            op_studio_set_history_lane,
+            op_studio_start_backfill,
+            op_studio_get_backfill,
+            op_studio_cancel_backfill,
+            op_studio_list_gaps,
             op_studio_set_credential,
             op_studio_clear_credential,
             op_studio_set_egress_policy,
@@ -3032,6 +3141,7 @@ pub fn run() {
             op_test_integration,
             op_remove_integration,
             op_revert_integration_to_file,
+            op_set_integration_trust_tier,
             op_start_account_connect,
             op_get_account_connect_flow,
             op_list_my_accounts,

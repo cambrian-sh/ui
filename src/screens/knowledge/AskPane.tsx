@@ -16,7 +16,7 @@
 import { useCallback, useRef, useState } from 'react';
 import { Link } from '@tanstack/react-router';
 import { ipc } from '@/ipc';
-import type { AskOutcome, CompiledQuery } from '@/ipc/types';
+import type { AskOutcome, CompiledObjects, CompiledQuery } from '@/ipc/types';
 import { Button, ErrorState } from '@/design-system/components';
 import { GuaranteeLabel, parseRows, RowTable } from './rows';
 
@@ -91,6 +91,7 @@ export function AskPane({ onOpenReceipt }: { onOpenReceipt: (evidenceId: string)
           {outcome.answered ? (
             <>
               {outcome.compiled && <CompiledChip compiled={outcome.compiled} />}
+              {outcome.compiled_objects && <CompiledObjectsChip compiled={outcome.compiled_objects} />}
               <GuaranteeLabel guarantee={outcome.guarantee} />
               <RowTable
                 rows={parseRows(outcome.rows)}
@@ -103,6 +104,39 @@ export function AskPane({ onOpenReceipt }: { onOpenReceipt: (evidenceId: string)
           )}
         </section>
       )}
+    </div>
+  );
+}
+
+/**
+ * The objects list that ran (ADR-0149 D6, ENG-1092) — the same transparency
+ * contract as CompiledChip: the model formed the request, never the answer.
+ */
+function CompiledObjectsChip({ compiled }: { compiled: CompiledObjects }) {
+  const parts: Array<[string, string]> = [
+    ['where', compiled.conditions.join(' AND ')],
+    ['links', compiled.links.join(' AND ')],
+    ['order', compiled.order_by.join(', ')],
+    ['group by', compiled.group_by.join(', ')],
+    ['metrics', compiled.metrics.join(', ')],
+    ['page', compiled.page_size > 0 ? String(compiled.page_size) : ''],
+  ];
+  return (
+    <div
+      className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-[var(--radius-lg)] border border-[var(--card-border)] bg-[var(--bg-surface)] px-3 py-2"
+      aria-label="Compiled object list"
+    >
+      <span className="type-label text-[var(--fg-muted)]">Compiled object list</span>
+      <span className="rounded-[var(--radius-sm)] bg-[var(--bg-elevated)] px-2 py-0.5 font-mono text-[12px] font-medium text-[var(--fg-primary)]">
+        {compiled.kind}
+      </span>
+      {parts
+        .filter(([, v]) => v !== '')
+        .map(([k, v]) => (
+          <span key={k} className="font-mono text-[12px] text-[var(--fg-secondary)]">
+            {k}=<span className="text-[var(--fg-primary)]">{v}</span>
+          </span>
+        ))}
     </div>
   );
 }

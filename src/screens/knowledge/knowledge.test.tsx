@@ -119,6 +119,34 @@ describe('the ask box, answered', () => {
     expect(chip).toHaveTextContent('purchase_order/PO-800');
   });
 
+  it('renders an objects answer with the compiled object list (ENG-1092)', async () => {
+    seedAsk(
+      answered({
+        guarantee: "exact over the object tables' current values",
+        rows: ['{"entity_id":"order/O-7","kind":"order","total":72000}'],
+        compiled: null,
+        compiled_objects: {
+          kind: 'order',
+          conditions: ['total gt 50000'],
+          links: [],
+          order_by: ['total desc'],
+          group_by: [],
+          metrics: [],
+          page_size: 20,
+        },
+      }),
+    );
+    render(<AskPane onOpenReceipt={() => {}} />);
+    await ask('Which orders are over 50k?');
+
+    const chip = screen.getByLabelText('Compiled object list');
+    expect(chip).toHaveTextContent('order');
+    expect(chip).toHaveTextContent('where=total gt 50000');
+    expect(chip).toHaveTextContent('order=total desc');
+    expect(screen.queryByLabelText('Compiled query')).toBeNull();
+    expect(screen.getByText('order/O-7')).toBeInTheDocument();
+  });
+
   it('makes the evidence receipt one click from the value', async () => {
     seedAsk(answered());
     const onOpenReceipt = vi.fn();

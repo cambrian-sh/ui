@@ -776,6 +776,24 @@ export function logRecords(count = 60): t.LogRecord[] {
 }
 
 /** ADR-0149 D2: the full draft behind the mock `ontology_change` approval (hitl-3). */
+export const ONTOLOGY_VIEW: t.OntologyView = {
+  namespace: 'default',
+  version: 3,
+  declarations_json: JSON.stringify({
+    kinds: [
+      {
+        kind: 'order',
+        table: true,
+        predicates: {
+          status: { type: 'text', enum: ['open', 'late', 'shipped'] },
+          total: { type: 'number', indexed: true },
+        },
+      },
+    ],
+    relations: [{ name: 'placed_by', family: 'relation', from_kind: 'order', to_kind: 'customer' }],
+  }),
+};
+
 export const ONTOLOGY_DRAFT: t.OntologyDraftView = {
   draft_id: 'od_mock1',
   namespace: 'default',

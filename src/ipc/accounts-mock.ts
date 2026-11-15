@@ -251,8 +251,10 @@ export function createAccountsMock() {
       return {
         summary: g, latest_transport_revision: 2, latest_mapping_revision: 3, release_id: g.pinned_release, armed_transport_revision: 2, armed_mapping_revision: 3,
         capture_samples: 12, failure_count: 0,
-        credentials: [{ name: 'signing_secret', configured: true, last_four: '9f1c' }, { name: 'api_key', configured: false, last_four: '' }],
+        credentials: [{ name: 'signing_secret', configured: true, last_four: '9f1c', direction: 'inbound' }, { name: 'api_key', configured: false, last_four: '', direction: 'outbound' }],
         egress_policy_json: '{}',
+        armed_history_transport_revision: 0,
+        latest_history_transport_revision: 0,
       };
     },
   };

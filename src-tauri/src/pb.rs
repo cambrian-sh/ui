@@ -298,7 +298,7 @@ pub const PINNED_PLUGIN_VERSIONS: &[(&str, &str)] = &[
     // Access policy.
     ("authz", "1.0.0"),
     // Ingress Studio.
-    ("ingress-studio", "0.1.0"),
+    ("ingress-studio", "0.2.0"),
     // Settings > Telemetry (TelemetryAdmin plane).
     ("langfuse", "1.0.0"),
     // Organisation.

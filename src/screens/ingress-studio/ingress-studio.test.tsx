@@ -72,8 +72,10 @@ function status(over: Partial<StudioStatus> = {}): StudioStatus {
     armed_mapping_revision: 0,
     capture_samples: 2,
     failure_count: 0,
-    credentials: [{ name: 'secret', configured: false, last_four: '' }],
+    credentials: [{ name: 'secret', configured: false, last_four: '', direction: 'inbound' }],
     egress_policy_json: '',
+    armed_history_transport_revision: 0,
+    latest_history_transport_revision: 0,
     ...over,
   };
 }

@@ -63,6 +63,22 @@ export function IngressPane({ role }: { role: Role | null }) {
     }
   };
 
+  // ADR-0098 D6: progress is opted into per ingress. The toggle re-registers the
+  // same spec with the flag flipped — the registration is the one place the
+  // kernel reads it from (T-20261113-adr-0098-d6-promises-per-ingress-progress-opt).
+  const toggleProgress = async (i: IngressSpec) => {
+    try {
+      const out = await ipc.registerIngress({ ...i, progress: !i.progress });
+      if (!out.ok) {
+        setError(out.error || 'the kernel refused the change');
+        return;
+      }
+      await reload();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  };
+
   const remove = async (agentId: string) => {
     try {
       await ipc.deregisterIngress(agentId);
@@ -221,6 +237,19 @@ export function IngressPane({ role }: { role: Role | null }) {
                     )}
                   </p>
                 </div>
+                <label
+                  className="flex items-center gap-1.5 text-xs text-[var(--fg-secondary)]"
+                  title="Send this ingress's people supersedable progress lines during a long turn. The deployment-wide progress switch must also be on."
+                >
+                  <input
+                    type="checkbox"
+                    checked={i.progress === true}
+                    disabled={readOnly}
+                    onChange={() => void toggleProgress(i)}
+                    aria-label={`Progress updates for ${i.agent_id}`}
+                  />
+                  Progress updates
+                </label>
                 {!readOnly && (
                   <Button
                     size="sm"

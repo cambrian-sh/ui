@@ -108,6 +108,15 @@ describe("the node vocabulary", () => {
     expect(
       outputPorts({ id: "x", kind: "switch", config: { cases: ["a", "b"] } }),
     ).toEqual(["case:0", "case:1", "default"]);
+    // ENG-1266 step d: a condition decide (an LLM gate) routes true/false, as
+    // the kernel's compiler does; a classify decide keeps out/error.
+    expect(
+      outputPorts({ id: "x", kind: "decide", config: { output: "boolean" } }),
+    ).toEqual(["true", "false", "error"]);
+    expect(
+      outputPorts({ id: "x", kind: "decide", config: { legacy_condition_type: "llm" } }),
+    ).toEqual(["true", "false", "error"]);
+    expect(outputPorts({ id: "x", kind: "decide" })).toEqual(["out", "error"]);
   });
 
   it("uses the designed family names, because family is what says what a node can do", () => {

@@ -24,6 +24,25 @@ const tg: IngressSpec = {
 };
 
 describe('IngressPane (ADR-0090)', () => {
+  // ADR-0098 D6 (owner decision 2026-11-15): progress is opted into per ingress
+  // from here; the toggle re-registers the same spec with the flag flipped.
+  it('turns progress updates on for one ingress, keeping the rest of its registration', async () => {
+    render(<IngressPane role="operator" />);
+    const box = await screen.findByRole('checkbox', { name: 'Progress updates for telegram_ingress' });
+    expect(box).not.toBeChecked();
+    fireEvent.click(box);
+    await waitFor(() => expect(registerIngress).toHaveBeenCalledWith({ ...tg, progress: true }));
+    expect(listIngresses.mock.calls.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('shows the progress setting read-only to a viewer', async () => {
+    listIngresses.mockResolvedValue([{ ...tg, progress: true }]);
+    render(<IngressPane role="viewer" />);
+    const box = await screen.findByRole('checkbox', { name: 'Progress updates for telegram_ingress' });
+    expect(box).toBeChecked();
+    expect(box).toBeDisabled();
+  });
+
   beforeEach(() => {
     listIngresses.mockReset().mockResolvedValue([tg]);
     registerIngress.mockReset().mockResolvedValue({ ok: true, error: '', version: 0 });

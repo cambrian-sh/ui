@@ -628,6 +628,7 @@ class MockIPC {
       installed_version: '0.6.0', update_available: false, missing_required: [], tool_policies: [],
       has_default_policy: true, default_policy: null, policy_summary: 'read + egress (whole server)',
       classification_tags: [], trust_tier: 'official', passthrough_env: [],
+      containment: null,
     },
     ...(['gmail', 'google-calendar', 'slack', 'github', 'filesystem'] as const).map((id): t.Integration => ({
       id, catalog_id: id, name: { gmail: 'Gmail', 'google-calendar': 'Google Calendar', slack: 'Slack', github: 'GitHub', filesystem: 'Filesystem' }[id],
@@ -637,6 +638,7 @@ class MockIPC {
         last_error: id === 'github' ? '401 Bad credentials' : '', restart_count: 0, changed_at_unix_ms: Date.now() - 300_000 },
       installed_version: '1.0.0', update_available: false, missing_required: [], tool_policies: [], has_default_policy: true, default_policy: null,
       policy_summary: id === 'filesystem' ? 'read (whole server)' : 'read + write + egress', classification_tags: [], trust_tier: 'official', passthrough_env: [],
+      containment: null,
     })),
   ];
 
@@ -645,7 +647,8 @@ class MockIPC {
       id: '', name: '', description: '', category: '', publisher: '', license: 'MIT', trust_tier: 'official', docs_url: '',
       version: '1.0.0', transport: 'stdio', command: 'npx', args: [], url: '', runtimes: ['node>=22'], platforms: [],
       platform_supported: true, fields: [], tool_policies: [], has_default_policy: true, default_policy: null,
-      policy_summary: 'read + egress', probe_tool: '', notes: '', source: 'builtin', multi_instance: false, ...o,
+      policy_summary: 'read + egress', probe_tool: '', notes: '', source: 'builtin', multi_instance: false,
+      credential_scope: 'shared', provider: '', scopes: [], ...o,
     });
     return {
       categories: ['web-search', 'email-calendar', 'database'],
@@ -682,6 +685,10 @@ class MockIPC {
   }
   async removeIntegration(p: { id: string }): Promise<t.IntegrationMutation> {
     this.mockIntegrations = this.mockIntegrations.filter((i) => i.id !== p.id);
+    return { deduped: false, outcome: { key: p.id, stored: true, effect: 'live', shadowed_by: '', error: '' }, integration: null };
+  }
+  async setIntegrationTrustTier(p: { id: string; trust_tier: string }): Promise<t.IntegrationMutation> {
+    this.mockIntegrations = this.mockIntegrations.map((i) => (i.id === p.id ? { ...i, trust_tier: p.trust_tier } : i));
     return { deduped: false, outcome: { key: p.id, stored: true, effect: 'live', shadowed_by: '', error: '' }, integration: null };
   }
   async revertIntegrationToFile(p: { id: string }): Promise<t.IntegrationMutation> {
@@ -948,6 +955,30 @@ class MockIPC {
    *  query-plane card (GetObject answers NotFound → null). */
   getObject(_entityId: string): Promise<t.ObjectPage | null> {
     return Promise.resolve(null);
+  }
+
+  /** The mock ontology: one table kind, as the console's dev view needs. */
+  getOntology(): Promise<t.OntologyView> {
+    return Promise.resolve(structuredClone(fx.ONTOLOGY_VIEW));
+  }
+
+  applyOntologyChange(_changeJson: string, _reason: string, dryRun: boolean): Promise<t.OntologyApplyOutcome> {
+    return Promise.resolve({
+      command_id: dryRun ? '' : 'cmd-mock',
+      deduped: false,
+      applied: !dryRun,
+      version: fx.ONTOLOGY_VIEW.version + (dryRun ? 0 : 1),
+      class: 'additive',
+      changes: [{ class: 'additive', subject: 'kind order', detail: 'mock change' }],
+    });
+  }
+
+  listOntologyViolations(_limit = 0): Promise<t.OntologyViolationsView> {
+    return Promise.resolve({ version: fx.ONTOLOGY_VIEW.version, violations: [], truncated: false });
+  }
+
+  listObjects(input: t.ObjectsListInput): Promise<t.ObjectsList> {
+    return Promise.resolve({ kind: input.kind, decl_version: fx.ONTOLOGY_VIEW.version, rows: [], next_page_token: '' });
   }
 
   __seedKnowledgeAsk(outcome: t.AskOutcome) {
@@ -1356,8 +1387,10 @@ class MockIPC {
       armed_mapping_revision: armed ? 3 : 0,
       capture_samples: armed ? 25 : 0,
       failure_count: armed ? fx.studioFailures.length : 0,
-      credentials: [{ name: 'api_token', configured: armed, last_four: armed ? '9b2d' : '' }],
+      credentials: [{ name: 'api_token', configured: armed, last_four: armed ? '9b2d' : '', direction: 'outbound' }],
       egress_policy_json: '{"allow":["api.acme.example"]}',
+      armed_history_transport_revision: 0,
+      latest_history_transport_revision: 0,
     };
   }
   async studioLifecycle(_verb: string, _ingressId: string, _reason = ''): Promise<t.StudioAck> {
@@ -1456,6 +1489,34 @@ class MockIPC {
   }
   async studioPromoteRepair(_i: string, _m: number, _reason: string, _limit = 0): Promise<t.StudioAck> {
     return this.okAck();
+  }
+  async studioSetHistoryLane(_i: string, _rev: number, _reason: string): Promise<t.StudioAck> {
+    return this.okAck();
+  }
+  async studioStartBackfill(_i: string, _from: string, _reason: string): Promise<t.StudioAck> {
+    return this.okAck();
+  }
+  async studioGetBackfill(ingressId: string): Promise<t.StudioBackfillStatus> {
+    return {
+      ingress_id: ingressId, backfill_id: 'bf_mock_1', state: 'caught_up', mode: 'once', from: '',
+      cursor: 'page-40', records_done: 1200, pages_done: 40, source_total: 1200, transport_revision: 2,
+      started_at: '2026-11-15T08:00:00Z', updated_at: '2026-11-15T08:05:00Z', caught_up_at: '2026-11-15T08:05:00Z',
+      detail: '', reason: 'mock fill',
+    };
+  }
+  async studioCancelBackfill(_i: string, _reason: string): Promise<t.StudioAck> {
+    return this.okAck();
+  }
+  async studioListGaps(_i: string): Promise<t.StudioGap[]> {
+    return [];
+  }
+  async studioGetRepair(ingressId: string): Promise<t.StudioRepairStatus> {
+    return {
+      ingress_id: ingressId, repair_id: 'rp-1', mapping_revision: 2, state: 'done',
+      examined: 25, promoted: 25, skipped: 0, limit: 0, reason: 'mock repair',
+      detail: 'revision 2 promoted over preserved deliveries; superseded projections remain readable',
+      started_at: '2026-11-15T09:00:00Z', updated_at: '2026-11-15T09:00:04Z', finished_at: '2026-11-15T09:00:04Z',
+    };
   }
   async studioSetCredential(_ingressId: string, _name: string, _value: string): Promise<t.StudioAck> {
     return this.okAck();

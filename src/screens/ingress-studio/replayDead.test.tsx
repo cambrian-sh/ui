@@ -17,6 +17,8 @@ vi.mock('@/ipc', () => ({
     studioPromoteRepair: vi.fn(),
     studioShadowReprocess: vi.fn(),
     studioPreview: vi.fn().mockResolvedValue([]),
+    studioGetBackfill: vi.fn().mockResolvedValue({ backfill_id: '', state: '', detail: 'never backfilled' }),
+    studioListGaps: vi.fn().mockResolvedValue([]),
   },
 }));
 

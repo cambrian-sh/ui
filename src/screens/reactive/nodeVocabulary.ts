@@ -189,6 +189,15 @@ export function touchesWorld(kind: string): boolean {
   return SPEC_BY_KIND[kind]?.family === "effect" || kind === "apply_mapping";
 }
 
+/** Mirrors premium `pipeline.IsConditionDecide`. */
+export function isConditionDecide(node: GraphNode): boolean {
+  if (node.kind !== "decide") return false;
+  return (
+    node.config?.output === "boolean" ||
+    node.config?.legacy_condition_type === "llm"
+  );
+}
+
 /**
  * The output ports of a node, mirroring `Node.OutputPorts()`.
  *
@@ -216,9 +225,13 @@ export function outputPorts(node: GraphNode): string[] {
     case "emit_event":
     case "dispatch_agent":
     case "start_plan":
-    case "decide":
     case "fetch":
       return ["out", "error"];
+    case "decide":
+      // A CONDITION decide (an LLM gate) routes the item it judged down true or
+      // false (premium IsConditionDecide, ENG-1266 step d): config output
+      // "boolean", or a migrated watch's legacy_condition_type "llm".
+      return isConditionDecide(node) ? ["true", "false", "error"] : ["out", "error"];
     case "run_turn":
       return ["out", "refused", "error"];
     case "foreach":

@@ -855,6 +855,10 @@ pub struct IngressSpec {
     pub surface_kind: String,
     pub surface_id: String,
     pub namespace: Vec<String>,
+    /// ADR-0098 D6: this ingress's conversations get progress snapshots. Off by
+    /// default; `serde(default)` so a webview that does not send it means off.
+    #[serde(default)]
+    pub progress: bool,
 }
 
 impl Transport {
@@ -952,6 +956,7 @@ impl Transport {
                 surface_kind: i.surface_kind,
                 surface_id: i.surface_id,
                 namespace: i.namespace,
+                progress: i.progress,
             })
             .collect())
     }
@@ -968,6 +973,7 @@ impl Transport {
                     surface_kind: ingress.surface_kind,
                     surface_id: ingress.surface_id,
                     namespace: ingress.namespace,
+                    progress: ingress.progress,
                 }),
             }))
             .await

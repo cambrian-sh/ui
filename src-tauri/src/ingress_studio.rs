@@ -36,6 +36,25 @@ pub struct StudioAck {
     pub detail: String,
 }
 
+/// One repair promotion job (GetRepair). `state` is running | done | failed |
+/// interrupted, or empty when the ingress was never repaired.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StudioRepairStatus {
+    pub ingress_id: String,
+    pub repair_id: String,
+    pub mapping_revision: i32,
+    pub state: String,
+    pub examined: i64,
+    pub promoted: i64,
+    pub skipped: i64,
+    pub limit: i32,
+    pub reason: String,
+    pub detail: String,
+    pub started_at: String,
+    pub updated_at: String,
+    pub finished_at: String,
+}
+
 /// One ingress row for the rail.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StudioIngress {
@@ -52,6 +71,11 @@ pub struct StudioCredential {
     pub configured: bool,
     /// Presence indicator only — never the value.
     pub last_four: String,
+    /// `inbound` (a secret a source presents to us, e.g. a webhook signing
+    /// secret — never an account) or `outbound` (what we present to a source
+    /// we read — bindable to an org account, ADR-0141 D4). Empty from a kernel
+    /// older than ingress-studio 0.2.0.
+    pub direction: String,
 }
 
 /// The operator's whole picture of one ingress.
@@ -67,6 +91,42 @@ pub struct StudioStatus {
     pub failure_count: i32,
     pub credentials: Vec<StudioCredential>,
     pub egress_policy_json: String,
+    /// The HISTORY lane (ADR-0119): the transport revision a fill reads. 0 =
+    /// no history lane pinned / none saved.
+    pub armed_history_transport_revision: i32,
+    pub latest_history_transport_revision: i32,
+}
+
+/// One history fill (GetBackfill). Empty `backfill_id` = never filled.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StudioBackfillStatus {
+    pub ingress_id: String,
+    pub backfill_id: String,
+    /// running | caught_up | cancelled | failed | interrupted.
+    pub state: String,
+    pub mode: String,
+    pub from: String,
+    /// The FILL's cursor, in the source's vocabulary — never the live poller's.
+    pub cursor: String,
+    pub records_done: i64,
+    pub pages_done: i64,
+    /// 0 = the source publishes no total (unknown, not zero).
+    pub source_total: i64,
+    pub transport_revision: i32,
+    pub started_at: String,
+    pub updated_at: String,
+    pub caught_up_at: String,
+    pub detail: String,
+    pub reason: String,
+}
+
+/// One recorded sequence gap of a sequenced websocket (ListGaps).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StudioGap {
+    pub transport_revision: i32,
+    pub from_seq: i64,
+    pub to_seq: i64,
+    pub detected_at: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -355,10 +415,115 @@ impl Transport {
                     name: c.name,
                     configured: c.configured,
                     last_four: c.last_four,
+                    direction: c.direction,
                 })
                 .collect(),
             egress_policy_json: s.egress_policy_json,
+            armed_history_transport_revision: s.armed_history_transport_revision,
+            latest_history_transport_revision: s.latest_history_transport_revision,
         })
+    }
+
+    // ── History lane (ADR-0119; T-20261113-ingress-studio-console-has-no-history-lane) ──
+
+    /// Pin a transport revision on the history lane (0 clears it). The live
+    /// lane and any running fill are untouched.
+    pub async fn studio_set_history_lane(
+        &self,
+        ingress_id: String,
+        history_transport_revision: i32,
+        reason: String,
+    ) -> Result<StudioAck, String> {
+        let mut client = self.studio_client().await?;
+        let a = client
+            .set_history_lane(Request::new(pb::ingress::SetHistoryLaneRequest {
+                ingress_id,
+                history_transport_revision,
+                reason,
+            }))
+            .await
+            .map_err(map_status)?
+            .into_inner();
+        Ok(ack(a))
+    }
+
+    /// Start a fill. `from` is the source's own cursor (empty = the earliest
+    /// the source serves, or — after a cancelled/failed/interrupted fill of
+    /// the same revision — where that fill stopped). Mode is "once", the only one.
+    pub async fn studio_start_backfill(
+        &self,
+        ingress_id: String,
+        from: String,
+        reason: String,
+    ) -> Result<StudioAck, String> {
+        let mut client = self.studio_client().await?;
+        let a = client
+            .start_backfill(Request::new(pb::ingress::StartBackfillRequest {
+                ingress_id,
+                from,
+                mode: "once".to_string(),
+                reason,
+            }))
+            .await
+            .map_err(map_status)?
+            .into_inner();
+        Ok(ack(a))
+    }
+
+    pub async fn studio_get_backfill(&self, ingress_id: String) -> Result<StudioBackfillStatus, String> {
+        let mut client = self.studio_client().await?;
+        let b = client
+            .get_backfill(Request::new(pb::ingress::IngressRef { ingress_id }))
+            .await
+            .map_err(map_status)?
+            .into_inner();
+        Ok(StudioBackfillStatus {
+            ingress_id: b.ingress_id,
+            backfill_id: b.backfill_id,
+            state: b.state,
+            mode: b.mode,
+            from: b.from,
+            cursor: b.cursor,
+            records_done: b.records_done,
+            pages_done: b.pages_done,
+            source_total: b.source_total,
+            transport_revision: b.transport_revision,
+            started_at: b.started_at,
+            updated_at: b.updated_at,
+            caught_up_at: b.caught_up_at,
+            detail: b.detail,
+            reason: b.reason,
+        })
+    }
+
+    /// Stop a running fill. Reason mandatory kernel-side.
+    pub async fn studio_cancel_backfill(&self, ingress_id: String, reason: String) -> Result<StudioAck, String> {
+        let mut client = self.studio_client().await?;
+        let a = client
+            .cancel_backfill(Request::new(pb::ingress::TransitionRequest { ingress_id, reason }))
+            .await
+            .map_err(map_status)?
+            .into_inner();
+        Ok(ack(a))
+    }
+
+    /// Recorded sequence gaps of a sequenced websocket ingress.
+    pub async fn studio_list_gaps(&self, ingress_id: String) -> Result<Vec<StudioGap>, String> {
+        let mut client = self.studio_client().await?;
+        let g = client
+            .list_gaps(Request::new(pb::ingress::IngressRef { ingress_id }))
+            .await
+            .map_err(map_status)?
+            .into_inner();
+        Ok(g.gaps
+            .into_iter()
+            .map(|x| StudioGap {
+                transport_revision: x.transport_revision,
+                from_seq: x.from_seq,
+                to_seq: x.to_seq,
+                detected_at: x.detected_at,
+            })
+            .collect())
     }
 
     /// One helper for every lifecycle verb that is (ingress_id, reason) →
@@ -755,6 +920,34 @@ impl Transport {
             .map_err(map_status)?
             .into_inner();
         Ok(ack(a))
+    }
+
+    /// The ingress's most recent repair promotion job. PromoteRepair only
+    /// STARTS the job (it pages the preserved deliveries in the background on
+    /// the kernel), so this is how the console learns how far it got
+    /// (T-20261112-promoterepair-runs-unbounded-and-synchronously).
+    pub async fn studio_get_repair(&self, ingress_id: String) -> Result<StudioRepairStatus, String> {
+        let mut client = self.studio_client().await?;
+        let r = client
+            .get_repair(Request::new(pb::ingress::IngressRef { ingress_id }))
+            .await
+            .map_err(map_status)?
+            .into_inner();
+        Ok(StudioRepairStatus {
+            ingress_id: r.ingress_id,
+            repair_id: r.repair_id,
+            mapping_revision: r.mapping_revision,
+            state: r.state,
+            examined: r.examined,
+            promoted: r.promoted,
+            skipped: r.skipped,
+            limit: r.limit,
+            reason: r.reason,
+            detail: r.detail,
+            started_at: r.started_at,
+            updated_at: r.updated_at,
+            finished_at: r.finished_at,
+        })
     }
 
     /// Store a credential. The value passes straight through — never retained,

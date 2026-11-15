@@ -19,6 +19,8 @@ import { buildInbox } from '@/lib/inbox';
 import { accountInboxEntries } from '@/lib/accounts';
 import { ProviderClientsSettings } from '@/screens/settings/ProviderClientsSettings';
 import { AccountPicker } from '@/screens/ingress-studio/AccountPicker';
+import { LifecyclePane } from '@/screens/ingress-studio/LifecyclePane';
+import type { StudioStatus } from '@/ipc/types';
 
 function seed(capabilities: string[], role: 'operator' | 'viewer' = 'operator') {
   projectionStore.getState().hydrate({
@@ -94,6 +96,19 @@ describe('Ingress Studio account picker', () => {
     await waitFor(() =>
       expect(bind).toHaveBeenCalledWith('slack:org:T0ACME', { purpose: 'ingress', consumer_id: 'github-prs', slot: 'api_key' }, 'one bot token for all of slack'),
     );
+  });
+});
+
+// T-20261106-ingress-studio-cannot-tell-an-inbound-secret: an inbound signing
+// secret is never an account (ADR-0141 D4), so only the outbound slot gets the picker.
+describe('Ingress Studio credential list', () => {
+  it('offers an account only on the outbound credential', async () => {
+    seed(['accounts', 'ingress-studio']);
+    const status = (await ipc.studioGetIngress('github-prs')) as StudioStatus;
+    render(<LifecyclePane ingressId="github-prs" state="ARMED" status={status} readOnly={false} onChanged={() => {}} />);
+    expect(await screen.findByText('signing_secret')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getAllByLabelText('Outbound account')).toHaveLength(1));
+    expect(screen.getByLabelText('Outbound account').id).toBe('acct-github-prs-api_key');
   });
 });
 

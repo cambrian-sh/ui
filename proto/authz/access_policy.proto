@@ -403,6 +403,11 @@ message IngressSpec {
   // prefixes. Empty means unrestricted — honest for a single-ingress deployment,
   // and load-bearing the moment a second one exists.
   repeated string namespace = 4;
+  // progress opts this ingress's conversations into ADR-0098 progress
+  // snapshots ("still working on it" during a long turn). Off by default
+  // (ADR-0098 D6); the premium progress plugin's environment switch stays a
+  // deployment-wide kill switch above it.
+  bool progress = 5;
 }
 
 message ListIngressesRequest {}

@@ -31,6 +31,8 @@ function status(over: Partial<StudioStatus> = {}): StudioStatus {
     failure_count: 0,
     credentials: [],
     egress_policy_json: "",
+    armed_history_transport_revision: 0,
+    latest_history_transport_revision: 0,
     ...over,
   };
 }

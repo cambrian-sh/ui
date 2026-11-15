@@ -38,23 +38,31 @@ type Flush = () => void;
 export function useDraftPersistence(scope: 'chat' | 'inject', id: string): [string, (next: string) => void, Flush] {
   const [value, setValue] = useState<string>(() => readDraft(scope, id));
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const latest = useRef<string>(value);
+  // The one unwritten edit, with the key it was TYPED under. A write carries its
+  // own key rather than the key of whichever `flush` closure happens to run it:
+  // React defers passive effects, so a keystroke can land between the commit
+  // that switches the id and the previous id's cleanup. That cleanup used to
+  // cancel the new id's debounce timer and write `latest` under the OLD key —
+  // the half-written message vanished from the conversation it was typed in and
+  // turned up in the one the operator had left (the /chat draft test failed this
+  // way under load; T-20261115-readiness-run-failures-bench-pytest-exceeds-2).
+  const pending = useRef<{ key: string; value: string } | null>(null);
   const loadedKey = useRef<string>(key(scope, id));
-
-  useEffect(() => {
-    latest.current = value;
-  }, [value]);
 
   const flush = useCallback(() => {
     if (timer.current) {
       clearTimeout(timer.current);
       timer.current = null;
     }
+    const p = pending.current;
+    pending.current = null;
+    if (!p) return; // nothing typed since the last write: storage already holds it
     try {
-      localStorage.setItem(key(scope, id), JSON.stringify({ value: latest.current, updatedAt: new Date().toISOString() }));
+      localStorage.setItem(p.key, JSON.stringify({ value: p.value, updatedAt: new Date().toISOString() }));
     } catch {
+      // Best effort (quota, private mode): the draft stays in component state.
     }
-  }, [scope, id]);
+  }, []);
 
   useEffect(() => {
     const onBeforeUnload = () => flush();
@@ -65,27 +73,31 @@ export function useDraftPersistence(scope: 'chat' | 'inject', id: string): [stri
     };
   }, [flush]);
 
-  // Re-key: the cleanup above has already flushed the previous id's draft
-  // (React runs every cleanup before any new effect body), so what is held now
-  // belongs to the new id. Skipped on mount, where the initial state already
-  // read it.
+  // Re-key: load the new id's draft. Skipped on mount, where the initial state
+  // already read it. The outgoing id's edit is safe whatever the timing: it is
+  // pending under its own key and `flush` writes it there.
   useEffect(() => {
     const k = key(scope, id);
     if (k === loadedKey.current) return;
     loadedKey.current = k;
-    const next = readDraft(scope, id);
-    latest.current = next;
-    setValue(next);
-  }, [scope, id]);
+    // Write anything still pending first: an edit typed under this new id before
+    // this effect ran is then read straight back instead of being replaced.
+    flush();
+    setValue(readDraft(scope, id));
+  }, [scope, id, flush]);
 
   const onChange = useCallback(
     (next: string) => {
+      const k = key(scope, id);
+      // An edit pending under another key belongs to that key: write it now
+      // rather than let this one overwrite it.
+      if (pending.current && pending.current.key !== k) flush();
       setValue(next);
-      latest.current = next;
+      pending.current = { key: k, value: next };
       if (timer.current) clearTimeout(timer.current);
       timer.current = setTimeout(flush, DEBOUNCE_MS);
     },
-    [flush],
+    [scope, id, flush],
   );
 
   return [value, onChange, flush];

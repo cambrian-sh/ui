@@ -7,7 +7,7 @@
   frontmatter. Full rules: root [`../../AGENTS.md` §0](../../AGENTS.md).
 
 ## Bootstrap
-Read, in order: project root `../CONTEXT.md`, this directory's `CONTEXT.md` (the full transport contract + recovery rules), and the vendored `../proto/operator.proto`. The product spec is `../docs/web-ui-prd.md`.
+Read, in order: `brief ui/src-tauri` (HQ — `card.ui.operator-transport` holds the transport contract + recovery rules; also `card.ui.auth-sessions`, `card.ui.dev-bridge`), and the vendored `../proto/operator.proto`. The product spec is `../docs/web-ui-prd.md`.
 
 ## What this layer is
 The Tauri **Rust core**: the native `tonic` gRPC client to the runtime-core's `OperatorConsole`, the **client-side state of record** (folds the event feed), and the Tauri bridge to the webview. This is the **only** layer that speaks gRPC.
@@ -23,7 +23,7 @@ The Tauri **Rust core**: the native `tonic` gRPC client to the runtime-core's `O
 - **Commands:** generate one `command_id` (UUID) per user action and reuse it across retries (the kernel dedups); `reason` is mandatory; the `actor` comes from the token, never the body. Keep an outbound ACK/retry queue across reconnects.
 - **Bridge discipline:** batch high-frequency event classes (`token`, `plan_state`) at the core→webview seam; deliver control classes (`hitl_raised`, `audit`, errors, `llm_health`) immediately.
 - **Add dependencies deliberately:** `tonic`, `prost`, `tokio`, `tonic-build`, a keychain crate. Keep the dependency set minimal and justified.
-- After changing transport/recovery/auth/state behavior, **update this directory's `CONTEXT.md`** (and `../CONTEXT.md` if a project-level fact changed).
+- After changing transport/recovery/auth/state behavior, **update the card(s) for that area** in HQ (`read_doc` → `write_doc`, then `verify_card`); this directory's `CONTEXT.md` is a stub.
 
 ## Honesty
 Never fake a connection or silently swallow a kernel error. Surface live / reconnecting / down and the kernel's actual error to the webview as a first-class state. A degraded connection is a state, not a hidden failure.

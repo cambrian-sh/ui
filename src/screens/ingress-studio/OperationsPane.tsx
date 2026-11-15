@@ -6,10 +6,13 @@ import { errorMessage } from '@/lib/errorMessage';
 import { ipc } from '@/ipc';
 import type { StudioAck, StudioReplayAck, StudioStatus } from '@/ipc/types';
 import { parseRevision } from './LifecyclePane';
+import { RepairJobStatus } from './RepairJobStatus';
+import { HistorySection } from './HistorySection';
+import { queryClient } from '@/lib/queryClient';
 
 /**
- * Operations: the dry-run preview, the repair loop, and delivery failures —
- * the running half of the studio.
+ * Operations: the dry-run preview, the repair loop, the history lane (fills)
+ * and delivery failures — the running half of the studio.
  */
 export function OperationsPane({
   ingressId,
@@ -33,6 +36,7 @@ export function OperationsPane({
         readOnly={readOnly}
         onChanged={onChanged}
       />
+      <HistorySection ingressId={ingressId} status={status} readOnly={readOnly} onChanged={onChanged} />
       <FailuresSection ingressId={ingressId} readOnly={readOnly} onChanged={onChanged} />
     </div>
   );
@@ -103,12 +107,15 @@ interface RepairPreview {
   NewRefusals?: { DeliveryRef?: string; Detail?: string }[];
   ResolvedRefusals?: unknown[];
   NewDiscards?: { DeliveryRef?: string; Detail?: string }[];
+  /** Pre-DW-1R deliveries with no stored bytes: skipped by promotion, values kept. */
+  NotReprocessable?: { DeliveryRef?: string; Detail?: string }[];
 }
 
 /**
  * The repair loop (plan D11/D14): shadow first — the diff is the review
  * artifact and the shadow writes NOTHING — then promotion behind a mandatory
- * reason. Old projections are retired by record, never overwritten.
+ * reason. Old projections are retired by record, never overwritten. Promotion
+ * runs as a kernel background job; RepairJobStatus follows it.
  */
 function RepairSection({
   ingressId,
@@ -186,6 +193,11 @@ function RepairSection({
               {r.DeliveryRef}: {r.Detail}
             </p>
           ))}
+          {(preview.NotReprocessable ?? []).map((r, i) => (
+            <p key={`nr-${i}`} className="text-[12px] text-[var(--fg-muted)]">
+              {r.DeliveryRef}: {r.Detail}
+            </p>
+          ))}
           {!readOnly && (
             <div className="space-y-2 rounded-[var(--radius-lg)] border border-[var(--border-subtle)] p-3">
               <ReasonField
@@ -203,6 +215,9 @@ function RepairSection({
                       if (res.ok) {
                         gate.reset();
                         onChanged();
+                        // The RPC only started the job; re-read it so the line
+                        // below follows THIS job, not a cached earlier one.
+                        void queryClient.invalidateQueries({ queryKey: ['studio-repair', ingressId] });
                       }
                     }
                   });
@@ -225,6 +240,7 @@ function RepairSection({
                   {ack.ok ? ack.detail : ack.error}
                 </p>
               )}
+              <RepairJobStatus ingressId={ingressId} />
             </div>
           )}
         </div>

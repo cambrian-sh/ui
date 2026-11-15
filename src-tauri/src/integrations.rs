@@ -69,6 +69,11 @@ pub struct IntegrationCatalogEntry {
     pub notes: String,
     pub source: String,
     pub multi_instance: bool,
+    /// ADR-0140: "shared" | "per_user" | "either", and the account each person
+    /// connects (empty for shared) — known before install.
+    pub credential_scope: String,
+    pub provider: String,
+    pub scopes: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -128,6 +133,24 @@ pub struct Integration {
     pub classification_tags: Vec<String>,
     pub trust_tier: String,
     pub passthrough_env: Vec<String>,
+    /// ADR-0139 D8: a stdio server's effective containment; None for http/sse
+    /// (T-20261106-integrationop-has-no-structured-containment).
+    pub containment: Option<IntegrationContainment>,
+}
+
+/// `IntegrationContainmentOp`: one stdio server's effective process containment.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct IntegrationContainment {
+    pub tier: String,
+    pub tier_source: String,
+    pub runner: String,
+    pub mechanisms: Vec<String>,
+    pub enforced: Vec<String>,
+    pub missing: Vec<String>,
+    pub notes: Vec<String>,
+    pub refused: bool,
+    pub disabled: bool,
+    pub summary: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -239,6 +262,18 @@ fn integration(i: pb::IntegrationOp) -> Integration {
         classification_tags: i.classification_tags,
         trust_tier: i.trust_tier,
         passthrough_env: i.passthrough_env,
+        containment: i.containment.map(|c| IntegrationContainment {
+            tier: c.tier,
+            tier_source: c.tier_source,
+            runner: c.runner,
+            mechanisms: c.mechanisms,
+            enforced: c.enforced,
+            missing: c.missing,
+            notes: c.notes,
+            refused: c.refused,
+            disabled: c.disabled,
+            summary: c.summary,
+        }),
     }
 }
 
@@ -282,6 +317,9 @@ fn catalog_entry(e: pb::IntegrationCatalogEntryOp) -> IntegrationCatalogEntry {
         notes: e.notes,
         source: e.source,
         multi_instance: e.multi_instance,
+        credential_scope: e.credential_scope,
+        provider: e.provider,
+        scopes: e.scopes,
     }
 }
 
@@ -502,6 +540,29 @@ impl Transport {
                 reason,
                 id,
                 keep_secrets,
+            }))
+            .await
+            .map_err(map_status)?
+            .into_inner();
+        Ok(mutation(r))
+    }
+
+    /// SetIntegrationTrustTier: set (or, with "", clear) a server's ADR-0139 D8
+    /// sandbox tier. Owner decision 2026-11-15: any tier, audited by the
+    /// kernel with who, old tier, new tier and the reason.
+    pub async fn set_integration_trust_tier(
+        &self,
+        id: String,
+        trust_tier: String,
+        reason: String,
+    ) -> Result<IntegrationMutation, String> {
+        let mut client = self.client().await?;
+        let r = client
+            .set_integration_trust_tier(Request::new(pb::SetIntegrationTrustTierOpRequest {
+                command_id: new_command_id(),
+                reason,
+                id,
+                trust_tier,
             }))
             .await
             .map_err(map_status)?

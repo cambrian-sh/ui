@@ -1358,6 +1358,11 @@ export interface IngressSpec {
   surface_id: string;
   /** Prefixes of external ids this ingress may speak for. Empty = unrestricted. */
   namespace: string[];
+  /**
+   * ADR-0098 D6: this ingress's conversations get progress snapshots ("still
+   * working on it"). Absent/false = off, the default.
+   */
+  progress?: boolean;
 }
 
 /**
@@ -1447,6 +1452,28 @@ export interface StudioAck {
   detail: string;
 }
 
+/**
+ * One repair promotion job (GetRepair). PromoteRepair only STARTS the job;
+ * the kernel pages the preserved deliveries in the background and this is its
+ * progress. `state` is '' when the ingress was never repaired.
+ */
+export interface StudioRepairStatus {
+  ingress_id: string;
+  repair_id: string;
+  mapping_revision: number;
+  state: '' | 'running' | 'done' | 'failed' | 'interrupted';
+  examined: number;
+  promoted: number;
+  skipped: number;
+  /** 0 = every preserved delivery. */
+  limit: number;
+  reason: string;
+  detail: string;
+  started_at: string;
+  updated_at: string;
+  finished_at: string;
+}
+
 /** A dead-delivery replay's answer: replayed = how many were reset to pending
  *  (0 when none in scope was dead — the idempotent no-op, still ok). */
 export interface StudioReplayAck extends StudioAck {
@@ -1469,6 +1496,12 @@ export interface StudioCredential {
   configured: boolean;
   /** Presence indicator only — never the value. */
   last_four: string;
+  /**
+   * 'inbound': a secret a source presents to us (a webhook signing secret) —
+   * never an account. 'outbound': what we present to a source we read —
+   * bindable to an org account (ADR-0141 D4). '' from an older kernel.
+   */
+  direction: 'inbound' | 'outbound' | '';
 }
 
 /** The operator's whole picture of one ingress. */
@@ -1483,6 +1516,39 @@ export interface StudioStatus {
   failure_count: number;
   credentials: StudioCredential[];
   egress_policy_json: string;
+  /** The history lane (ADR-0119): the transport revision fills read; 0 = none. */
+  armed_history_transport_revision: number;
+  latest_history_transport_revision: number;
+}
+
+/** One history fill (GetBackfill). `backfill_id` '' = never filled. */
+export interface StudioBackfillStatus {
+  ingress_id: string;
+  backfill_id: string;
+  /** running | caught_up | cancelled | failed | interrupted ('' = never filled). */
+  state: string;
+  mode: string;
+  from: string;
+  /** The FILL's cursor in the source's own vocabulary — never the live poller's. */
+  cursor: string;
+  records_done: number;
+  pages_done: number;
+  /** 0 = the source publishes no total: unknown, not zero. */
+  source_total: number;
+  transport_revision: number;
+  started_at: string;
+  updated_at: string;
+  caught_up_at: string;
+  detail: string;
+  reason: string;
+}
+
+/** One recorded sequence gap of a sequenced websocket ingress (ListGaps). */
+export interface StudioGap {
+  transport_revision: number;
+  from_seq: number;
+  to_seq: number;
+  detected_at: string;
 }
 
 export interface StudioSaveResult {
@@ -2814,6 +2880,8 @@ export interface CompiledQuery {
   /** 0 = the kernel's default window (72 h). */
   correlation_window_seconds?: number;
   correlation_roles?: string[];
+  /** ENG-1045: also return retired rows (point/history/events), marked `retired`. Operator plane only. */
+  include_retired?: boolean;
 }
 
 /**
@@ -2837,8 +2905,21 @@ export interface AskOutcome {
   guarantee: string;
   rows: string[];
   compiled: CompiledQuery | null;
+  /** ADR-0149 D6 (ENG-1092): set instead of `compiled` when the ask ran an objects list. */
+  compiled_objects?: CompiledObjects | null;
   refusal_reason: string;
   lane_hint: string;
+}
+
+/** The ListObjects request an ask ran, flattened for display. */
+export interface CompiledObjects {
+  kind: string;
+  conditions: string[];
+  links: string[];
+  order_by: string[];
+  group_by: string[];
+  metrics: string[];
+  page_size: number;
 }
 
 /**
@@ -2953,6 +3034,72 @@ export interface OntologyDraftView {
 export interface ObjectValue {
   type: string;
   display: string;
+}
+
+// ── Ontology governance and the objects list (ADR-0149 D2/D6; ENG-1395) ──
+
+/** The current declarations, as the kernel's JSON ({"kinds":[…],"relations":[…]}). */
+export interface OntologyView {
+  namespace: string;
+  version: number;
+  declarations_json: string;
+}
+
+export interface OntologyApplyOutcome {
+  command_id: string;
+  deduped: boolean;
+  applied: boolean;
+  version: number;
+  /** additive | tightening | breaking — the most severe among `changes`. */
+  class: string;
+  changes: OntologyChangeLine[];
+}
+
+export interface OntologyViolationRow {
+  rule: string;
+  subject: string;
+  /** The offending item, link or entity id. */
+  reference: string;
+  detail: string;
+}
+
+export interface OntologyViolationsView {
+  version: number;
+  violations: OntologyViolationRow[];
+  truncated: boolean;
+}
+
+/** A literal as typed: `type` is date | number | text | entity. */
+export interface ObjectValueInput {
+  type: string;
+  value: string;
+}
+
+export interface ObjectConditionInput {
+  property: string;
+  op: string;
+  values: ObjectValueInput[];
+}
+
+export interface ObjectsListInput {
+  kind: string;
+  conditions: ObjectConditionInput[];
+  order_by: { property: string; desc: boolean }[];
+  fields: string[];
+  page_size: number;
+  page_token: string;
+}
+
+export interface ObjectListRow {
+  entity_id: string;
+  values: { property: string; value: ObjectValue }[];
+}
+
+export interface ObjectsList {
+  kind: string;
+  decl_version: number;
+  rows: ObjectListRow[];
+  next_page_token: string;
 }
 
 export interface ObjectAlternative {

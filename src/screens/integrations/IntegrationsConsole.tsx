@@ -19,6 +19,7 @@ import { ipc } from '@/ipc';
 import type {
   Integration,
   IntegrationCatalogEntry,
+  IntegrationContainment,
   IntegrationMutation,
   IntegrationTestResult,
 } from '@/ipc/types';
@@ -135,6 +136,7 @@ function Catalog() {
                   {e.runtimes.length ? ` · needs ${e.runtimes.join(', ')}` : ''}
                 </p>
                 {e.policy_summary && <p className="text-[11.5px] text-[var(--fg-muted)]">Can: {e.policy_summary}</p>}
+                {accountNote(e) && <p className="text-[11.5px] text-[var(--fg-muted)]">{accountNote(e)}</p>}
                 <div className="mt-auto flex items-center gap-2 pt-1">
                   <Button size="sm" disabled={!can || !e.platform_supported} onClick={() => setInstalling(e)}>
                     {can ? 'Connect' : 'Connected'}
@@ -215,7 +217,10 @@ export function InstalledCard({
   const gate = useCommandGate('change integrations');
   const status = statusOf(i, health);
   const tone = STATUS_TONE[status];
-  const [confirm, setConfirm] = useState<'enable' | 'disable' | 'remove' | 'revert' | null>(null);
+  const [confirm, setConfirm] = useState<'enable' | 'disable' | 'remove' | 'revert' | 'tier' | null>(null);
+  // ADR-0139 D8 (owner decision 2026-11-15): the sandbox tier an operator picked,
+  // applied after the reasoned confirm; "" clears it back to the default.
+  const [pendingTier, setPendingTier] = useState<string>('');
   const [configuring, setConfiguring] = useState(false);
   const [test, setTest] = useState<IntegrationTestResult | null>(null);
   const [testing, setTesting] = useState(false);
@@ -252,7 +257,8 @@ export function InstalledCard({
         <p className="text-[12px] text-[var(--status-warn)]">Missing: {i.missing_required.join(', ')}</p>
       )}
       {health?.last_error && status === 'error' && <p className="text-[12px] text-[var(--status-err)]">{health.last_error}</p>}
-      {i.policy_summary && <p className="text-[11.5px] text-[var(--fg-muted)]">Can: {i.policy_summary}</p>}
+      {canSummary(i) && <p className="text-[11.5px] text-[var(--fg-muted)]">Can: {canSummary(i)}</p>}
+      {i.containment && <ContainmentLine c={i.containment} />}
       {readOnly && <p className="text-[11.5px] text-[var(--fg-muted)]">Contributed by a plugin; read-only here.</p>}
       {accountBacked && <p className="text-[11.5px] text-[var(--fg-muted)]">Credentials come from accounts (see Accounts above).</p>}
       {error && <ErrorState reason={error} />}
@@ -284,6 +290,27 @@ export function InstalledCard({
             Credentials
           </Button>
         )}
+        {i.containment && (
+          <label className="flex items-center gap-1 text-[11.5px] text-[var(--fg-muted)]">
+            Sandbox tier
+            <select
+              aria-label="Sandbox tier"
+              className="rounded-md bg-[var(--bg-canvas)] px-1 py-0.5 text-[11.5px] shadow-[inset_0_0_0_1px_var(--border-subtle)]"
+              disabled={Boolean(gate) || readOnly}
+              value={i.containment.tier}
+              onChange={(e) => {
+                setPendingTier(e.target.value === 'default' ? '' : e.target.value);
+                setConfirm('tier');
+              }}
+            >
+              {TIER_CHOICES.map((t) => (
+                <option key={t} value={t}>
+                  {t}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         {i.overrides_file && (
           <Button size="sm" variant="ghost" disabled={Boolean(gate) || readOnly} onClick={() => setConfirm('revert')}>
             Revert to file
@@ -301,7 +328,9 @@ export function InstalledCard({
         title={
           confirm === 'remove'
             ? `Remove ${i.name || i.id}`
-            : confirm === 'revert'
+            : confirm === 'tier'
+              ? `Set ${i.name || i.id}'s sandbox tier to ${pendingTier || 'the default'}`
+              : confirm === 'revert'
               ? `Revert ${i.name || i.id} to its config file`
               : confirm === 'enable'
                 ? `Turn on ${i.name || i.id}`
@@ -310,19 +339,24 @@ export function InstalledCard({
         description={
           confirm === 'remove'
             ? 'The server is stopped and its tools disappear from every agent. Stored credentials are deleted too.'
-            : confirm === 'revert'
+            : confirm === 'tier'
+              ? `The server restarts under the new tier's containment (now: ${i.containment?.tier ?? 'unknown'}). A lower tier gives the process more access to this machine. The change is recorded in the audit log with your reason.`
+              : confirm === 'revert'
               ? 'The changes made here are dropped and the config-file (mcp.json) entry applies again; the server restarts on it now. Stored credentials are kept.'
               : confirm === 'enable'
                 ? 'The server starts now and its tools become available to agents allowed to use them.'
                 : 'The server stops now; its tools disappear until it is turned back on.'
         }
-        confirmLabel={confirm === 'remove' ? 'Remove' : confirm === 'revert' ? 'Revert' : confirm === 'enable' ? 'Turn on' : 'Turn off'}
+        confirmLabel={
+          confirm === 'remove' ? 'Remove' : confirm === 'tier' ? 'Set tier' : confirm === 'revert' ? 'Revert' : confirm === 'enable' ? 'Turn on' : 'Turn off'
+        }
         destructive={confirm === 'remove'}
         onConfirm={async (reason) => {
           const kind = confirm;
           setConfirm(null);
           if (kind === 'remove') await run(() => ipc.removeIntegration({ id: i.id, reason }));
           else if (kind === 'revert') await run(() => ipc.revertIntegrationToFile({ id: i.id, reason }));
+          else if (kind === 'tier') await run(() => ipc.setIntegrationTrustTier({ id: i.id, trust_tier: pendingTier, reason }));
           else await run(() => ipc.setIntegrationEnabled({ id: i.id, enabled: kind === 'enable', reason }));
         }}
       />
@@ -568,3 +602,47 @@ function SecretsDialog({
     </Dialog>
   );
 }
+
+/**
+ * What the server's tools may do. With structured containment the kernel still
+ * appends its text to policy_summary (for older consoles); strip it here so
+ * the containment is shown once, on its own line.
+ */
+function canSummary(i: Integration): string {
+  const c = i.containment;
+  if (c?.summary && i.policy_summary.endsWith('; ' + c.summary)) {
+    return i.policy_summary.slice(0, -('; ' + c.summary).length);
+  }
+  return i.policy_summary;
+}
+
+/** ADR-0139 D8: the effective sandbox of a stdio server (IntegrationContainmentOp). */
+function ContainmentLine({ c }: { c: IntegrationContainment }) {
+  if (c.disabled) {
+    return <p className="text-[11.5px] text-[var(--status-warn)]">Sandbox: off (environment allowlist only)</p>;
+  }
+  const tone = c.refused ? 'var(--status-err)' : c.missing.length > 0 ? 'var(--status-warn)' : 'var(--fg-muted)';
+  const how = c.mechanisms.length > 0 ? ` via ${c.mechanisms.join(' + ')}` : '';
+  return (
+    <div className="text-[11.5px]" style={{ color: tone }} data-testid="integration-containment">
+      <p>
+        Sandbox: {c.tier} on {c.runner}{how}
+        {c.enforced.length > 0 ? ` — enforces ${c.enforced.join(', ')}` : ''}
+      </p>
+      {c.refused && <p>Refused to start: missing {c.missing.join('; ')}</p>}
+      {!c.refused && c.missing.length > 0 && <p>Not enforced here: {c.missing.join('; ')}</p>}
+      {c.notes.length > 0 && <p className="text-[var(--fg-muted)]">{c.notes.join('; ')}</p>}
+    </div>
+  );
+}
+
+/** ADR-0140: how a catalog entry is signed in, said before install. */
+function accountNote(e: IntegrationCatalogEntry): string {
+  const who = e.provider ? `their own ${e.provider} account` : 'their own account';
+  if (e.credential_scope === 'per_user') return `Each person connects ${who}.`;
+  if (e.credential_scope === 'either') return `Each person may connect ${who}; otherwise a shared credential is used.`;
+  return '';
+}
+
+/** ADR-0139 D8 tiers an operator may pick from the console (any tier; "default" clears). */
+const TIER_CHOICES = ['first-party', 'vetted', 'third-party', 'default'] as const;

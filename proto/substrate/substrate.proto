@@ -440,6 +440,14 @@ message AskKnowledgeResponse {
   repeated string rows = 4; // JSON objects (v1 wire shape)
   string refusal_reason = 5;
   string lane_hint = 6; // "memory" when the corpus lane is the right tool
+  // ADR-0149 D6 (ENG-1092): the ONE model call may answer with an objects
+  // request instead of a query. Then compiled is unset, compiled_objects is the
+  // ListObjectsRequest that ran (re-runnable verbatim through ListObjects /
+  // list_objects) and objects its result; guarantee and rows carry the same
+  // answer (one JSON row per object or group), so a row renderer needs nothing
+  // new.
+  ListObjectsRequest compiled_objects = 7;
+  ListObjectsResponse objects = 8;
 }
 
 message OverviewRequest {}
@@ -576,6 +584,15 @@ message QueryRequest {
   // When set, a shared participant counts only if its role in BOTH events is
   // listed. Roles are deployment data; the kernel names none.
   repeated string correlation_roles = 17;
+  // include_retired (ADR-0147 D6, ENG-1045) returns RETIRED typed rows too on
+  // point, history and events — rows a superseded mapping revision or a source
+  // deletion took out of every count — each marked retired:true with
+  // retired_reason, retired_by and retired_at. Refused on every other kind.
+  // OPERATOR PLANE ONLY (owner decision 2026-11-15): honoured on
+  // SubstrateLane.Query, refused (PermissionDenied) on SubstrateRetrieval.Query
+  // and for every agent principal — an agent's answer never draws on a value the
+  // source deleted or a mapping superseded.
+  bool include_retired = 18;
 }
 
 message QueryResponse {
