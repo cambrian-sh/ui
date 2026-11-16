@@ -273,7 +273,13 @@ pub const RETENTION_FEED_CAPABILITY: &str = "retention-feed";
 ///   The agent-plane `ExecuteToolResponse.annotations` (ENG-629) is not vendored here.
 ///   Also `IngestMemoryOpRequest.source_kind` / `title` / `author` and
 ///   `MemoryPartOp.speaker` (ADR-0136 A3.5; ENG-460) — the console sends none yet.
-pub const PINNED_CONTRACT_VERSION: &str = "0104";
+/// - **0105** 2026-11-16, additive (ADR-0137 S6, ENG-411 stage C): memory erasure —
+///   `PreviewForgetMemory` / `ForgetMemory` / `ListErasures` / `GetErasure` with
+///   `ErasureSelectorOp` / `ErasureCandidateOp` / `ErasureReceiptOp` (capability
+///   `memory-erasure`, advertised only when the kernel enables erasure). The console
+///   renders no erasure surface yet (ENG-462); the bump keeps it off the skew banner.
+///   The agent-plane `PreviewForget` / `Forget` / `ListMyErasures` are not vendored here.
+pub const PINNED_CONTRACT_VERSION: &str = "0105";
 
 /// The plugin versions this console was BUILT against, by plugin id (ADR-0089).
 ///
