@@ -283,7 +283,10 @@ pub const RETENTION_FEED_CAPABILITY: &str = "retention-feed";
 ///   form of `PreviewForget` (`PreviewForgetRequest.query`, `ErasureCandidate.snippet`).
 ///   `operator.proto` is unchanged — operator previews stay ids/counts only; the bump
 ///   keeps the console off the skew banner against a 0106 kernel.
-pub const PINNED_CONTRACT_VERSION: &str = "0106";
+/// - **0107** 2026-11-17, additive, agent plane only (ENG-1953):
+///   `PreviewForgetResponse.truncated` (a query preview cut by the candidate cap).
+///   `operator.proto` is unchanged; the bump keeps the console off the skew banner.
+pub const PINNED_CONTRACT_VERSION: &str = "0107";
 
 /// The plugin versions this console was BUILT against, by plugin id (ADR-0089).
 ///
