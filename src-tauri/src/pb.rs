@@ -279,7 +279,11 @@ pub const RETENTION_FEED_CAPABILITY: &str = "retention-feed";
 ///   `memory-erasure`, advertised only when the kernel enables erasure). The console
 ///   renders no erasure surface yet (ENG-462); the bump keeps it off the skew banner.
 ///   The agent-plane `PreviewForget` / `Forget` / `ListMyErasures` are not vendored here.
-pub const PINNED_CONTRACT_VERSION: &str = "0105";
+/// - **0106** 2026-11-17, additive, agent plane only (ADR-0137 D2, ENG-1948): the query
+///   form of `PreviewForget` (`PreviewForgetRequest.query`, `ErasureCandidate.snippet`).
+///   `operator.proto` is unchanged — operator previews stay ids/counts only; the bump
+///   keeps the console off the skew banner against a 0106 kernel.
+pub const PINNED_CONTRACT_VERSION: &str = "0106";
 
 /// The plugin versions this console was BUILT against, by plugin id (ADR-0089).
 ///
