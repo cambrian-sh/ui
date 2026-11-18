@@ -11,19 +11,28 @@
  * the source, so it needs neither a Tauri runtime nor a kernel.
  */
 import { describe, it, expect } from 'vitest';
-import { readFileSync, readdirSync } from 'node:fs';
-import { join, resolve } from 'node:path';
 
-const UI = resolve(__dirname, '..', '..');
-const IPC_DIR = join(UI, 'src', 'ipc');
-const LIB_RS = join(UI, 'src-tauri', 'src', 'lib.rs');
+// The webview tsconfig carries no Node types (no @types/node), so `node:fs`
+// is loaded through a string-typed specifier, as tokens.test.ts does; a
+// static import typechecked only where an ancestor directory happened to
+// hold @types/node, and failed CI's `bun run typecheck` (ENG-2037). Paths
+// are relative to the ui/ package root, where vitest runs.
+type Fs = {
+  readdirSync(dir: string): string[];
+  readFileSync(file: string, encoding: 'utf8'): string;
+};
+const fsModule: string = 'node:fs';
+const { readFileSync, readdirSync } = (await import(/* @vite-ignore */ fsModule)) as Fs;
+
+const IPC_DIR = 'src/ipc';
+const LIB_RS = 'src-tauri/src/lib.rs';
 
 function webviewCommands(): Set<string> {
   const out = new Set<string>();
   const call = /invoke(?:<[^(]*>)?\(\s*'(op_[a-z0-9_]+)'/g;
   for (const f of readdirSync(IPC_DIR)) {
     if (!/\.ts$/.test(f) || /\.test\.ts$/.test(f) || f.startsWith('mock')) continue;
-    const src = readFileSync(join(IPC_DIR, f), 'utf8');
+    const src = readFileSync(`${IPC_DIR}/${f}`, 'utf8');
     for (const m of src.matchAll(call)) out.add(m[1]);
   }
   return out;
