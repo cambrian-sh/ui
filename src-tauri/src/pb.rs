@@ -286,7 +286,11 @@ pub const RETENTION_FEED_CAPABILITY: &str = "retention-feed";
 /// - **0107** 2026-11-17, additive, agent plane only (ENG-1953):
 ///   `PreviewForgetResponse.truncated` (a query preview cut by the candidate cap).
 ///   `operator.proto` is unchanged; the bump keeps the console off the skew banner.
-pub const PINNED_CONTRACT_VERSION: &str = "0107";
+/// - **0108** 2026-11-18, additive (ENG-2018): `ErasureReceiptOp.not_erasable_external`
+///   (and the agent-plane `ErasureReceipt` twin) — the ADR-0137 D7 async steps that could
+///   not erase from an external service. The console renders no erasure surface yet
+///   (ENG-462); the bump keeps it off the skew banner.
+pub const PINNED_CONTRACT_VERSION: &str = "0108";
 
 /// The plugin versions this console was BUILT against, by plugin id (ADR-0089).
 ///
