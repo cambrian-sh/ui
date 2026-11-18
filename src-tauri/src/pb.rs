@@ -294,7 +294,12 @@ pub const RETENTION_FEED_CAPABILITY: &str = "retention-feed";
 ///   `ListLinkPairs`, `ConfirmLinkPair`, `RejectLinkPair` (`LinkPairOp`, `LinkPairKeyOp`)
 ///   and `LinkOp.supporting_evidence_ids`. The link review screen lists pairs and
 ///   decides them pair-level; the row-level RPCs are unchanged.
-pub const PINNED_CONTRACT_VERSION: &str = "0109";
+/// - **0110** 2026-11-19, additive (ENG-2147/ENG-2154): memory notes in the compliance
+///   erase — `ErasureSelectorOp.memory_note_ids` / `memory_note_owners`,
+///   `ErasureCandidateOp.note_text`, `ErasureReceiptOp.redacted_messages`. The console
+///   renders no erasure surface yet (ENG-462); the bump keeps it off the skew banner.
+///   `DeleteMemoryNotes` ("Clear notes") is labelled a soft delete, not an erasure.
+pub const PINNED_CONTRACT_VERSION: &str = "0110";
 
 /// The plugin versions this console was BUILT against, by plugin id (ADR-0089).
 ///

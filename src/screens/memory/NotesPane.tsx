@@ -262,7 +262,7 @@ function Editor({ doc, onDeleted }: { doc: NotesDocument; onDeleted: () => void 
         }
         description={
           confirm === 'delete'
-            ? 'The document is cleared. The cleared text is kept in the audit record, so an operator can recover it.'
+            ? 'This is a soft delete, not an erasure: the cleared text is kept in the audit record and in the notes history, so an operator can recover it. To honour a right-to-erasure request, erase the person’s notes through memory erasure (ForgetMemory) instead.'
             : confirm === 'budget'
               ? 'Lowering a budget truncates nothing stored; later writes over it are refused and the run snapshot is cut to the budget.'
               : confirm === 'override'
