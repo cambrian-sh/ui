@@ -12,6 +12,20 @@
     "noEmit": true,
     "jsx": "react-jsx",
 
+    /* Global types, pinned (ENG-2042). By default tsc includes every
+       node_modules/@types package in this directory AND every ancestor,
+       and resolves a library's `/// <reference types="node" />` the same
+       way, so a stray @types/node above the checkout (e.g. a home-directory
+       node_modules) made Node-only code typecheck locally while CI, with no
+       @types/node, rejected it. `types` lists the only global package the
+       webview and its tests need (test files import vitest APIs
+       explicitly); `typeRoots` makes the `node` reference resolve to the
+       empty stub in type-stubs/node first, on every machine. Node APIs must
+       not be typed here; add a package to `types` only when code needs its
+       globals. */
+    "types": ["vite/client"],
+    "typeRoots": ["./type-stubs", "./node_modules/@types"],
+
     /* Path aliases (the `@/` alias is used by shadcn/ui + the design system) */
     "baseUrl": ".",
     "paths": {
