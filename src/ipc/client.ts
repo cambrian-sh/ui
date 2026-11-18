@@ -1007,6 +1007,24 @@ export const ipc = {
       namespace_id: namespaceId ?? '',
     }),
 
+  /**
+   * The review inbox grouped by claim (contract 0109): each pair once, with its
+   * readable rows and the "extend the confirmation?" flag.
+   */
+  listLinkPairs: (namespaceId?: string, limit?: number): Promise<t.LinkPair[]> =>
+    invoke<t.LinkPair[]>('op_links_pairs', {
+      namespace_id: namespaceId ?? '',
+      limit: limit ?? 0,
+    }),
+
+  /** Confirm a claim: one appended human row per readable candidate row. */
+  confirmLinkPair: (pair: t.LinkPairKey, reason: string): Promise<t.LinkPairConfirmation> =>
+    invoke<t.LinkPairConfirmation>('op_links_confirm_pair', { pair, reason }),
+
+  /** Reject a claim: its candidates are retracted and it is not proposed again. */
+  rejectLinkPair: (pair: t.LinkPairKey, reason: string): Promise<t.LinkPairRejection> =>
+    invoke<t.LinkPairRejection>('op_links_reject_pair', { pair, reason }),
+
   /** Reject one candidate. Stamps state + retracted_at; never a delete. */
   retractLink: (
     linkId: string,

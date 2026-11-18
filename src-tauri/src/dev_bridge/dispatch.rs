@@ -170,6 +170,9 @@ pub const COMMANDS: &[&str] = &[
     "op_links_candidates",
     "op_links_confirm",
     "op_links_retract",
+    "op_links_pairs",
+    "op_links_confirm_pair",
+    "op_links_reject_pair",
     "op_list_skills_full",
     "op_list_skill_proposals",
     "op_decide_skill_proposal",
@@ -1612,6 +1615,33 @@ pub async fn dispatch(
             }
             let a: A = parse(args)?;
             reply(super::super::op_links_retract(app.state::<Transport>(), a.link_id, a.reason, a.namespace_id).await)
+        }
+        "op_links_pairs" => {
+            #[derive(serde::Deserialize)]
+            struct A {
+                namespace_id: Option<String>,
+                limit: Option<i32>,
+            }
+            let a: A = parse(args)?;
+            reply(super::super::op_links_pairs(app.state::<Transport>(), a.namespace_id, a.limit).await)
+        }
+        "op_links_confirm_pair" => {
+            #[derive(serde::Deserialize)]
+            struct A {
+                pair: crate::links::LinkPairKey,
+                reason: String,
+            }
+            let a: A = parse(args)?;
+            reply(super::super::op_links_confirm_pair(app.state::<Transport>(), a.pair, a.reason).await)
+        }
+        "op_links_reject_pair" => {
+            #[derive(serde::Deserialize)]
+            struct A {
+                pair: crate::links::LinkPairKey,
+                reason: String,
+            }
+            let a: A = parse(args)?;
+            reply(super::super::op_links_reject_pair(app.state::<Transport>(), a.pair, a.reason).await)
         }
         "op_list_skills_full" => {
             #[derive(serde::Deserialize)]

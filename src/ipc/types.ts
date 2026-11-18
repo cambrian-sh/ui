@@ -3215,6 +3215,49 @@ export interface Link {
   retracted_at_unix_ms: number;
   /** The source's native reference, unqualified — no "@r<rev>". */
   source_ref: string;
+  /**
+   * The other evidence rows the assertion was derived from (contract 0109);
+   * erasing any of them removes the link. Absent from an older kernel.
+   */
+  supporting_evidence_ids?: string[];
+}
+
+/** One claim (contract 0109): namespace, family, endpoints and verb. */
+export interface LinkPairKey {
+  namespace_id: string;
+  family: string;
+  from_ref: string;
+  to_ref: string;
+  relation: string;
+}
+
+/**
+ * One claim in the review inbox. Several producer lanes and supporting sources
+ * write their own rows for the same claim (each with its own evidence and
+ * classification); the kernel groups them so the claim is reviewed once.
+ */
+export interface LinkPair {
+  pair: LinkPairKey;
+  /** The best candidate row's confidence; the inbox is ordered by it. */
+  confidence: number;
+  candidates: Link[];
+  confirmations: Link[];
+  /** "Already confirmed via another source; extend the confirmation?" */
+  already_confirmed: boolean;
+}
+
+export interface LinkPairConfirmation {
+  command_id: string;
+  deduped: boolean;
+  /** One appended confirmation per confirmed candidate row. */
+  confirmations: Link[];
+}
+
+export interface LinkPairRejection {
+  command_id: string;
+  deduped: boolean;
+  /** How many candidate rows the rejection retracted. */
+  retracted: number;
 }
 
 /**

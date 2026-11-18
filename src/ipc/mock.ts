@@ -1738,6 +1738,31 @@ class MockIPC {
     this.fx.linkCandidates = this.fx.linkCandidates.filter((l) => l.id !== linkId);
     return { command_id: `mock-${Date.now()}`, deduped: false, link: link && { ...link, state: 'confirmed' } };
   }
+  async listLinkPairs(_namespaceId?: string, _limit?: number): Promise<t.LinkPair[]> {
+    const byKey = new Map<string, t.LinkPair>();
+    for (const l of this.fx.linkCandidates) {
+      const pair = { namespace_id: l.namespace_id, family: l.family, from_ref: l.from_ref, to_ref: l.to_ref, relation: l.relation };
+      const key = JSON.stringify(pair);
+      const p = byKey.get(key) ?? { pair, confidence: 0, candidates: [], confirmations: [], already_confirmed: false };
+      p.candidates.push(l);
+      p.confidence = Math.max(p.confidence, l.confidence);
+      byKey.set(key, p);
+    }
+    return [...byKey.values()];
+  }
+  private samePair(l: t.Link, k: t.LinkPairKey): boolean {
+    return l.family === k.family && l.from_ref === k.from_ref && l.to_ref === k.to_ref && l.relation === k.relation;
+  }
+  async confirmLinkPair(pair: t.LinkPairKey, _reason: string): Promise<t.LinkPairConfirmation> {
+    const rows = this.fx.linkCandidates.filter((l) => this.samePair(l, pair));
+    this.fx.linkCandidates = this.fx.linkCandidates.filter((l) => !this.samePair(l, pair));
+    return { command_id: `mock-${Date.now()}`, deduped: false, confirmations: rows.map((l) => ({ ...l, state: 'confirmed', mechanism: 'human' })) };
+  }
+  async rejectLinkPair(pair: t.LinkPairKey, _reason: string): Promise<t.LinkPairRejection> {
+    const before = this.fx.linkCandidates.length;
+    this.fx.linkCandidates = this.fx.linkCandidates.filter((l) => !this.samePair(l, pair));
+    return { command_id: `mock-${Date.now()}`, deduped: false, retracted: before - this.fx.linkCandidates.length };
+  }
   async retractLink(linkId: string, _reason: string, _namespaceId?: string): Promise<t.CommandAck> {
     this.fx.linkCandidates = this.fx.linkCandidates.filter((l) => l.id !== linkId);
     return this.ack();

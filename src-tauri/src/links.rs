@@ -94,6 +94,47 @@ pub struct Link {
     pub retracted_at_unix_ms: i64,
     /// The producing source's native reference, UNQUALIFIED — no `@r<rev>`.
     pub source_ref: String,
+    /// The other evidence rows the assertion was derived from (contract 0109,
+    /// ENG-2032); erasing any of them removes the link.
+    #[serde(default)]
+    pub supporting_evidence_ids: Vec<String>,
+}
+
+/// One claim (contract 0109): the same namespace, family, endpoints and verb,
+/// whichever producer lane or supporting source wrote its rows.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LinkPairKey {
+    pub namespace_id: String,
+    pub family: String,
+    pub from_ref: String,
+    pub to_ref: String,
+    pub relation: String,
+}
+
+/// One claim in the review inbox: its open candidate rows (one per supporting
+/// source) and its confirmations, as the operator plane may read them.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LinkPair {
+    pub pair: LinkPairKey,
+    pub confidence: f64,
+    pub candidates: Vec<Link>,
+    pub confirmations: Vec<Link>,
+    /// "Already confirmed via another source; extend the confirmation?"
+    pub already_confirmed: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LinkPairConfirmation {
+    pub command_id: String,
+    pub deduped: bool,
+    pub confirmations: Vec<Link>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LinkPairRejection {
+    pub command_id: String,
+    pub deduped: bool,
+    pub retracted: i32,
 }
 
 /// What a confirmation actually did.
@@ -123,6 +164,71 @@ pub struct ProducerRevocation {
 }
 
 impl Transport {
+    /// The review inbox grouped by claim (contract 0109): each pair once.
+    pub async fn list_link_pairs(
+        &self,
+        namespace_id: String,
+        limit: i32,
+    ) -> Result<Vec<LinkPair>, String> {
+        let mut client = self.client().await?;
+        let resp = client
+            .list_link_pairs(Request::new(pb::ListLinkPairsOpRequest {
+                namespace_id: namespace_of(namespace_id),
+                limit: if limit > 0 { limit } else { CANDIDATE_LIMIT },
+            }))
+            .await
+            .map_err(map_status)?
+            .into_inner();
+        Ok(resp.pairs.into_iter().map(map_pair).collect())
+    }
+
+    /// Confirm every readable open candidate row of one claim.
+    pub async fn confirm_link_pair(
+        &self,
+        pair: LinkPairKey,
+        reason: String,
+    ) -> Result<LinkPairConfirmation, String> {
+        let mut client = self.client().await?;
+        let resp = client
+            .confirm_link_pair(Request::new(pb::ConfirmLinkPairOpRequest {
+                command_id: new_command_id(),
+                reason,
+                pair: Some(pair_key_op(pair)),
+            }))
+            .await
+            .map_err(map_status)?
+            .into_inner();
+        Ok(LinkPairConfirmation {
+            command_id: resp.command_id,
+            deduped: resp.deduped,
+            confirmations: resp.confirmations.into_iter().map(map_link).collect(),
+        })
+    }
+
+    /// Reject one claim: its readable candidates are retracted and no producer
+    /// proposes it again.
+    pub async fn reject_link_pair(
+        &self,
+        pair: LinkPairKey,
+        reason: String,
+    ) -> Result<LinkPairRejection, String> {
+        let mut client = self.client().await?;
+        let resp = client
+            .reject_link_pair(Request::new(pb::RejectLinkPairOpRequest {
+                command_id: new_command_id(),
+                reason,
+                pair: Some(pair_key_op(pair)),
+            }))
+            .await
+            .map_err(map_status)?
+            .into_inner();
+        Ok(LinkPairRejection {
+            command_id: resp.command_id,
+            deduped: resp.deduped,
+            retracted: resp.retracted,
+        })
+    }
+
     /// The review inbox: unretracted proposals, highest confidence first.
     ///
     /// Poll-only. Candidates are not on the operator event feed, so the screen
@@ -237,6 +343,33 @@ fn namespace_of(namespace_id: String) -> String {
     }
 }
 
+fn pair_key_op(k: LinkPairKey) -> pb::LinkPairKeyOp {
+    pb::LinkPairKeyOp {
+        namespace_id: namespace_of(k.namespace_id),
+        family: k.family,
+        from_ref: k.from_ref,
+        to_ref: k.to_ref,
+        relation: k.relation,
+    }
+}
+
+fn map_pair(p: pb::LinkPairOp) -> LinkPair {
+    let key = p.pair.unwrap_or_default();
+    LinkPair {
+        pair: LinkPairKey {
+            namespace_id: key.namespace_id,
+            family: key.family,
+            from_ref: key.from_ref,
+            to_ref: key.to_ref,
+            relation: key.relation,
+        },
+        confidence: p.confidence,
+        candidates: p.candidates.into_iter().map(map_link).collect(),
+        confirmations: p.confirmations.into_iter().map(map_link).collect(),
+        already_confirmed: p.already_confirmed,
+    }
+}
+
 fn map_link(l: pb::LinkOp) -> Link {
     Link {
         id: l.id,
@@ -257,6 +390,7 @@ fn map_link(l: pb::LinkOp) -> Link {
         valid_to_unix_ms: l.valid_to_unix_ms,
         retracted_at_unix_ms: l.retracted_at_unix_ms,
         source_ref: l.source_ref,
+        supporting_evidence_ids: l.supporting_evidence_ids,
     }
 }
 
@@ -298,12 +432,44 @@ mod tests {
             valid_to_unix_ms: 0,
             retracted_at_unix_ms: 0,
             source_ref: "norm:C-1042".into(),
+            supporting_evidence_ids: vec!["ev_78".into()],
         });
+        assert_eq!(l.supporting_evidence_ids, vec!["ev_78".to_string()]);
         assert_eq!(l.mechanism, "derived");
         assert_eq!(l.producer, "normalizer@1");
         assert_eq!(l.evidence_id, "ev_77");
         assert!((l.confidence - 0.62).abs() < f64::EPSILON);
         // 0 is "live", not "retracted at the epoch".
         assert_eq!(l.retracted_at_unix_ms, 0);
+    }
+
+    #[test]
+    fn a_pair_keeps_its_key_rows_and_the_extend_flag() {
+        let p = map_pair(pb::LinkPairOp {
+            pair: Some(pb::LinkPairKeyOp {
+                namespace_id: "default".into(),
+                family: "identity".into(),
+                from_ref: "entity:person/E-17".into(),
+                to_ref: "entity:person/P".into(),
+                relation: "same_as".into(),
+            }),
+            confidence: 0.8,
+            candidates: vec![pb::LinkOp { id: "lnk_a".into(), ..Default::default() }],
+            confirmations: vec![pb::LinkOp { id: "lnk_c".into(), ..Default::default() }],
+            already_confirmed: true,
+        });
+        assert_eq!(p.pair.from_ref, "entity:person/E-17");
+        assert_eq!(p.candidates.len(), 1);
+        assert_eq!(p.confirmations[0].id, "lnk_c");
+        assert!(p.already_confirmed);
+        // A blank namespace on the way out becomes the default one.
+        let op = pair_key_op(LinkPairKey {
+            namespace_id: String::new(),
+            family: "identity".into(),
+            from_ref: "a".into(),
+            to_ref: "b".into(),
+            relation: "same_as".into(),
+        });
+        assert_eq!(op.namespace_id, "default");
     }
 }

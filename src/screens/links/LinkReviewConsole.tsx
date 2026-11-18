@@ -6,7 +6,7 @@ import { useKernelQuery } from '@/lib/useKernelQuery';
 import { useCapability } from '@/lib/useCommandGate';
 import { useStore } from '@/store/useStore';
 import { projectionStore } from '@/store/projection';
-import type { Link } from '@/ipc/types';
+import type { Link, LinkPair } from '@/ipc/types';
 import { LinkCandidateCard } from './LinkCandidateCard';
 
 /** The capability that decides whether this lane exists at all (contract 0098). */
@@ -31,8 +31,33 @@ export function orderCandidates(links: readonly Link[]): Link[] {
   );
 }
 
+/** A stable key for one claim. */
+export function pairKey(p: LinkPair): string {
+  const k = p.pair;
+  return [k.namespace_id, k.family, k.from_ref, k.relation, k.to_ref].join('|');
+}
+
 /**
- * Link review — the identity plane's inbox (contract 0098).
+ * Claims ordered like rows: best candidate first, then the longest-waiting, then
+ * by key — a property of the data, so the queue does not reshuffle between polls.
+ */
+export function orderPairs(pairs: readonly LinkPair[]): LinkPair[] {
+  const oldest = (p: LinkPair) => Math.min(...p.candidates.map((c) => c.asserted_at_unix_ms));
+  return [...pairs].sort(
+    (a, b) =>
+      b.confidence - a.confidence || oldest(a) - oldest(b) || pairKey(a).localeCompare(pairKey(b)),
+  );
+}
+
+/**
+ * Link review — the identity plane's inbox (contracts 0098 and 0109).
+ *
+ * One card per CLAIM (contract 0109): several producer lanes and supporting
+ * sources write their own rows for the same claim, each keeping its own evidence
+ * and classification, and the kernel groups them. Confirming a claim appends one
+ * confirmation per row; rejecting it retracts every row and stops every producer
+ * proposing it again. A claim already confirmed through another source comes
+ * back only when a new source supports it, flagged "extend the confirmation?".
  *
  * Producers mint entities freely and propose links all day, but a mechanism
  * below its trust ceiling — `derived`, `scored`, `correlation` — can only ever
@@ -61,7 +86,7 @@ export function LinkReviewConsole() {
   const available = useCapability(LINKS_CAPABILITY);
   const canDecide = role === 'operator';
 
-  const candidates = useKernelQuery(['link-candidates'], () => ipc.listLinkCandidates(), {
+  const candidates = useKernelQuery(['link-pairs'], () => ipc.listLinkPairs(), {
     enabled: available,
   });
 
@@ -71,22 +96,23 @@ export function LinkReviewConsole() {
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   const decide = useCallback(
-    async (link: Link, verb: 'confirm' | 'reject', reason: string) => {
-      setPending(link.id);
+    async (pair: LinkPair, verb: 'confirm' | 'reject', reason: string) => {
+      const key = pairKey(pair);
+      setPending(key);
       setErrors((prev) => {
         const next = { ...prev };
-        delete next[link.id];
+        delete next[key];
         return next;
       });
       try {
         if (verb === 'confirm') {
-          await ipc.confirmLink(link.id, reason, link.namespace_id);
+          await ipc.confirmLinkPair(pair.pair, reason);
         } else {
-          await ipc.retractLink(link.id, reason, link.namespace_id);
+          await ipc.rejectLinkPair(pair.pair, reason);
         }
         await candidates.refetch();
       } catch (e) {
-        setErrors((prev) => ({ ...prev, [link.id]: errorMessage(e) }));
+        setErrors((prev) => ({ ...prev, [key]: errorMessage(e) }));
       } finally {
         setPending(null);
       }
@@ -94,7 +120,7 @@ export function LinkReviewConsole() {
     [candidates],
   );
 
-  const rows = useMemo(() => orderCandidates(candidates.data ?? []), [candidates.data]);
+  const rows = useMemo(() => orderPairs(candidates.data ?? []), [candidates.data]);
 
   if (!available) {
     return (
@@ -142,7 +168,7 @@ export function LinkReviewConsole() {
           <p className="type-page-description mt-1">
             {rows.length === 0
               ? 'Proposals a machine could not confirm on its own arrive here.'
-              : `${rows.length} proposal${rows.length === 1 ? '' : 's'} waiting, strongest first. Confirming appends a human assertion; rejecting stamps the proposal retracted and never deletes it.`}
+              : `${rows.length} proposal${rows.length === 1 ? '' : 's'} waiting, strongest first. Confirming appends a human assertion per source; rejecting stamps the proposals retracted, never deletes them, and stops them being proposed again.`}
           </p>
         </header>
 
@@ -153,17 +179,26 @@ export function LinkReviewConsole() {
           />
         ) : (
           <div className="flex flex-col gap-3">
-            {rows.map((link) => (
-              <LinkCandidateCard
-                key={link.id}
-                link={link}
-                canDecide={canDecide}
-                busy={pending === link.id}
-                error={errors[link.id] ?? null}
-                onConfirm={(reason) => void decide(link, 'confirm', reason)}
-                onReject={(reason) => void decide(link, 'reject', reason)}
-              />
-            ))}
+            {rows.map((pair) => {
+              const key = pairKey(pair);
+              // The strongest row carries the grounds on the card; the others are
+              // counted, each kept as its own row by the kernel.
+              const [lead] = orderCandidates(pair.candidates);
+              if (!lead) return null;
+              return (
+                <LinkCandidateCard
+                  key={key}
+                  link={lead}
+                  sources={pair.candidates.length}
+                  alreadyConfirmed={pair.already_confirmed}
+                  canDecide={canDecide}
+                  busy={pending === key}
+                  error={errors[key] ?? null}
+                  onConfirm={(reason) => void decide(pair, 'confirm', reason)}
+                  onReject={(reason) => void decide(pair, 'reject', reason)}
+                />
+              );
+            })}
           </div>
         )}
 

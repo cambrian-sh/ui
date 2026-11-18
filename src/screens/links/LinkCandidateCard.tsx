@@ -57,7 +57,19 @@ function Ref({ value, label }: { value: string; label: string }) {
 }
 
 export interface LinkCandidateCardProps {
+  /** The claim's strongest row — its grounds are what the card shows. */
   link: Link;
+  /**
+   * How many rows (producer lanes and supporting sources) support this claim
+   * (contract 0109). Each keeps its own evidence and classification; a decision
+   * acts on all of them. Default 1.
+   */
+  sources?: number;
+  /**
+   * A confirmation already holds this claim through another source, and these
+   * rows came from new ones: "extend the confirmation?".
+   */
+  alreadyConfirmed?: boolean;
   /** False for a Viewer, or when the kernel has no write path for this lane. */
   canDecide: boolean;
   busy: boolean;
@@ -86,6 +98,8 @@ export interface LinkCandidateCardProps {
  */
 export function LinkCandidateCard({
   link,
+  sources = 1,
+  alreadyConfirmed = false,
   canDecide,
   busy,
   error,
@@ -129,6 +143,23 @@ export function LinkCandidateCard({
         </span>
       </div>
 
+      {alreadyConfirmed && (
+        <p
+          role="note"
+          className="rounded-[var(--radius-md)] p-2 text-[11.5px] leading-[1.55] text-[var(--fg-secondary)] tint-wash"
+          style={{ '--tint': 'var(--status-warn)' } as React.CSSProperties}
+        >
+          Already confirmed via another source — extend the confirmation to{' '}
+          {sources === 1 ? 'this new source' : `these ${sources} new sources`}?
+        </p>
+      )}
+      {sources > 1 && (
+        <p className="text-[11.5px] leading-[1.55] text-[var(--fg-secondary)]">
+          {sources} sources support this claim. Each keeps its own evidence and
+          classification; a decision here applies to every one of them.
+        </p>
+      )}
+
       {/* Why it is here, and whether to believe it. */}
       <p className="text-[11.5px] leading-[1.55] text-[var(--fg-secondary)]">
         <span className="font-mono text-[11px] text-[var(--fg-primary)]">{link.mechanism}</span>
@@ -169,7 +200,7 @@ export function LinkCandidateCard({
             disabled={!canDecide || busy}
             onClick={() => setDecision('confirm')}
           >
-            Confirm
+            {alreadyConfirmed ? 'Extend confirmation' : 'Confirm'}
           </Button>
           <Button
             size="sm"
@@ -199,8 +230,8 @@ export function LinkCandidateCard({
         >
           <p className="text-[11.5px] leading-[1.55] text-[var(--fg-secondary)]">
             {decision === 'confirm'
-              ? 'Confirming APPENDS a human assertion. The machine’s proposal stays exactly as it is — the record of what the producer said is not overwritten.'
-              : 'Rejecting stamps this proposal retracted. It is never deleted: the producer has to be able to see that a human said no, or it proposes the same thing again.'}
+              ? 'Confirming APPENDS a human assertion for each source of this claim, each keeping that source’s evidence and classification. The machine’s proposals stay exactly as they are — the record of what the producers said is not overwritten.'
+              : 'Rejecting stamps every proposal of this claim retracted and records that a person said no, so no producer proposes it again from any source. Nothing is deleted.'}
           </p>
           <ReasonField
             gate={gate}

@@ -1,22 +1,22 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import type { Link, StateOfRecord } from '@/ipc/types';
+import type { Link, LinkPair, StateOfRecord } from '@/ipc/types';
 import { projectionStore } from '@/store/projection';
 import { queryClient } from '@/lib/queryClient';
 
-const listLinkCandidates = vi.fn();
-const confirmLink = vi.fn();
-const retractLink = vi.fn();
+const listLinkPairs = vi.fn();
+const confirmLinkPair = vi.fn();
+const rejectLinkPair = vi.fn();
 
 vi.mock('@/ipc', () => ({
   ipc: {
-    listLinkCandidates: (...a: unknown[]) => listLinkCandidates(...a),
-    confirmLink: (...a: unknown[]) => confirmLink(...a),
-    retractLink: (...a: unknown[]) => retractLink(...a),
+    listLinkPairs: (...a: unknown[]) => listLinkPairs(...a),
+    confirmLinkPair: (...a: unknown[]) => confirmLinkPair(...a),
+    rejectLinkPair: (...a: unknown[]) => rejectLinkPair(...a),
   },
 }));
 
-import { LinkReviewConsole, orderCandidates } from './LinkReviewConsole';
+import { LinkReviewConsole, orderCandidates, orderPairs } from './LinkReviewConsole';
 
 function makeLink(overrides: Partial<Link> = {}): Link {
   return {
@@ -41,6 +41,20 @@ function makeLink(overrides: Partial<Link> = {}): Link {
     ...overrides,
   };
 }
+
+/** One claim per link, as the kernel groups them (contract 0109). */
+function pairOf(links: Link[], already_confirmed = false): LinkPair {
+  const l = links[0];
+  return {
+    pair: { namespace_id: l.namespace_id, family: l.family, from_ref: l.from_ref, to_ref: l.to_ref, relation: l.relation },
+    confidence: Math.max(...links.map((x) => x.confidence)),
+    candidates: links,
+    confirmations: [],
+    already_confirmed,
+  };
+}
+
+const pairs = (...links: Link[]): LinkPair[] => links.map((l) => pairOf([l]));
 
 function makeState(role: string, capabilities: string[]): StateOfRecord {
   return {
@@ -76,9 +90,9 @@ describe('LinkReviewConsole (contract 0098 — the identity plane review lane)',
     projectionStore.getState().reset();
     projectionStore.getState().hydrate(makeState('operator', ['links']));
     queryClient.clear();
-    listLinkCandidates.mockReset();
-    confirmLink.mockReset();
-    retractLink.mockReset();
+    listLinkPairs.mockReset();
+    confirmLinkPair.mockReset();
+    rejectLinkPair.mockReset();
   });
 
   it('orders the queue by confidence, then by age, then by id', () => {
@@ -94,7 +108,7 @@ describe('LinkReviewConsole (contract 0098 — the identity plane review lane)',
   });
 
   it('renders the grounds, not just the claim — mechanism, producer and evidence', async () => {
-    listLinkCandidates.mockResolvedValue([
+    listLinkPairs.mockResolvedValue(pairs(
       makeLink({ id: 'lnk_1', confidence: 0.62 }),
       makeLink({
         id: 'lnk_2',
@@ -107,7 +121,7 @@ describe('LinkReviewConsole (contract 0098 — the identity plane review lane)',
         family: 'lineage',
         evidence_id: 'ev_88',
       }),
-    ]);
+    ));
 
     render(<LinkReviewConsole />);
 
@@ -126,8 +140,8 @@ describe('LinkReviewConsole (contract 0098 — the identity plane review lane)',
   });
 
   it('a rejection carries the operator’s reason to the kernel', async () => {
-    listLinkCandidates.mockResolvedValue([makeLink({ id: 'lnk_1' })]);
-    retractLink.mockResolvedValue({ deduped: false });
+    listLinkPairs.mockResolvedValue(pairs(makeLink({ id: 'lnk_1' })));
+    rejectLinkPair.mockResolvedValue({ command_id: 'c', deduped: false, retracted: 1 });
 
     render(<LinkReviewConsole />);
     fireEvent.click(await screen.findByRole('button', { name: 'Reject' }));
@@ -141,29 +155,35 @@ describe('LinkReviewConsole (contract 0098 — the identity plane review lane)',
     expect(screen.getByRole('button', { name: 'Reject link' })).toBeEnabled();
     fireEvent.click(screen.getByRole('button', { name: 'Reject link' }));
 
-    await waitFor(() => expect(retractLink).toHaveBeenCalledTimes(1));
-    expect(retractLink).toHaveBeenCalledWith('lnk_1', REASON, 'default');
+    await waitFor(() => expect(rejectLinkPair).toHaveBeenCalledTimes(1));
+    expect(rejectLinkPair).toHaveBeenCalledWith(
+      { namespace_id: 'default', family: 'identity', from_ref: 'entity:customer/C-1042', to_ref: 'entity:customer/C-9001', relation: 'same_as' },
+      REASON,
+    );
   });
 
   it('a confirmation carries the reason too, and re-reads the queue', async () => {
-    listLinkCandidates.mockResolvedValue([makeLink({ id: 'lnk_1' })]);
-    confirmLink.mockResolvedValue({ command_id: 'c1', deduped: false, link: null });
+    listLinkPairs.mockResolvedValue(pairs(makeLink({ id: 'lnk_1' })));
+    confirmLinkPair.mockResolvedValue({ command_id: 'c1', deduped: false, confirmations: [] });
 
     render(<LinkReviewConsole />);
     fireEvent.click(await screen.findByRole('button', { name: 'Confirm' }));
     fireEvent.change(screen.getByLabelText('Why confirm'), { target: { value: REASON } });
     fireEvent.click(screen.getByRole('button', { name: 'Confirm link' }));
 
-    await waitFor(() => expect(confirmLink).toHaveBeenCalledTimes(1));
-    expect(confirmLink).toHaveBeenCalledWith('lnk_1', REASON, 'default');
+    await waitFor(() => expect(confirmLinkPair).toHaveBeenCalledTimes(1));
+    expect(confirmLinkPair).toHaveBeenCalledWith(
+      { namespace_id: 'default', family: 'identity', from_ref: 'entity:customer/C-1042', to_ref: 'entity:customer/C-9001', relation: 'same_as' },
+      REASON,
+    );
     // Nothing is removed optimistically: candidates are not on the feed, so the
     // queue is re-read rather than guessed at.
-    await waitFor(() => expect(listLinkCandidates).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(listLinkPairs).toHaveBeenCalledTimes(2));
   });
 
   it('a viewer can read the queue but not decide', async () => {
     projectionStore.getState().hydrate(makeState('viewer', ['links']));
-    listLinkCandidates.mockResolvedValue([makeLink()]);
+    listLinkPairs.mockResolvedValue(pairs(makeLink()));
 
     render(<LinkReviewConsole />);
     expect(await screen.findByRole('button', { name: 'Confirm' })).toBeDisabled();
@@ -172,7 +192,7 @@ describe('LinkReviewConsole (contract 0098 — the identity plane review lane)',
   });
 
   it('zero candidates is calm, and says nothing is wrong', async () => {
-    listLinkCandidates.mockResolvedValue([]);
+    listLinkPairs.mockResolvedValue([]);
     render(<LinkReviewConsole />);
     expect(await screen.findByText('Nothing waiting')).toBeInTheDocument();
     expect(screen.getByText(/every proposal has been decided/)).toBeInTheDocument();
@@ -187,6 +207,44 @@ describe('LinkReviewConsole (contract 0098 — the identity plane review lane)',
     ).toBeInTheDocument();
     // A deployment with no link store is CORRECT. Probing it would turn a
     // correct deployment into an error on screen.
-    expect(listLinkCandidates).not.toHaveBeenCalled();
+    expect(listLinkPairs).not.toHaveBeenCalled();
+  });
+
+  it('shows a claim supported by several sources ONCE, with its strongest row and the count', async () => {
+    // Contract 0109: a payroll row and a directory row of the same claim are two
+    // rows (each its own classification) and one card.
+    listLinkPairs.mockResolvedValue([
+      pairOf([
+        makeLink({ id: 'lnk_hr', confidence: 0.6, evidence_id: 'ev_payroll' }),
+        makeLink({ id: 'lnk_dir', confidence: 0.85, evidence_id: 'ev_directory' }),
+      ]),
+    ]);
+    render(<LinkReviewConsole />);
+    expect(await screen.findAllByRole('button', { name: 'Confirm' })).toHaveLength(1);
+    expect(screen.getByText(/2 sources support this claim/)).toBeInTheDocument();
+    // The strongest row's grounds are on the card.
+    expect(screen.getByText('ev_directory')).toBeInTheDocument();
+    expect(screen.queryByText(/Already confirmed via another source/)).not.toBeInTheDocument();
+  });
+
+  it('flags a new source of an already-confirmed claim as "extend the confirmation?"', async () => {
+    listLinkPairs.mockResolvedValue([pairOf([makeLink({ id: 'lnk_new', evidence_id: 'ev_crm' })], true)]);
+    confirmLinkPair.mockResolvedValue({ command_id: 'c2', deduped: false, confirmations: [] });
+    render(<LinkReviewConsole />);
+    expect(await screen.findByText(/Already confirmed via another source — extend the confirmation/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Extend confirmation' }));
+    fireEvent.change(screen.getByLabelText('Why confirm'), { target: { value: REASON } });
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm link' }));
+    await waitFor(() => expect(confirmLinkPair).toHaveBeenCalledTimes(1));
+  });
+
+  it('orders claims by their best row, then by age', () => {
+    const a = pairOf([makeLink({ id: 'a', from_ref: 'entity:x/1', confidence: 0.4, asserted_at_unix_ms: 9 })]);
+    const b = pairOf([makeLink({ id: 'b', from_ref: 'entity:x/2', confidence: 0.4, asserted_at_unix_ms: 3 })]);
+    const c = pairOf([
+      makeLink({ id: 'c1', from_ref: 'entity:x/3', confidence: 0.2 }),
+      makeLink({ id: 'c2', from_ref: 'entity:x/3', confidence: 0.9 }),
+    ]);
+    expect(orderPairs([a, b, c]).map((p) => p.pair.from_ref)).toEqual(['entity:x/3', 'entity:x/2', 'entity:x/1']);
   });
 });

@@ -290,7 +290,11 @@ pub const RETENTION_FEED_CAPABILITY: &str = "retention-feed";
 ///   (and the agent-plane `ErasureReceipt` twin) — the ADR-0137 D7 async steps that could
 ///   not erase from an external service. The console renders no erasure surface yet
 ///   (ENG-462); the bump keeps it off the skew banner.
-pub const PINNED_CONTRACT_VERSION: &str = "0108";
+/// - **0109** 2026-11-18, additive (ENG-2030/ENG-2032): the review lane over claims —
+///   `ListLinkPairs`, `ConfirmLinkPair`, `RejectLinkPair` (`LinkPairOp`, `LinkPairKeyOp`)
+///   and `LinkOp.supporting_evidence_ids`. The link review screen lists pairs and
+///   decides them pair-level; the row-level RPCs are unchanged.
+pub const PINNED_CONTRACT_VERSION: &str = "0109";
 
 /// The plugin versions this console was BUILT against, by plugin id (ADR-0089).
 ///

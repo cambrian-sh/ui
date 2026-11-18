@@ -2182,6 +2182,41 @@ async fn op_links_confirm(
         .await
 }
 
+/// The review inbox grouped by claim (contract 0109): each pair once, with the
+/// "already confirmed via another source; extend?" flag.
+#[tauri::command(rename_all = "snake_case")]
+async fn op_links_pairs(
+    transport: State<'_, Transport>,
+    namespace_id: Option<String>,
+    limit: Option<i32>,
+) -> Result<Vec<crate::links::LinkPair>, String> {
+    transport
+        .inner()
+        .clone()
+        .list_link_pairs(namespace_id.unwrap_or_default(), limit.unwrap_or(0))
+        .await
+}
+
+/// Confirm a claim: one appended confirmation per readable candidate row.
+#[tauri::command(rename_all = "snake_case")]
+async fn op_links_confirm_pair(
+    transport: State<'_, Transport>,
+    pair: crate::links::LinkPairKey,
+    reason: String,
+) -> Result<crate::links::LinkPairConfirmation, String> {
+    transport.inner().clone().confirm_link_pair(pair, reason).await
+}
+
+/// Reject a claim: its readable candidates are retracted, and it is not proposed again.
+#[tauri::command(rename_all = "snake_case")]
+async fn op_links_reject_pair(
+    transport: State<'_, Transport>,
+    pair: crate::links::LinkPairKey,
+    reason: String,
+) -> Result<crate::links::LinkPairRejection, String> {
+    transport.inner().clone().reject_link_pair(pair, reason).await
+}
+
 /// Reject one candidate. Stamps state + retracted_at; never a delete.
 #[tauri::command(rename_all = "snake_case")]
 async fn op_links_retract(
@@ -3117,6 +3152,9 @@ pub fn run() {
             op_links_candidates,
             op_links_confirm,
             op_links_retract,
+            op_links_pairs,
+            op_links_confirm_pair,
+            op_links_reject_pair,
             op_list_skills_full,
             op_list_skill_proposals,
             op_decide_skill_proposal,
