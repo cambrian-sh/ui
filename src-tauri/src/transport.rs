@@ -3337,6 +3337,23 @@ mod tests {
         } else {
             status.document_id.clone()
         };
+        // ENG-2184: the document view holds the ENTITY id (doc_id, as the feed carries
+        // it); the kernel resolves it, so the badge reads the same in-flight state.
+        let by_entity = t
+            .get_ingest_status(doc_id.clone())
+            .await
+            .expect("GetIngestStatus(entity)")
+            .expect("the kernel resolves the entity id the console holds");
+        println!(
+            "by entity id {doc_id}: {} {}/{} (row {})",
+            by_entity.state, by_entity.chunks_embedded, by_entity.chunks_total, by_entity.document_id
+        );
+        assert_eq!(by_entity.document_id, poll_id, "the entity resolves to this upload's row");
+        assert!(
+            by_entity.state == "accepted" || by_entity.state == "embedding",
+            "in flight: {}",
+            by_entity.state
+        );
         let mut seen = vec![status.state.clone()];
         let mut last_embedded = 0;
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(600);
@@ -3374,6 +3391,27 @@ mod tests {
         let idx: Vec<_> = seen.iter().map(|st| order(st).expect("known state")).collect();
         assert!(idx.windows(2).all(|w| w[0] < w[1]), "states out of order: {seen:?}");
         assert!(seen.contains(&"embedding".to_string()), "embedding was never observed: {seen:?}");
+
+        // ENG-2184: the document view's two reads by the entity id, once searchable —
+        // the state badge (GetIngestStatus) and the Ingested time (ListDocuments id lookup).
+        let badge = t
+            .get_ingest_status(doc_id.clone())
+            .await
+            .expect("GetIngestStatus(entity)")
+            .expect("found by entity id");
+        assert_eq!(badge.state, "searchable");
+        assert_eq!(badge.document_id, poll_id);
+        let page = t
+            .list_documents(5, String::new(), false, doc_id.clone())
+            .await
+            .expect("ListDocuments(entity)");
+        let row = page.documents.first().expect("the entity resolves to a row");
+        println!(
+            "document view by entity id: state={} row={} ingested_at_ms={} chunks={}",
+            badge.state, row.id, row.created_at_unix_ms, row.chunk_count
+        );
+        assert_eq!(row.id, poll_id);
+        assert!(row.created_at_unix_ms > 0, "the Ingested time is reported");
     }
 
     fn ts(seconds: i64, nanos: i32) -> Option<prost_types::Timestamp> {

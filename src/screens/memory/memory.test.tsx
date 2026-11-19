@@ -107,6 +107,34 @@ describe('MemoryDetail', () => {
     expect(ipc.listDocuments).toHaveBeenCalledWith({ id_prefix: 'mem-123', limit: 5 });
   });
 
+  // ENG-2184: the feed's doc id is the source-doc ENTITY id; the kernel resolves it to
+  // its rows (newest first), so the first row it answers with gives the ingest time.
+  it('shows the ingest time of the row the kernel resolves an entity id to', async () => {
+    const doc = makeDoc();
+    doc.doc_id = 'source_doc:report.pdf';
+    projectionStore
+      .getState()
+      .hydrate({ ...makeState('operator'), capabilities: ['document-listing'] });
+    vi.mocked(ipc.listDocuments).mockResolvedValue({
+      documents: [
+        {
+          id: 'report.pdf#w=bbb',
+          title: 'report.pdf',
+          source_type: '',
+          tags: [],
+          chunk_count: 3,
+          created_at_unix_ms: Date.UTC(2026, 10, 19, 9, 30, 0),
+        },
+      ],
+      next_cursor: '',
+      total_matching: 1,
+    });
+    render(<MemoryDetail doc={doc} />);
+    expect(await screen.findByText(/2026/)).toBeInTheDocument();
+    expect(screen.queryByText(/not reported for this document/)).not.toBeInTheDocument();
+    expect(ipc.listDocuments).toHaveBeenCalledWith({ id_prefix: 'source_doc:report.pdf', limit: 5 });
+  });
+
   it('says the ingest time is not reported without document-listing', () => {
     projectionStore.getState().hydrate(makeState('operator'));
     render(<MemoryDetail doc={makeDoc()} />);

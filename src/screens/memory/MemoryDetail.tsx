@@ -201,7 +201,11 @@ function DocumentTimes({ docId }: { docId: string }) {
     () => ipc.listDocuments({ id_prefix: docId, limit: 5 }),
     { enabled: canList, retry: 0 },
   );
-  const row = listing.data?.documents.find((d) => d.id === docId);
+  // The id may be a document row's or the source-doc entity id the feed carries; the
+  // kernel resolves an entity to its rows, newest first (ENG-2184), so the first row
+  // answers when no row carries the id itself. The console never derives a row id.
+  const docs = listing.data?.documents ?? [];
+  const row = docs.find((d) => d.id === docId) ?? docs[0];
 
   let ingested: string;
   if (!canList) ingested = 'not reported (this kernel does not advertise document-listing)';
@@ -244,7 +248,8 @@ export function IngestStateBadge({ status }: { status: IngestStatusOp }) {
  * The document's ingest state (contract 0111, ENG-2143), from the kernel's
  * GetIngestStatus, re-read every INGEST_POLL_MS until it is searchable or failed.
  * Rendered only with the `ingest-status` capability; absent it the panel is as it
- * was. An id no document carries (a chunk's id) shows no row rather than a guess.
+ * was. The source-doc entity id the feed carries is resolved by the kernel to its
+ * newest readable row (ENG-2184); an id nothing resolves shows no row rather than a guess.
  */
 function IngestStateRow({ docId }: { docId: string }) {
   const caps = useStore(projectionStore)?.state?.capabilities ?? [];
