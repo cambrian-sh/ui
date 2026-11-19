@@ -6,16 +6,25 @@ import type { ToolSummary } from '@/ipc/types';
  * `egress` gets the sharpest wording because it is the one a sovereign
  * deployment actually buys the feature for.
  */
-const EFFECT_COPY: Record<string, string> = {
+export const EFFECT_COPY: Record<string, string> = {
   read: 'Observes state; changes nothing',
+  // ADR-0150 D9 (ENG-1435): egress split into reading and sending.
+  egress_read: 'Reads from outside this deployment (web search, a fetch); changes nothing there',
   write: 'Mutates internal state',
-  egress: 'Can transmit data outside this deployment',
+  egress: 'Can transmit data outside this deployment (both reading and sending)',
+  egress_send:
+    'Sends to a person or changes state outside this deployment (messages, email, webhooks)',
   spend: 'Incurs cost or moves money',
   admin: 'Alters the system’s own configuration',
 };
 
-/** Which effects read as a risk worth colouring. */
-const SEVERE = new Set(['egress', 'spend', 'admin']);
+/**
+ * Which effects read as a risk worth colouring. `egress_read` is not one: it is
+ * what a subtask may do by default (ADR-0150 D2 ceiling: read + egress_read),
+ * while anything that can send — plain `egress` included, since it means both —
+ * is.
+ */
+export const SEVERE = new Set(['egress', 'egress_send', 'spend', 'admin']);
 
 interface ToolEffectsProps {
   tool: Pick<ToolSummary, 'effects' | 'effects_inferred'>;
@@ -76,7 +85,7 @@ export function ToolEffects({ tool, variant = 'chip', className }: ToolEffectsPr
           <li key={e} className="flex items-baseline gap-2 text-xs">
             <span
               className={cn(
-                'w-16 shrink-0 font-medium',
+                'w-24 shrink-0 font-medium',
                 SEVERE.has(e)
                   ? 'text-[var(--color-status-warn)]'
                   : 'text-[var(--fg-secondary)]',

@@ -1295,10 +1295,31 @@ export type DecisionReason =
   | 'skill_grant_clipped'
   | 'not_authorized';
 
-/** The closed set of tool effect classes (ADR-0086). */
-export type ToolEffect = 'read' | 'write' | 'egress' | 'spend' | 'admin';
+/**
+ * The closed set of tool effect classes (ADR-0086), with ADR-0150 D9's split of
+ * `egress` into `egress_read` (web search, a GET fetch) and `egress_send`
+ * (messages, email, webhooks, state-changing calls). Plain `egress` stays and
+ * means both. In the kernel's risk order (core `domain.AllToolEffects`). The
+ * operator proto carries effects as strings, so no proto change (ENG-1435).
+ */
+export type ToolEffect =
+  | 'read'
+  | 'egress_read'
+  | 'write'
+  | 'egress'
+  | 'egress_send'
+  | 'spend'
+  | 'admin';
 
-export const TOOL_EFFECTS: ToolEffect[] = ['read', 'write', 'egress', 'spend', 'admin'];
+export const TOOL_EFFECTS: ToolEffect[] = [
+  'read',
+  'egress_read',
+  'write',
+  'egress',
+  'egress_send',
+  'spend',
+  'admin',
+];
 
 /** Container kinds, in application order — broadest first. This IS the precedence order. */
 export type ContainerKind = 'organisation' | 'group' | 'principal' | 'surface';
