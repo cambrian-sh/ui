@@ -16,9 +16,9 @@ export const LINKS_CAPABILITY = 'links';
  * Highest confidence first, then oldest first, then by id.
  *
  * The kernel already returns candidates in confidence order, and this sorts
- * anyway — for the same reason `records.rs` sorts its unresolved reasons: an
- * order that is a property of the data cannot reshuffle between two polls, and a
- * queue whose rows move while you read it is one an operator stops working from.
+ * anyway: an order that is a property of the data cannot reshuffle between two
+ * polls, and a queue whose rows move while you read it is one an operator stops
+ * working from.
  * The tie-breaks matter because a producer writing a batch at one confidence is
  * the common case, not the exotic one.
  */
