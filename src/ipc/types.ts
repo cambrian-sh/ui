@@ -211,7 +211,12 @@ export interface ConversationMessage {
   id: string;
   conversation_id: string;
   seq: number;
-  role: 'user' | 'agent' | 'system';
+  /**
+   * `interruption` (core ENG-2124): the turn ended without a reply; `content` is
+   * the sentence the person was told. MessageOp.role is a free string, so no
+   * proto change (ENG-2145).
+   */
+  role: 'user' | 'agent' | 'system' | 'interruption';
   content: string;
   created_at: string;
 }

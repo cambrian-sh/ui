@@ -40,6 +40,7 @@ import type {
   PlanProposal,
   SubmitPlanResult,
 } from '@/ipc/types';
+import { TurnInterruptedNotice } from '@/screens/chat/TurnInterruptedNotice';
 
 const CLASSIFICATION: Record<
   InputClassification,
@@ -477,14 +478,24 @@ export function ChatConsole() {
 
             {isEmpty && hasChat && <ChatIntro />}
 
-            {messages.map((m, i) => (
-              <ChatMessage
-                key={m.id || `${m.seq}-${i}`}
-                author={m.role === 'user' ? 'operator' : 'runtime'}
-                text={m.content}
-                timestamp={m.created_at}
-              />
-            ))}
+            {messages.map((m, i) =>
+              m.role === 'interruption' ? (
+                // ENG-2145: a turn that ended without a reply is a notice on the
+                // turn, not something the assistant said.
+                <TurnInterruptedNotice
+                  key={m.id || `${m.seq}-${i}`}
+                  text={m.content}
+                  timestamp={m.created_at}
+                />
+              ) : (
+                <ChatMessage
+                  key={m.id || `${m.seq}-${i}`}
+                  author={m.role === 'user' ? 'operator' : 'runtime'}
+                  text={m.content}
+                  timestamp={m.created_at}
+                />
+              ),
+            )}
 
             {showGoal && (
               <ChatMessage author="operator" text={goal} timestamp={new Date().toISOString()} />
