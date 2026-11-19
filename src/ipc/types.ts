@@ -2443,7 +2443,9 @@ export interface AuthoredStep {
   checkpoint_after: boolean;
   /** Soft pin — goes first, ranking still behind it, a crash cascades normally. */
   preferred_agent: string;
-  /** Hard pin — this agent or nothing; the step dies if it is unavailable. */
+  /** Hard pin — on the planner lane, this agent or nothing (the step dies if it is
+   *  unavailable). The default single-agent lane runs the plan as one brief, where a
+   *  pin is guidance only (advisory issue `runs_as_one_brief`, ENG-2246). */
   agent_pin: string;
   /** A reasoning/synthesis step: no external action, so no capability is gated. */
   is_thought: boolean;

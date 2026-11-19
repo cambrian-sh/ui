@@ -609,7 +609,7 @@ function StepInspectorPanel({
           {mode === 'prefer' &&
             'Soft means it goes first and the merit ranking still exists behind it, so a crash cascades normally.'}
           {mode === 'pin' &&
-            'Hard means this agent or nothing — the step dies if it is unavailable. Prefer soft unless the reason to pin is correctness rather than habit.'}
+            'Hard means this agent or nothing — the step dies if it is unavailable — on the planner lane. The default single-agent lane runs the whole plan as one brief for one agent, so there a pin is guidance only. Prefer soft unless the reason to pin is correctness rather than habit.'}
         </p>
       </Labelled>
 
