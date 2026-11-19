@@ -37,6 +37,7 @@ pub const COMMANDS: &[&str] = &[
     "op_blast_radius_preview",
     "op_stat_file",
     "op_ingest_file",
+    "op_get_ingest_status",
     "op_answer_memory",
     "op_query_memory",
     "op_set_scope",
@@ -170,10 +171,10 @@ pub const COMMANDS: &[&str] = &[
     "op_submit_plan",
     "op_links_candidates",
     "op_links_confirm",
-    "op_links_retract",
     "op_links_pairs",
     "op_links_confirm_pair",
     "op_links_reject_pair",
+    "op_links_retract",
     "op_list_skills_full",
     "op_list_skill_proposals",
     "op_decide_skill_proposal",
@@ -513,6 +514,14 @@ pub async fn dispatch(
             }
             let a: A = parse(args)?;
             reply(super::super::op_ingest_file(app.state::<Transport>(), a.path, a.context, a.tags, a.importance, a.reason, a.occurred_at_unix_ms, a.time_precision, a.filename).await)
+        }
+        "op_get_ingest_status" => {
+            #[derive(serde::Deserialize)]
+            struct A {
+                document_id: String,
+            }
+            let a: A = parse(args)?;
+            reply(super::super::op_get_ingest_status(app.state::<Transport>(), a.document_id).await)
         }
         "op_answer_memory" => {
             #[derive(serde::Deserialize)]
@@ -1610,16 +1619,6 @@ pub async fn dispatch(
             let a: A = parse(args)?;
             reply(super::super::op_links_confirm(app.state::<Transport>(), a.link_id, a.reason, a.namespace_id).await)
         }
-        "op_links_retract" => {
-            #[derive(serde::Deserialize)]
-            struct A {
-                link_id: String,
-                reason: String,
-                namespace_id: Option<String>,
-            }
-            let a: A = parse(args)?;
-            reply(super::super::op_links_retract(app.state::<Transport>(), a.link_id, a.reason, a.namespace_id).await)
-        }
         "op_links_pairs" => {
             #[derive(serde::Deserialize)]
             struct A {
@@ -1646,6 +1645,16 @@ pub async fn dispatch(
             }
             let a: A = parse(args)?;
             reply(super::super::op_links_reject_pair(app.state::<Transport>(), a.pair, a.reason).await)
+        }
+        "op_links_retract" => {
+            #[derive(serde::Deserialize)]
+            struct A {
+                link_id: String,
+                reason: String,
+                namespace_id: Option<String>,
+            }
+            let a: A = parse(args)?;
+            reply(super::super::op_links_retract(app.state::<Transport>(), a.link_id, a.reason, a.namespace_id).await)
         }
         "op_list_skills_full" => {
             #[derive(serde::Deserialize)]

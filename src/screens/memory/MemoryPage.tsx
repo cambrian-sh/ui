@@ -27,7 +27,12 @@ export function MemoryPage() {
   const [section, setSection] = useState<'documents' | 'notes'>('documents');
 
   const memoryWritten = state?.memory_written ?? [];
-  const { rows, enqueue, enqueueFile } = useIngestQueue(memoryWritten);
+  // Contract 0111 (ENG-2143): a large upload is accepted and embedded in the
+  // background; with `ingest-status` the queue follows it to searchable / failed.
+  // Absent the capability the queue behaves as before (the call returning = indexed).
+  const { rows, enqueue, enqueueFile } = useIngestQueue(memoryWritten, {
+    ingestStatus: (state?.capabilities ?? []).includes('ingest-status'),
+  });
 
   const connection = state?.connection.status ?? 'down';
   const isOperator = state?.role === 'operator';

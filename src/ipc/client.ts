@@ -423,6 +423,14 @@ export const ipc = {
   ingestFile: (params: t.IngestFileParams): Promise<t.IngestMemoryResponse> =>
     invoke<t.IngestMemoryResponse>('op_ingest_file', { ...params }),
 
+  /**
+   * One document's ingest progress (contract 0111, ENG-2143): null when no document
+   * carries the id. Requires the `ingest-status` capability; an older kernel answers
+   * Unimplemented.
+   */
+  getIngestStatus: (document_id: string): Promise<t.IngestStatusOp | null> =>
+    invoke<t.IngestStatusOp | null>('op_get_ingest_status', { document_id }),
+
   /** Name + size of a picked file, without reading its bytes. */
   statFile: (path: string): Promise<t.FileStat> => invoke<t.FileStat>('op_stat_file', { path }),
 

@@ -242,6 +242,38 @@ pub struct DocumentSummary {
     pub version: i32,
 }
 
+/// Where one document's ingest stands (contract 0111, ENG-2143; capability
+/// `ingest-status`). A large upload is accepted at once and embedded in the
+/// background: `state` is "accepted" | "embedding" | "searchable" | "failed", the
+/// chunk counts are the accepted version's while it is embedded in the background
+/// (0 otherwise), and `error` is the last failure's cause.
+#[derive(Clone, serde::Serialize, Default, Debug, PartialEq)]
+pub struct IngestStatus {
+    pub document_id: String,
+    pub state: String,
+    pub chunks_total: i32,
+    pub chunks_embedded: i32,
+    pub error: String,
+}
+
+impl From<pb::IngestStatusOp> for IngestStatus {
+    fn from(s: pb::IngestStatusOp) -> Self {
+        IngestStatus {
+            document_id: s.document_id,
+            state: s.state,
+            chunks_total: s.chunks_total,
+            chunks_embedded: s.chunks_embedded,
+            error: s.error,
+        }
+    }
+}
+
+/// The kernel's ingest status as the webview gets it: `None` for an unset message
+/// (a pre-0111 kernel, a deduped replay) or one with no state.
+pub fn ingest_status_of(s: Option<pb::IngestStatusOp>) -> Option<IngestStatus> {
+    s.filter(|s| !s.state.is_empty()).map(IngestStatus::from)
+}
+
 /// One page of the document listing, plus the size of the whole matching set.
 ///
 /// `total_matching` ignores paging on purpose: "50 shown" does not tell an operator
@@ -2020,7 +2052,7 @@ impl Transport {
         reason: String,
         occurred_at_unix_ms: Option<i64>,
         time_precision: Option<String>,
-    ) -> Result<(String, bool, String, i32), String> {
+    ) -> Result<(String, bool, String, i32, Option<IngestStatus>), String> {
         // Validated before dialling: a bad precision is the operator's to fix,
         // and the kernel would only refuse it with INVALID_ARGUMENT anyway.
         let (occurred_at, time_precision) = ingest_event_time(occurred_at_unix_ms, time_precision)?;
@@ -2049,7 +2081,35 @@ impl Transport {
             .await
             .map_err(map_status)?
             .into_inner();
-        Ok((resp.doc_id, resp.deduped, resp.duplicate_of, resp.version))
+        // Contract 0111: where the document stands when the call returns —
+        // "searchable", or "accepted" for a large upload embedded in the background.
+        let status = ingest_status_of(resp.status);
+        Ok((
+            resp.doc_id,
+            resp.deduped,
+            resp.duplicate_of,
+            resp.version,
+            status,
+        ))
+    }
+
+    /// GetIngestStatus (contract 0111, capability `ingest-status`): one document's
+    /// ingest progress. `None` when no document carries the id. An older kernel
+    /// answers Unimplemented; the webview only asks when the capability is advertised.
+    pub async fn get_ingest_status(
+        &self,
+        document_id: String,
+    ) -> Result<Option<IngestStatus>, String> {
+        let mut client = self.client().await?;
+        let resp = client
+            .get_ingest_status(Request::new(pb::GetIngestStatusOpRequest { document_id }))
+            .await
+            .map_err(map_status)?
+            .into_inner();
+        if !resp.found {
+            return Ok(None);
+        }
+        Ok(ingest_status_of(resp.status))
     }
 
     /// AnswerMemory (ADR-0081): a grounded, [n]-cited answer + the evidence each
@@ -3154,6 +3214,167 @@ fn pipeline_summary_from(p: pb::PipelineOp) -> PipelineSummary {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // Contract 0111 (ENG-2143): the kernel's ingest status reaches the webview field
+    // for field; an unset message or one with no state is "no status", so the
+    // webview keeps its pre-0111 behaviour.
+    #[test]
+    fn ingest_status_of_maps_the_kernel_status() {
+        let got = ingest_status_of(Some(pb::IngestStatusOp {
+            document_id: "doc-big".into(),
+            state: "embedding".into(),
+            chunks_total: 300,
+            chunks_embedded: 128,
+            error: "embedder 503".into(),
+        }));
+        assert_eq!(
+            got,
+            Some(IngestStatus {
+                document_id: "doc-big".into(),
+                state: "embedding".into(),
+                chunks_total: 300,
+                chunks_embedded: 128,
+                error: "embedder 503".into(),
+            })
+        );
+        assert_eq!(ingest_status_of(None), None);
+        assert_eq!(ingest_status_of(Some(pb::IngestStatusOp::default())), None);
+        let json = serde_json::to_value(got.unwrap()).unwrap();
+        assert_eq!(json["chunks_embedded"], 128);
+        assert_eq!(json["state"], "embedding");
+    }
+
+    /// ENG-2175 end to end against a LIVE kernel (contract 0111, `ingest-status`):
+    /// through this transport's own `ingest_memory` and `get_ingest_status` (what
+    /// `op_ingest_memory` / `op_get_ingest_status` call), a large upload comes back
+    /// "accepted" and its progress reads accepted/embedding → searchable, in that
+    /// order, with the chunk counts rising. Run by hand:
+    ///
+    /// ```text
+    /// CAMBRIAN_E2E_ENDPOINT=127.0.0.1:50071 CAMBRIAN_E2E_USER=… CAMBRIAN_E2E_PASSWORD=…     ///   cargo test --lib live_kernel_large_upload -- --ignored --nocapture
+    /// ```
+    ///
+    /// The kernel must embed the upload in the background: >= 256 chunks, or a scratch
+    /// config with a lower `execution.ingestion.background_embed_min_chunks`.
+    #[tokio::test]
+    #[ignore = "needs a live kernel; see the doc comment"]
+    async fn live_kernel_large_upload_shows_background_embed_states() {
+        let (Ok(ep), Ok(user), Ok(pass)) = (
+            std::env::var("CAMBRIAN_E2E_ENDPOINT"),
+            std::env::var("CAMBRIAN_E2E_USER"),
+            std::env::var("CAMBRIAN_E2E_PASSWORD"),
+        ) else {
+            panic!("set CAMBRIAN_E2E_ENDPOINT, CAMBRIAN_E2E_USER and CAMBRIAN_E2E_PASSWORD");
+        };
+        let t = Transport::default();
+        *t.endpoint.lock().await = Some(ep);
+        let token = t
+            .client()
+            .await
+            .expect("dial")
+            .login(Request::new(pb::LoginRequest {
+                username: user,
+                password: pass,
+            }))
+            .await
+            .expect("login")
+            .into_inner()
+            .token;
+        t.set_token(Some(token));
+
+        // A long, varied text: many chunks, unique per run so it is never a duplicate.
+        let run = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let mut text = format!("ENG-2175 background embed check {run}.
+
+");
+        for i in 0..1500 {
+            text.push_str(&format!(
+                "Section {i}. Shipment {i} of order {run}-{i} left the Izmir warehouse on day {}                  with {} pallets; the carrier logged a {}-minute delay at the customs gate and                  the receiving clerk noted {} damaged cartons in the inspection report.
+
+",
+                i % 28 + 1,
+                i % 17 + 3,
+                i % 45,
+                i % 4
+            ));
+        }
+        let started = std::time::Instant::now();
+        let (doc_id, _deduped, _dup, _version, status) = t
+            .ingest_memory(
+                text,
+                vec![],
+                String::new(),
+                String::new(),
+                String::new(),
+                vec![],
+                0.5,
+                "eng2175-e2e".into(),
+                String::new(),
+                "ENG-2175 e2e: background embed progress".into(),
+                None,
+                None,
+            )
+            .await
+            .expect("ingest");
+        let status = status.expect("a 0111 kernel reports the ingest status");
+        println!(
+            "ingest returned in {:?}: doc_id={doc_id} status.document_id={} {} {}/{}",
+            started.elapsed(),
+            status.document_id,
+            status.state,
+            status.chunks_embedded,
+            status.chunks_total
+        );
+        assert_eq!(status.state, "accepted", "a large upload is accepted, not embedded in the call");
+
+        // The status names the document it is for; the webview polls that id too
+        // (useIngestQueue), falling back to the response's doc_id.
+        let poll_id = if status.document_id.is_empty() {
+            doc_id.clone()
+        } else {
+            status.document_id.clone()
+        };
+        let mut seen = vec![status.state.clone()];
+        let mut last_embedded = 0;
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(600);
+        loop {
+            let s = t
+                .get_ingest_status(poll_id.clone())
+                .await
+                .expect("GetIngestStatus")
+                .expect("the accepted document is found");
+            println!(
+                "{:>6.1}s {} {}/{} {}",
+                started.elapsed().as_secs_f32(),
+                s.state,
+                s.chunks_embedded,
+                s.chunks_total,
+                s.error
+            );
+            // The counts are the background embed's; "searchable" reports 0 (contract 0111).
+            if s.state == "embedding" {
+                assert!(s.chunks_embedded >= last_embedded, "progress never goes backwards");
+                last_embedded = s.chunks_embedded;
+            }
+            if seen.last() != Some(&s.state) {
+                seen.push(s.state.clone());
+            }
+            if s.state == "searchable" || s.state == "failed" {
+                break;
+            }
+            assert!(std::time::Instant::now() < deadline, "still {} after 10 min", s.state);
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        }
+        println!("states in order: {seen:?}");
+        assert_eq!(seen.last().map(String::as_str), Some("searchable"));
+        let order = |st: &str| ["accepted", "embedding", "searchable"].iter().position(|x| *x == st);
+        let idx: Vec<_> = seen.iter().map(|st| order(st).expect("known state")).collect();
+        assert!(idx.windows(2).all(|w| w[0] < w[1]), "states out of order: {seen:?}");
+        assert!(seen.contains(&"embedding".to_string()), "embedding was never observed: {seen:?}");
+    }
 
     fn ts(seconds: i64, nanos: i32) -> Option<prost_types::Timestamp> {
         Some(prost_types::Timestamp { seconds, nanos })

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { ipc } from '@/ipc';
 import type { MemoryDocument } from '@/design-system/components/cambrian/memory-list';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/design-system/components';
@@ -10,6 +10,9 @@ import { projectionStore } from '@/store/projection';
 import { useStore } from '@/store/useStore';
 import { useKernelQuery } from '@/lib/useKernelQuery';
 import { formatEventTime } from '@/lib/eventTime';
+import { Badge } from '@/design-system/components/ui/badge';
+import type { IngestStatusOp } from '@/ipc/types';
+import { describeIngest, INGEST_POLL_MS, isTerminalIngest } from './ingestProgress';
 
 type PendingAction = 'tag' | 'delete' | 'promote' | 'supersede' | null;
 
@@ -212,6 +215,58 @@ function DocumentTimes({ docId }: { docId: string }) {
       <dd>{ingested}</dd>
       <dt className="text-[var(--fg-muted)]">Happened</dt>
       <dd className="text-[var(--fg-muted)]">shown on its search hits and citations</dd>
+      <IngestStateRow docId={docId} />
     </dl>
+  );
+}
+
+/** The badge variant for an ingest state (the word is always in the badge too). */
+export function ingestBadgeVariant(state: string): 'live' | 'err' | 'neutral' {
+  if (state === 'failed') return 'err';
+  if (!isTerminalIngest(state)) return 'live';
+  return 'neutral';
+}
+
+/** The ingest state badge: the word, then the kernel's detail (n of total, the cause). */
+export function IngestStateBadge({ status }: { status: IngestStatusOp }) {
+  const variant = ingestBadgeVariant(status.state);
+  return (
+    <span className="inline-flex flex-wrap items-center gap-2">
+      <Badge variant={variant} dot aria-label={`Ingest state: ${status.state}`}>
+        {status.state}
+      </Badge>
+      {status.state !== 'searchable' && <span>{describeIngest(status)}</span>}
+    </span>
+  );
+}
+
+/**
+ * The document's ingest state (contract 0111, ENG-2143), from the kernel's
+ * GetIngestStatus, re-read every INGEST_POLL_MS until it is searchable or failed.
+ * Rendered only with the `ingest-status` capability; absent it the panel is as it
+ * was. An id no document carries (a chunk's id) shows no row rather than a guess.
+ */
+function IngestStateRow({ docId }: { docId: string }) {
+  const caps = useStore(projectionStore)?.state?.capabilities ?? [];
+  const canRead = caps.includes('ingest-status');
+  const q = useKernelQuery(['ingest-status', docId], () => ipc.getIngestStatus(docId), {
+    enabled: canRead,
+    retry: 0,
+    refetchInterval: (query) => {
+      const s = query.state.data;
+      return s && !isTerminalIngest(s.state) ? INGEST_POLL_MS : false;
+    },
+  });
+  if (!canRead) return null;
+  let body: ReactNode;
+  if (q.isLoading) body = 'loading…';
+  else if (q.error) body = `could not be read: ${q.error.message}`;
+  else if (!q.data) return null;
+  else body = <IngestStateBadge status={q.data} />;
+  return (
+    <>
+      <dt className="text-[var(--fg-muted)]">State</dt>
+      <dd aria-live="polite">{body}</dd>
+    </>
   );
 }

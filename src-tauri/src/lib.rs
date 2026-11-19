@@ -465,7 +465,7 @@ async fn op_ingest_memory(
     reason: String,
     occurred_at_unix_ms: Option<i64>,
     time_precision: Option<String>,
-) -> Result<(String, bool, String, i32), String> {
+) -> Result<(String, bool, String, i32, Option<transport::IngestStatus>), String> {
     transport
         .inner()
         .clone()
@@ -585,7 +585,7 @@ async fn op_ingest_file(
     occurred_at_unix_ms: Option<i64>,
     time_precision: Option<String>,
     filename: Option<String>,
-) -> Result<(String, bool, String, i32), String> {
+) -> Result<(String, bool, String, i32, Option<transport::IngestStatus>), String> {
     let content = std::fs::read(&path).map_err(|e| format!("read {path}: {e}"))?;
     let filename = match filename.filter(|f| !f.trim().is_empty()) {
         Some(f) => f,
@@ -613,6 +613,18 @@ async fn op_ingest_file(
             time_precision,
         )
         .await
+}
+
+/// One document's ingest progress (contract 0111, ENG-2143). The webview polls this
+/// for a large upload the kernel embeds in the background, until the state is
+/// "searchable" or "failed", and only when the handshake advertises `ingest-status`.
+/// `null` = no document carries the id.
+#[tauri::command(rename_all = "snake_case")]
+async fn op_get_ingest_status(
+    transport: State<'_, Transport>,
+    document_id: String,
+) -> Result<Option<transport::IngestStatus>, String> {
+    transport.inner().clone().get_ingest_status(document_id).await
 }
 
 /// Best-effort MIME from a filename extension. Advisory only — the kernel routes
@@ -3044,6 +3056,7 @@ pub fn run() {
             op_transition_pipeline,
             op_ingest_memory,
             op_ingest_file,
+            op_get_ingest_status,
             op_stat_file,
             op_query_memory,
             op_answer_memory,

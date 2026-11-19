@@ -12,6 +12,8 @@ class MockIPC {
   private stateListeners = new Set<(state: t.StateOfRecord) => void>();
   private tokenListeners = new Set<(chunk: t.TokenChunk) => void>();
   private ingestCount = 0;
+  /** Contract 0111: each mock document's ingest status (every mock upload is small, so searchable). */
+  private ingestStatuses = new Map<string, t.IngestStatusOp>();
   private zeroHitsMode = false;
   private memoryWrittenSeq = 1;
 
@@ -409,7 +411,19 @@ class MockIPC {
         summary: (params.text || source).slice(0, 200),
       });
     }
-    return [id, deduped];
+    const status: t.IngestStatusOp = {
+      document_id: id,
+      state: 'searchable',
+      chunks_total: 0,
+      chunks_embedded: 0,
+      error: '',
+    };
+    this.ingestStatuses.set(id, status);
+    return [id, deduped, '', 1, status];
+  }
+
+  async getIngestStatus(document_id: string): Promise<t.IngestStatusOp | null> {
+    return this.ingestStatuses.get(document_id) ?? null;
   }
 
   /** No stored uploads in the mock: every upload is a new document. */

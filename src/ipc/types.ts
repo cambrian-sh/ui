@@ -1091,18 +1091,39 @@ export interface IngestMemoryParams {
   time_precision?: string;
 }
 
+/** Contract 0111 (ENG-2143): where one document's ingest stands. */
+export type IngestState = 'accepted' | 'embedding' | 'searchable' | 'failed';
+
 /**
- * `[doc_id, deduped, duplicate_of, version]`. `deduped` = replayed command_id, NOT a
- * content duplicate. Contract 0100 (ADR-0138 Amendment B1): `duplicate_of` is set
+ * One document's ingest progress (contract 0111, capability `ingest-status`). A large
+ * upload is accepted at once and embedded in the background; `chunks_total` /
+ * `chunks_embedded` count the accepted version while it is (0 otherwise), and `error`
+ * is the last failure's cause (set for "failed", and while a failed attempt waits for
+ * its retry). `state` is a string on the wire: an unknown value is shown as it is.
+ */
+export interface IngestStatusOp {
+  document_id: string;
+  state: IngestState | string;
+  chunks_total: number;
+  chunks_embedded: number;
+  error: string;
+}
+
+/**
+ * `[doc_id, deduped, duplicate_of, version, status]`. `deduped` = replayed command_id,
+ * NOT a content duplicate. Contract 0100 (ADR-0138 Amendment B1): `duplicate_of` is set
  * when the kernel already stored this exact file for this operator and wrote nothing;
  * `version` > 1 means the upload replaced an earlier version of the same-named
- * document. Both absent from a pre-0100 kernel.
+ * document. Both absent from a pre-0100 kernel. Contract 0111: `status` is where the
+ * document stands when the call returns ("searchable", or "accepted" for a large
+ * upload embedded in the background); null for a deduped replay or an older kernel.
  */
 export type IngestMemoryResponse = [
   doc_id: string,
   deduped: boolean,
   duplicate_of?: string,
   version?: number,
+  status?: IngestStatusOp | null,
 ];
 
 /** File lane: the core reads bytes from this local `path`; no bytes cross IPC. */

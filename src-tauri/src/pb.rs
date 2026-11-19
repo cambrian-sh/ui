@@ -301,9 +301,10 @@ pub const RETENTION_FEED_CAPABILITY: &str = "retention-feed";
 ///   `DeleteMemoryNotes` ("Clear notes") is labelled a soft delete, not an erasure.
 /// - **0111** 2026-11-19, additive (ENG-2143): background embedding of large uploads —
 ///   `GetIngestStatus` (`IngestStatusOp`), `IngestMemoryOpResponse.status`,
-///   `GetDocumentOpResponse.ingest`, capability `ingest-status`. The console shows no
-///   ingest progress yet (T-20261119-console-shows-no-progress-for-a-large-upload); the
-///   bump keeps it off the skew banner.
+///   `GetDocumentOpResponse.ingest`, capability `ingest-status`. With the capability
+///   the upload queue shows accepted → embedding n of total → searchable / failed,
+///   polling `GetIngestStatus` (`op_get_ingest_status`), and the document view shows a
+///   state badge (ENG-2175).
 /// - **0112** 2026-11-19, additive (ENG-2170): `IngestMemoryOpRequest.labels` — the
 ///   writer's non-classification markers (a revision's lifecycle, `rev<N>`, corpus and
 ///   document ids), carried beside the tags; the write ceiling never filters them. The

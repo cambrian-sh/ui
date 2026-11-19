@@ -1,10 +1,14 @@
 import type { IngestRow, IngestStatus } from './useIngestQueue';
 import { cn } from '@/design-system/lib/utils';
+import { describeIngest } from './ingestProgress';
 
 const STATUS_MARK: Record<IngestStatus, string> = {
   queued: '·',
   parsing: '⠋',
   indexed: '✓',
+  accepted: '·',
+  embedding: '⠋',
+  searchable: '✓',
   failed: '✗',
 };
 
@@ -12,6 +16,9 @@ const STATUS_CLASS: Record<IngestStatus, string> = {
   queued: 'text-[var(--fg-muted)]',
   parsing: 'text-[var(--status-live)]',
   indexed: 'text-[var(--status-ok)]',
+  accepted: 'text-[var(--status-live)]',
+  embedding: 'text-[var(--status-live)]',
+  searchable: 'text-[var(--status-ok)]',
   failed: 'text-[var(--status-err)]',
 };
 
@@ -21,13 +28,20 @@ function detail(row: IngestRow): string {
       return 'queued';
     case 'parsing':
       return 'parsing…';
+    // Contract 0111 (ingest-status): a large upload embedded in the background.
+    case 'accepted':
+    case 'embedding':
+      return row.ingest ? describeIngest(row.ingest) : row.status;
     case 'indexed':
+    case 'searchable': {
       // ADR-0138 B1.1: an exact duplicate wrote nothing — say so, and name the copy.
       if (row.duplicate_of) return `duplicate of ${row.duplicate_of} · nothing written`;
-      if (row.version !== null && row.version > 1) return `indexed · replaced the earlier version (v${row.version})`;
+      const word = row.status;
+      if (row.version !== null && row.version > 1) return `${word} · replaced the earlier version (v${row.version})`;
       return row.chunks === null
-        ? 'indexed'
-        : `indexed · ${row.chunks} chunk${row.chunks === 1 ? '' : 's'}`;
+        ? word
+        : `${word} · ${row.chunks} chunk${row.chunks === 1 ? '' : 's'}`;
+    }
     case 'failed':
       return row.error ?? 'failed';
   }
@@ -43,7 +57,7 @@ export function IngestQueue({ rows }: { rows: IngestRow[] }) {
   }
 
   return (
-    <ul aria-label="Ingest queue" className="flex flex-col gap-1">
+    <ul aria-label="Ingest queue" aria-live="polite" className="flex flex-col gap-1">
       {rows.map((row) => (
         <li key={row.local_id} className="flex items-start gap-2 text-[13px]">
           <span
