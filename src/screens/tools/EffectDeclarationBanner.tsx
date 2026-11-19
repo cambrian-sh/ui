@@ -1,12 +1,14 @@
 import type { ToolSummary } from '@/ipc/types';
 
 /**
- * How far the effect-declaration migration has got.
+ * How many tools declare their effects, and how many the kernel inferred.
  *
- * `execution.tool_effects_strict` can only be flipped on once nothing is
- * inferred, so "how many are still derived from the manifest" is a finish line
- * an operator is working towards — and it was previously only discoverable by
- * opening tools one at a time and noticing an `inferred` chip.
+ * An inferred effect is derived from the tool's other manifest fields, not
+ * declared by it, so "how many are still inferred" is what an operator checks —
+ * and it was previously only discoverable by opening tools one at a time and
+ * noticing an `inferred` chip. (The strict mode that refused undeclared tools,
+ * `execution.tool_effects_strict`, is retired: it governed only the deleted
+ * native tool path, ENG-1421.)
  *
  * The split bar shows declared against inferred. An inferred effect is a guess
  * the kernel made, and a wrong guess on `egress` is the difference between a
@@ -55,8 +57,8 @@ export function EffectDeclarationBanner({ tools }: { tools: readonly ToolSummary
 
       <p className="text-[11.5px] leading-[1.5] text-[var(--fg-muted)]">
         {clean
-          ? 'Every tool declares its effects. `execution.tool_effects_strict` can be turned on.'
-          : 'Effects that are inferred were derived from the manifest, not declared by it. `execution.tool_effects_strict` stays off until that count reaches zero.'}
+          ? 'Every tool declares its effects.'
+          : 'Effects that are inferred were derived from the manifest, not declared by it — the kernel guessed them, so check them.'}
       </p>
     </div>
   );

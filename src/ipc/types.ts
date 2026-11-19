@@ -773,9 +773,8 @@ export interface ToolSummary {
   /** The closed verb classes it exercises (ADR-0086). */
   effects?: string[];
   /**
-   * True when effects were DERIVED from the manifest rather than declared. The
-   * strict-mode migration checklist: an operator flips
-   * `execution.tool_effects_strict` once nothing is inferred.
+   * True when effects were DERIVED from the manifest rather than declared — a
+   * guess the kernel made (ADR-0086), worth checking.
    */
   effects_inferred?: boolean;
 }
