@@ -299,7 +299,12 @@ pub const RETENTION_FEED_CAPABILITY: &str = "retention-feed";
 ///   `ErasureCandidateOp.note_text`, `ErasureReceiptOp.redacted_messages`. The console
 ///   renders no erasure surface yet (ENG-462); the bump keeps it off the skew banner.
 ///   `DeleteMemoryNotes` ("Clear notes") is labelled a soft delete, not an erasure.
-pub const PINNED_CONTRACT_VERSION: &str = "0110";
+/// - **0111** 2026-11-19, additive (ENG-2143): background embedding of large uploads —
+///   `GetIngestStatus` (`IngestStatusOp`), `IngestMemoryOpResponse.status`,
+///   `GetDocumentOpResponse.ingest`, capability `ingest-status`. The console shows no
+///   ingest progress yet (T-20261119-console-shows-no-progress-for-a-large-upload); the
+///   bump keeps it off the skew banner.
+pub const PINNED_CONTRACT_VERSION: &str = "0111";
 
 /// The plugin versions this console was BUILT against, by plugin id (ADR-0089).
 ///
