@@ -304,7 +304,12 @@ pub const RETENTION_FEED_CAPABILITY: &str = "retention-feed";
 ///   `GetDocumentOpResponse.ingest`, capability `ingest-status`. The console shows no
 ///   ingest progress yet (T-20261119-console-shows-no-progress-for-a-large-upload); the
 ///   bump keeps it off the skew banner.
-pub const PINNED_CONTRACT_VERSION: &str = "0111";
+/// - **0112** 2026-11-19, additive (ENG-2170): `IngestMemoryOpRequest.labels` — the
+///   writer's non-classification markers (a revision's lifecycle, `rev<N>`, corpus and
+///   document ids), carried beside the tags; the write ceiling never filters them. The
+///   console's ingest pane sends none (an operator upload has no lifecycle); the bump
+///   keeps it off the skew banner.
+pub const PINNED_CONTRACT_VERSION: &str = "0112";
 
 /// The plugin versions this console was BUILT against, by plugin id (ADR-0089).
 ///
