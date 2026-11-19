@@ -31,7 +31,7 @@ use policy::{
     AccessDecision, DecisionRecord, GroupSpec, IdentityBinding, IngressActivityPage, IngressSpec,
     LinkSpec, PolicyProposal, PolicySpec, PrincipalSpec, ResultantPolicy, SaveOutcome,
     SimulationResult,
-    StrangerPolicy, TagSpec, UnboundSender,
+    StrangerPolicy, TagSpec, UnboundSender, WriteCeiling,
 };
 use state::{
     AuthoredStep, ClassifiedInput, ConfigSchema, ConfigWriteResult, ConversationMessage,
@@ -1019,6 +1019,13 @@ async fn op_list_groups(transport: State<'_, Transport>) -> Result<Vec<GroupSpec
 #[tauri::command(rename_all = "snake_case")]
 async fn op_list_tags(transport: State<'_, Transport>) -> Result<Vec<TagSpec>, String> {
     transport.inner().clone().list_tags().await
+}
+
+/// The signed-in operator's own write ceiling (ENG-2161): what an upload may be
+/// classified as, and whether an untagged upload would be refused.
+#[tauri::command(rename_all = "snake_case")]
+async fn op_get_write_ceiling(transport: State<'_, Transport>) -> Result<WriteCeiling, String> {
+    transport.inner().clone().get_write_ceiling().await
 }
 
 /// Draft a policy from a description in English (ADR-0092).
@@ -3066,6 +3073,7 @@ pub fn run() {
             op_list_classification_tags,
             op_list_groups,
             op_list_tags,
+            op_get_write_ceiling,
             op_list_documents,
             op_match_upload,
             op_tag_memory,

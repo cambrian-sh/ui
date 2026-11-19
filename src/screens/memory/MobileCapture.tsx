@@ -36,10 +36,17 @@ export function MobileCapture({
   vocabulary,
   disabled,
   disabledReason,
+  classificationRequired = false,
 }: {
   vocabulary: Vocabulary;
   disabled: boolean;
   disabledReason?: string;
+  /**
+   * ENG-2161: the operator's write ceiling holds a closed label, so an unlabelled
+   * capture is refused by the kernel; a label (from `vocabulary`, narrowed to the
+   * ceiling) must be chosen before Capture is enabled.
+   */
+  classificationRequired?: boolean;
 }) {
   const [kind, setKind] = useState<CaptureKind>('note');
   const [text, setText] = useState('');
@@ -62,7 +69,8 @@ export function MobileCapture({
     }),
   );
 
-  const canSave = text.trim() !== '' && !disabled && kind !== 'photo';
+  const needsClassification = classificationRequired && tags.length === 0;
+  const canSave = text.trim() !== '' && !disabled && kind !== 'photo' && !needsClassification;
 
   return (
     <div className="flex flex-col gap-4 p-4">
@@ -148,7 +156,15 @@ export function MobileCapture({
 
           {vocabulary.tags.length > 0 && (
             <div className="flex flex-col gap-1.5">
-              <span className="text-[12.5px] text-[var(--fg-secondary)]">Labels</span>
+              <span className="text-[12.5px] text-[var(--fg-secondary)]">
+                Labels{classificationRequired ? ' (required)' : ''}
+              </span>
+              {classificationRequired && (
+                <span role="note" className="text-[11px] text-[var(--fg-muted)]">
+                  Your write ceiling holds closed labels, so a capture with no labels is
+                  refused. Pick what this is.
+                </span>
+              )}
               <div className="flex flex-wrap gap-1.5">
                 {vocabulary.tags.slice(0, 12).map((tag) => (
                   <button

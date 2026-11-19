@@ -1268,6 +1268,9 @@ export type DecisionReason =
   | 'effect_not_permitted'
   | 'unsatisfiable_policy'
   | 'no_principal'
+  // ENG-2161: a write that requested no classification while the writer's write
+  // ceiling holds closed tags — refused; the writer must choose from the ceiling.
+  | 'classification_required'
   | 'skill_grant_clipped'
   | 'not_authorized';
 
@@ -1349,6 +1352,23 @@ export interface ScopeRule {
 export interface TagSpec {
   tag: string;
   closed: boolean;
+}
+
+/**
+ * The signed-in operator's OWN write ceiling (ENG-2161, premium GetWriteCeiling):
+ * the labels an upload may be classified as, in the operator's order, each with
+ * its closed-ness.
+ *
+ * `classification_required` is the kernel's answer to "would an upload with no
+ * labels be refused?" — true when the ceiling holds a closed label, because an
+ * unlabelled write would take the whole ceiling and be readable only by someone
+ * granted every closed label in it. The upload form asks for a classification
+ * BEFORE sending when it is true, instead of learning it from the refusal.
+ */
+export interface WriteCeiling {
+  writer: string;
+  tags: TagSpec[];
+  classification_required: boolean;
 }
 
 /** One registered ingress — a point where the outside world enters (ADR-0090). */

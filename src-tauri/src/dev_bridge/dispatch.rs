@@ -65,6 +65,7 @@ pub const COMMANDS: &[&str] = &[
     "op_list_classification_tags",
     "op_list_groups",
     "op_list_tags",
+    "op_get_write_ceiling",
     "op_propose_policy",
     "op_list_documents",
     "op_match_upload",
@@ -742,6 +743,9 @@ pub async fn dispatch(
         }
         "op_list_tags" => {
             reply(super::super::op_list_tags(app.state::<Transport>()).await)
+        }
+        "op_get_write_ceiling" => {
+            reply(super::super::op_get_write_ceiling(app.state::<Transport>()).await)
         }
         "op_propose_policy" => {
             #[derive(serde::Deserialize)]

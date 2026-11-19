@@ -496,6 +496,13 @@ export const ipc = {
    */
   listTags: (): Promise<t.TagSpec[]> => invoke<t.TagSpec[]>('op_list_tags'),
 
+  /**
+   * The caller's own write ceiling (ENG-2161): what an upload may be classified as,
+   * and whether an unlabelled upload would be refused. Premium plane; names no
+   * other principal.
+   */
+  getWriteCeiling: (): Promise<t.WriteCeiling> => invoke<t.WriteCeiling>('op_get_write_ceiling'),
+
   listIngresses: (): Promise<t.IngressSpec[]> => invoke<t.IngressSpec[]>('op_list_ingresses'),
 
   // ── Telegram ingress (ADR-0090) ───────────────────────────────────────────

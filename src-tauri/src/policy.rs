@@ -714,6 +714,19 @@ pub struct TagSpec {
     pub closed: bool,
 }
 
+/// The signed-in operator's own write ceiling (ENG-2161): the tags an upload may be
+/// classified as, with closed-ness, and whether an untagged upload would be refused.
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, Default)]
+pub struct WriteCeiling {
+    /// The id the ceiling is keyed by.
+    pub writer: String,
+    /// The ceiling in the operator's order. Empty: no ceiling.
+    pub tags: Vec<TagSpec>,
+    /// True when the ceiling holds a closed tag: the kernel refuses an untagged
+    /// upload, so the upload form must ask for a classification first.
+    pub classification_required: bool,
+}
+
 /// One principal this deployment actually has.
 ///
 /// DERIVED, never registered: there is no principal table, so the set is assembled
@@ -878,6 +891,28 @@ impl Transport {
                 closed: t.closed,
             })
             .collect())
+    }
+
+    /// The caller's own write ceiling (ENG-2161). It names no other principal.
+    pub async fn get_write_ceiling(&self) -> Result<WriteCeiling, String> {
+        let mut client = self.policy_client().await?;
+        let resp = client
+            .get_write_ceiling(Request::new(pb::authz::GetWriteCeilingRequest {}))
+            .await
+            .map_err(map_status)?
+            .into_inner();
+        Ok(WriteCeiling {
+            writer: resp.writer,
+            tags: resp
+                .tags
+                .into_iter()
+                .map(|t| TagSpec {
+                    tag: t.tag,
+                    closed: t.closed,
+                })
+                .collect(),
+            classification_required: resp.classification_required,
+        })
     }
 
     /// Draft a policy from a description in English. Read-only on the server: it

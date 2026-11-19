@@ -1160,6 +1160,11 @@ class MockIPC {
   async listTags(): Promise<t.TagSpec[]> {
     return fx.tags;
   }
+  async getWriteCeiling(): Promise<t.WriteCeiling> {
+    // The mock operator may classify as any vocabulary label; a closed one in the
+    // ceiling means an unlabelled upload is refused, as the kernel answers (ENG-2161).
+    return { writer: 'operator', tags: fx.tags, classification_required: fx.tags.some((x) => x.closed) };
+  }
 
   // ---- Access ----
   async explainAccess(params: t.ExplainAccessParams): Promise<t.AccessDecision> {

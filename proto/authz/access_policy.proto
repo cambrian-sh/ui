@@ -60,6 +60,13 @@ service AccessPolicyAdmin {
   // deny-by-default — so an authoring UI that cannot show it will produce policies
   // whose effect the author cannot predict.
   rpc ListTags(ListTagsRequest) returns (ListTagsResponse);
+  // GetWriteCeiling returns the CALLER's own write ceiling — the tags its writes
+  // may be classified as (ADR-0035 C2) — with each tag's closed-ness, and whether
+  // an untagged write by the caller would be refused (ENG-2161: the ceiling holds a
+  // closed tag, so the caller must choose a classification). An upload form asks
+  // for the classification BEFORE it sends, rather than learning it from the
+  // refusal. It names no other principal and takes none.
+  rpc GetWriteCeiling(GetWriteCeilingRequest) returns (GetWriteCeilingResponse);
 
   // ── Ingress registry: which daemons are entry points (ADR-0090 D2) ─────────
   // Registration MINTS A SURFACE — it decides what an entry point is permitted to
@@ -460,6 +467,23 @@ message TagSpec {
 
 message ListTagsRequest {}
 message ListTagsResponse { repeated TagSpec tags = 1; }
+
+// GetWriteCeilingRequest carries nothing: the writer is the call's own principal.
+message GetWriteCeilingRequest {}
+
+// GetWriteCeilingResponse is the caller's write ceiling (ENG-2161).
+message GetWriteCeilingResponse {
+  // writer is the id the ceiling is keyed by (the principal's writer id).
+  string writer = 1;
+  // tags is the ceiling, in the order the operator set it, each with its
+  // closed-ness. Empty: no ceiling — an untagged write is stored unclassified,
+  // and a write requesting any tag is refused (ENG-2115).
+  repeated TagSpec tags = 2;
+  // classification_required is true when tags holds a closed tag: an untagged
+  // write would be refused, so the writer must send a classification chosen from
+  // tags.
+  bool classification_required = 3;
+}
 
 // ── Authoring assistant ─────────────────────────────────────────────────────
 

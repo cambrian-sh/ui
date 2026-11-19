@@ -6,6 +6,7 @@ import { InspectTab } from './InspectTab';
 import { AskPane } from './AskPane';
 import { useIngestQueue } from './useIngestQueue';
 import { useVocabulary } from '@/screens/scope/useVocabulary';
+import { uploadVocabulary, useWriteCeiling } from './useWriteCeiling';
 import { cn } from '@/design-system/lib/utils';
 import { useBreakpoint } from '@/lib/useBreakpoint';
 import { MobileCapture } from './MobileCapture';
@@ -53,6 +54,12 @@ export function MemoryPage() {
   // the corpus. Absent the plugin this reports "not configured" and the picker
   // correctly falls back to free entry.
   const vocabulary = useVocabulary(capabilities.includes('access-policy'));
+  // ENG-2161: the operator's own write ceiling. When it holds a closed label the
+  // kernel refuses an unlabelled upload, so the forms ask for a classification —
+  // chosen from the ceiling — before sending.
+  const writeCeiling = useWriteCeiling(capabilities.includes('access-policy') && isOperator);
+  const ingestVocabulary = uploadVocabulary(vocabulary, writeCeiling);
+  const classificationRequired = writeCeiling?.classification_required === true;
   const hasNotes = capabilities.includes('memory-notes');
 
   return (
@@ -125,7 +132,8 @@ export function MemoryPage() {
               />
             ) : (
               <MobileCapture
-                vocabulary={vocabulary}
+                vocabulary={ingestVocabulary}
+                classificationRequired={classificationRequired}
                 disabled={mutationsDisabled}
                 disabledReason={mutationsDisabledReason}
               />
@@ -167,7 +175,8 @@ export function MemoryPage() {
                 canUploadFiles={canUploadFiles}
                 canDateEvents={canDateEvents}
                 canReplaceUploads={canReplaceUploads}
-                vocabulary={vocabulary}
+                vocabulary={ingestVocabulary}
+                classificationRequired={classificationRequired}
                 disabled={mutationsDisabled}
                 disabledReason={mutationsDisabledReason}
               />

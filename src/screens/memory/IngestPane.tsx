@@ -80,6 +80,14 @@ export interface IngestPaneProps {
    * stored one, and the pane asks first (Replace / Keep both).
    */
   canReplaceUploads?: boolean;
+  /**
+   * ENG-2161: the operator's write ceiling holds a closed label, so the kernel
+   * refuses an upload with no labels (it would carry every closed label and be
+   * readable only by someone granted all of them). The pane then asks for a
+   * classification — chosen from `vocabulary`, already narrowed to the ceiling —
+   * before anything is sent, and "Anyone, anywhere" is not offered.
+   */
+  classificationRequired?: boolean;
 }
 
 export function IngestPane({
@@ -92,6 +100,7 @@ export function IngestPane({
   disabledReason,
   canDateEvents = false,
   canReplaceUploads = false,
+  classificationRequired = false,
 }: IngestPaneProps) {
   const [pasteMode, setPasteMode] = useState(!canUploadFiles);
   const [pasteText, setPasteText] = useState('');
@@ -111,7 +120,11 @@ export function IngestPane({
   const whenInvalid = whenMode !== 'unknown' && whenValue.trim() !== '' && when === null;
   const whenFields = when ?? {};
 
-  const effectiveTags = restricted ? tags : [];
+  const effectiveTags = restricted || classificationRequired ? tags : [];
+  // Nothing is sent until a classification is chosen when the kernel would refuse
+  // an unlabelled upload (ENG-2161).
+  const needsClassification = classificationRequired && effectiveTags.length === 0;
+  const classificationHint = 'Choose at least one label first: an unlabelled upload is refused.';
 
   // Closed labels are deny-by-default and there is no operator exemption (ADR-0091).
   // Applying one at ingest makes the document unreachable for EVERYONE — including
@@ -279,8 +292,8 @@ export function IngestPane({
           <button
             type="button"
             onClick={submitText}
-            disabled={disabled || !pasteText.trim() || whenInvalid}
-            title={disabled ? disabledReason : undefined}
+            disabled={disabled || !pasteText.trim() || whenInvalid || needsClassification}
+            title={disabled ? disabledReason : needsClassification ? classificationHint : undefined}
             className="self-end h-8 rounded-[var(--radius-md)] bg-[var(--button-primary-bg)] px-3 text-[13px] font-medium text-[var(--button-primary-fg)] hover:bg-[var(--button-primary-bg-hover)] focus-visible:outline-none focus-visible:border-[var(--input-border-focus)] focus-visible:ring-[3px] focus-visible:ring-[color-mix(in_srgb,var(--input-border-focus)_22%,transparent)] disabled:cursor-not-allowed disabled:opacity-50"
           >
             Ingest text
@@ -429,32 +442,46 @@ export function IngestPane({
 
       <fieldset className="flex flex-col gap-1">
         <legend className="text-[12.5px] font-medium text-[var(--fg-primary)]">Scope</legend>
-        <label className="flex items-center gap-2 text-[13px] text-[var(--fg-primary)]">
-          <input
-            type="radio"
-            name="scope"
-            checked={!restricted}
-            onChange={() => setRestricted(false)}
-            disabled={disabled}
-          />
-          Anyone, anywhere
-        </label>
-        <label className="flex items-center gap-2 text-[13px] text-[var(--fg-primary)]">
-          <input
-            type="radio"
-            name="scope"
-            checked={restricted}
-            onChange={() => setRestricted(true)}
-            disabled={disabled}
-          />
-          Restrict…
-        </label>
-        <p className="text-[12px] leading-[1.45] text-[var(--fg-muted)]">
-          {restricted
-            ? 'Only principals whose scope matches these labels can retrieve it.'
-            : 'Readable by any agent or principal on this kernel.'}
-        </p>
-        {restricted && (
+        {classificationRequired ? (
+          // ENG-2161: no "Anyone, anywhere" here. An unlabelled upload would take
+          // this operator's whole write ceiling — every closed label in it — so the
+          // kernel refuses it; the operator says what the document is instead.
+          <p role="note" className="text-[12px] leading-[1.45] text-[var(--fg-primary)]">
+            Choose a classification. Your write ceiling holds closed labels
+            ({[...vocabulary.closed].join(', ')}), so an upload with no labels would be
+            readable only by someone granted all of them — the kernel refuses it. Pick the
+            labels this document carries.
+          </p>
+        ) : (
+          <>
+            <label className="flex items-center gap-2 text-[13px] text-[var(--fg-primary)]">
+              <input
+                type="radio"
+                name="scope"
+                checked={!restricted}
+                onChange={() => setRestricted(false)}
+                disabled={disabled}
+              />
+              Anyone, anywhere
+            </label>
+            <label className="flex items-center gap-2 text-[13px] text-[var(--fg-primary)]">
+              <input
+                type="radio"
+                name="scope"
+                checked={restricted}
+                onChange={() => setRestricted(true)}
+                disabled={disabled}
+              />
+              Restrict…
+            </label>
+            <p className="text-[12px] leading-[1.45] text-[var(--fg-muted)]">
+              {restricted
+                ? 'Only principals whose scope matches these labels can retrieve it.'
+                : 'Readable by any agent or principal on this kernel.'}
+            </p>
+          </>
+        )}
+        {(restricted || classificationRequired) && (
           <div className="mt-1 flex flex-col gap-1">
             <TagPicker
               vocabulary={vocabulary}
@@ -528,8 +555,8 @@ export function IngestPane({
           <button
             type="button"
             onClick={ingestStaged}
-            disabled={disabled || whenInvalid}
-            title={disabled ? disabledReason : undefined}
+            disabled={disabled || whenInvalid || needsClassification}
+            title={disabled ? disabledReason : needsClassification ? classificationHint : undefined}
             className="h-9 rounded-[var(--radius-md)] bg-[var(--button-primary-bg)] px-3 text-[13px] font-medium text-[var(--button-primary-fg)] hover:bg-[var(--button-primary-bg-hover)] focus-visible:outline-none focus-visible:border-[var(--input-border-focus)] focus-visible:ring-[3px] focus-visible:ring-[color-mix(in_srgb,var(--input-border-focus)_22%,transparent)] disabled:cursor-not-allowed disabled:opacity-50"
           >
             Ingest {staged.length} file{staged.length === 1 ? '' : 's'} with this context
