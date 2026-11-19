@@ -23,6 +23,8 @@ const KERNEL_ADVERTISES = [
   'skills-read',
   'memory-read',
   'memory-ingest',
+  // contract 0113 (ENG-2139)
+  'derivation-journal',
   'tool-exec',
   'tool-approvals',
   'memory-ingest-binary',

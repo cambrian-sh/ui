@@ -627,6 +627,34 @@ async fn op_get_ingest_status(
     transport.inner().clone().get_ingest_status(document_id).await
 }
 
+/// The derivation journal (contract 0113, ENG-2139): backlog per kind, dead jobs with
+/// their last error, counters. Only asked when the handshake advertises
+/// `derivation-journal`.
+#[tauri::command(rename_all = "snake_case")]
+async fn op_get_derivation_journal(
+    transport: State<'_, Transport>,
+    dead_limit: i32,
+) -> Result<transport::DerivationJournal, String> {
+    transport.inner().clone().get_derivation_journal(dead_limit).await
+}
+
+/// Requeue one dead derivation job (contract 0113). Operator-only, with a reason.
+#[tauri::command(rename_all = "snake_case")]
+async fn op_requeue_derivation_job(
+    transport: State<'_, Transport>,
+    kind: String,
+    document_id: String,
+    content_digest: String,
+    reason: String,
+) -> Result<CommandAck, String> {
+    let deduped = transport
+        .inner()
+        .clone()
+        .requeue_derivation_job(kind, document_id, content_digest, reason)
+        .await?;
+    Ok(CommandAck { deduped })
+}
+
 /// Best-effort MIME from a filename extension. Advisory only — the kernel routes
 /// the chunker off the extension, not this hint.
 fn mime_from_ext(filename: &str) -> String {
@@ -3057,6 +3085,8 @@ pub fn run() {
             op_ingest_memory,
             op_ingest_file,
             op_get_ingest_status,
+            op_get_derivation_journal,
+            op_requeue_derivation_job,
             op_stat_file,
             op_query_memory,
             op_answer_memory,

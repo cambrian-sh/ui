@@ -12,8 +12,9 @@ import { useBreakpoint } from '@/lib/useBreakpoint';
 import { MobileCapture } from './MobileCapture';
 import { NotesPane } from './NotesPane';
 import { PageHeader } from '@/design-system/components';
+import { DerivationJobsPanel } from './DerivationJobsPanel';
 
-type LeftTab = 'ingest' | 'inspect';
+type LeftTab = 'ingest' | 'inspect' | 'jobs';
 
 export function MemoryPage() {
   const projection = useStore(projectionStore);
@@ -66,6 +67,9 @@ export function MemoryPage() {
   const ingestVocabulary = uploadVocabulary(vocabulary, writeCeiling);
   const classificationRequired = writeCeiling?.classification_required === true;
   const hasNotes = capabilities.includes('memory-notes');
+  // Contract 0113 (ENG-2139): the derivation journal tab, only when advertised.
+  const hasJobs = capabilities.includes('derivation-journal');
+  const leftTabs: LeftTab[] = hasJobs ? ['ingest', 'inspect', 'jobs'] : ['ingest', 'inspect'];
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -153,7 +157,7 @@ export function MemoryPage() {
             aria-label="Memory left pane"
             className="flex items-center gap-4 border-b border-[var(--border-subtle)] px-[var(--page-gutter)]"
           >
-            {(['ingest', 'inspect'] as LeftTab[]).map((t) => (
+            {leftTabs.map((t) => (
               <button
                 key={t}
                 type="button"
@@ -185,6 +189,8 @@ export function MemoryPage() {
                 disabled={mutationsDisabled}
                 disabledReason={mutationsDisabledReason}
               />
+            ) : tab === 'jobs' && hasJobs ? (
+              <DerivationJobsPanel />
             ) : (
               <InspectTab events={memoryWritten} />
             )}

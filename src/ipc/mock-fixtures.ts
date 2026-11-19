@@ -48,6 +48,7 @@ export const ALL_CAPABILITIES = [
   'memory-ingest',
   'memory-ingest-binary',
   'memory-answer',
+  'derivation-journal',
   'chat',
   'watches-read',
   'kernel-logs',

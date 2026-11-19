@@ -268,6 +268,77 @@ impl From<pb::IngestStatusOp> for IngestStatus {
     }
 }
 
+/// The derivation journal (contract 0113, ENG-2139; capability `derivation-journal`):
+/// the backlog per job kind, the dead jobs with their last error, and counters.
+/// Identifiers and counts only — never document content.
+#[derive(Clone, serde::Serialize, Default, Debug, PartialEq)]
+pub struct DerivationJournal {
+    pub kinds: Vec<DerivationBacklog>,
+    pub dead: Vec<DeadDerivation>,
+    pub recorded: u64,
+    pub completed: u64,
+    pub failed: u64,
+    pub died: u64,
+    pub recovered: u64,
+}
+
+#[derive(Clone, serde::Serialize, Default, Debug, PartialEq)]
+pub struct DerivationBacklog {
+    pub kind: String,
+    pub pending: i32,
+    pub retrying: i32,
+    pub dead: i32,
+    pub oldest_unix_ms: i64,
+}
+
+#[derive(Clone, serde::Serialize, Default, Debug, PartialEq)]
+pub struct DeadDerivation {
+    pub kind: String,
+    pub document_id: String,
+    pub content_digest: String,
+    pub attempts: i32,
+    pub last_error: String,
+    pub chunk_count: i32,
+    pub dead_at_unix_ms: i64,
+}
+
+impl From<pb::GetDerivationJournalOpResponse> for DerivationJournal {
+    fn from(r: pb::GetDerivationJournalOpResponse) -> Self {
+        let c = r.counters.unwrap_or_default();
+        DerivationJournal {
+            kinds: r
+                .kinds
+                .into_iter()
+                .map(|k| DerivationBacklog {
+                    kind: k.kind,
+                    pending: k.pending,
+                    retrying: k.retrying,
+                    dead: k.dead,
+                    oldest_unix_ms: k.oldest_unix_ms,
+                })
+                .collect(),
+            dead: r
+                .dead
+                .into_iter()
+                .map(|d| DeadDerivation {
+                    kind: d.kind,
+                    document_id: d.document_id,
+                    content_digest: d.content_digest,
+                    attempts: d.attempts,
+                    last_error: d.last_error,
+                    chunk_count: d.chunk_count,
+                    dead_at_unix_ms: d.dead_at_unix_ms,
+                })
+                .collect(),
+            recorded: c.recorded,
+            completed: c.completed,
+            failed: c.failed,
+            died: c.died,
+            recovered: c.recovered,
+        }
+    }
+}
+
 /// The kernel's ingest status as the webview gets it: `None` for an unset message
 /// (a pre-0111 kernel, a deduped replay) or one with no state.
 pub fn ingest_status_of(s: Option<pb::IngestStatusOp>) -> Option<IngestStatus> {
@@ -2110,6 +2181,42 @@ impl Transport {
             return Ok(None);
         }
         Ok(ingest_status_of(resp.status))
+    }
+
+    /// GetDerivationJournal (contract 0113, capability `derivation-journal`).
+    pub async fn get_derivation_journal(&self, dead_limit: i32) -> Result<DerivationJournal, String> {
+        let mut client = self.client().await?;
+        let resp = client
+            .get_derivation_journal(Request::new(pb::GetDerivationJournalOpRequest { dead_limit }))
+            .await
+            .map_err(map_status)?
+            .into_inner();
+        Ok(DerivationJournal::from(resp))
+    }
+
+    /// RequeueDerivationJob (contract 0113): one dead job live again. Operator-only,
+    /// idempotent on command_id, audited; NotFound when no dead job of that version
+    /// exists.
+    pub async fn requeue_derivation_job(
+        &self,
+        kind: String,
+        document_id: String,
+        content_digest: String,
+        reason: String,
+    ) -> Result<bool, String> {
+        let mut client = self.client().await?;
+        let ack = client
+            .requeue_derivation_job(Request::new(pb::RequeueDerivationJobOpRequest {
+                command_id: new_command_id(),
+                reason,
+                kind,
+                document_id,
+                content_digest,
+            }))
+            .await
+            .map_err(map_status)?
+            .into_inner();
+        Ok(ack.deduped)
     }
 
     /// AnswerMemory (ADR-0081): a grounded, [n]-cited answer + the evidence each

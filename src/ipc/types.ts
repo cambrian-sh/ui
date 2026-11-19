@@ -1105,6 +1105,41 @@ export type IngestState = 'accepted' | 'embedding' | 'searchable' | 'failed';
  * is the last failure's cause (set for "failed", and while a failed attempt waits for
  * its retry). `state` is a string on the wire: an unknown value is shown as it is.
  */
+/**
+ * The derivation journal (contract 0113, ENG-2139; capability `derivation-journal`):
+ * the durable queue of fact, KG-triplet and background-embed jobs every ingest
+ * records. Identifiers and counts only — never document content.
+ */
+export interface DerivationBacklog {
+  kind: string;
+  pending: number;
+  retrying: number;
+  dead: number;
+  /** When the oldest live job was recorded (0: none). */
+  oldest_unix_ms: number;
+}
+
+/** One job past its last attempt; kind + document_id + content_digest name it for a requeue. */
+export interface DeadDerivation {
+  kind: string;
+  document_id: string;
+  content_digest: string;
+  attempts: number;
+  last_error: string;
+  chunk_count: number;
+  dead_at_unix_ms: number;
+}
+
+export interface DerivationJournal {
+  kinds: DerivationBacklog[];
+  dead: DeadDerivation[];
+  recorded: number;
+  completed: number;
+  failed: number;
+  died: number;
+  recovered: number;
+}
+
 export interface IngestStatusOp {
   document_id: string;
   state: IngestState | string;

@@ -431,6 +431,22 @@ export const ipc = {
   getIngestStatus: (document_id: string): Promise<t.IngestStatusOp | null> =>
     invoke<t.IngestStatusOp | null>('op_get_ingest_status', { document_id }),
 
+  /**
+   * The derivation journal (contract 0113, ENG-2139): backlog per kind, dead jobs with
+   * their last error, counters. Requires the `derivation-journal` capability.
+   */
+  getDerivationJournal: (dead_limit = 100): Promise<t.DerivationJournal> =>
+    invoke<t.DerivationJournal>('op_get_derivation_journal', { dead_limit }),
+
+  /** Requeue one dead derivation job (contract 0113). Operator-only, with a reason. */
+  requeueDerivationJob: (
+    kind: string,
+    document_id: string,
+    content_digest: string,
+    reason: string,
+  ): Promise<t.CommandAck> =>
+    invoke<t.CommandAck>('op_requeue_derivation_job', { kind, document_id, content_digest, reason }),
+
   /** Name + size of a picked file, without reading its bytes. */
   statFile: (path: string): Promise<t.FileStat> => invoke<t.FileStat>('op_stat_file', { path }),
 

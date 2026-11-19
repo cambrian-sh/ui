@@ -310,7 +310,12 @@ pub const RETENTION_FEED_CAPABILITY: &str = "retention-feed";
 ///   document ids), carried beside the tags; the write ceiling never filters them. The
 ///   console's ingest pane sends none (an operator upload has no lifecycle); the bump
 ///   keeps it off the skew banner.
-pub const PINNED_CONTRACT_VERSION: &str = "0112";
+/// - **0113** 2026-11-19, additive (ENG-2139): the derivation journal —
+///   `GetDerivationJournal` (backlog per kind, dead jobs with their last error,
+///   counters) and `RequeueDerivationJob`, capability `derivation-journal`. With the
+///   capability the Memory screen shows a "Derivation jobs" panel with a requeue action
+///   per dead job (`op_get_derivation_journal`, `op_requeue_derivation_job`).
+pub const PINNED_CONTRACT_VERSION: &str = "0113";
 
 /// The plugin versions this console was BUILT against, by plugin id (ADR-0089).
 ///

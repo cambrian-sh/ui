@@ -426,6 +426,35 @@ class MockIPC {
     return this.ingestStatuses.get(document_id) ?? null;
   }
 
+  /** ENG-2139: a small derivation journal with one dead job the mock can requeue. */
+  private derivationDead: t.DeadDerivation[] = [
+    {
+      kind: 'kg_triplets', document_id: 'source_doc:handbook.pdf', content_digest: 'sha256:aa',
+      attempts: 5, last_error: 'provider 503: service unavailable', chunk_count: 42,
+      dead_at_unix_ms: Date.now() - 3_600_000,
+    },
+  ];
+
+  async getDerivationJournal(_dead_limit = 100): Promise<t.DerivationJournal> {
+    return {
+      kinds: [
+        { kind: 'facts', pending: 2, retrying: 0, dead: 0, oldest_unix_ms: Date.now() - 120_000 },
+        { kind: 'kg_triplets', pending: 0, retrying: 0, dead: this.derivationDead.length, oldest_unix_ms: 0 },
+      ],
+      dead: [...this.derivationDead],
+      recorded: 12, completed: 9, failed: 6, died: 1, recovered: 2,
+    };
+  }
+
+  async requeueDerivationJob(kind: string, document_id: string, content_digest: string, _reason: string): Promise<t.CommandAck> {
+    const i = this.derivationDead.findIndex(
+      (d) => d.kind === kind && d.document_id === document_id && d.content_digest === content_digest,
+    );
+    if (i < 0) throw new Error('NotFound: no dead job at that version');
+    this.derivationDead.splice(i, 1);
+    return { deduped: false };
+  }
+
   /** No stored uploads in the mock: every upload is a new document. */
   async matchUpload(_name: string, _tags: string[]): Promise<t.DocumentSummary | null> {
     return null;

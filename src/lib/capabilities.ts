@@ -107,6 +107,12 @@ const KNOWN: Record<string, Omit<CapabilitySurface, 'capability'>> = {
   // ── OSS base: memory ────────────────────────────────────────────────────
   'memory-read': { surface: 'Memory', consequence: 'retrieval' },
   'memory-ingest': { surface: 'Memory › Ingest', consequence: 'text ingest' },
+  // contract 0113 (ENG-2139): the derivation journal's backlog, dead jobs and requeue.
+  'derivation-journal': {
+    surface: 'Memory › Jobs',
+    consequence: 'the fact / KG / embed job backlog, dead jobs with their error, and requeue',
+    gatesSurface: true,
+  },
   'memory-ingest-binary': {
     surface: 'Memory › Ingest',
     consequence:
