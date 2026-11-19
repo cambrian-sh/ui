@@ -64,6 +64,22 @@ service SubstrateLane {
   // count, and the time span covered. Plain deterministic reads.
   rpc Overview(OverviewRequest) returns (OverviewResponse);
 
+  // ListDeadOutbox names the evidence-outbox items parked dead that
+  // Overview.outbox_dead counts (T-20261113-dead-outbox-items-of-non-ingress-sources-have,
+  // ENG-1100; owner decision 2026-11-19): every source, or one. An item whose
+  // evidence came through an Ingress Studio ingress (source id "ingress:<id>")
+  // is listed with replay_here = false: Ingress Studio's ReplayDeadDeliveries
+  // replays it, together with the ingress's failed pipeline tasks.
+  rpc ListDeadOutbox(ListDeadOutboxRequest) returns (ListDeadOutboxResponse);
+
+  // ReplayDeadOutbox makes a source's dead outbox items pending again
+  // (attempts 0, due now) so the ordinary consumer runs them again — no second
+  // processing path; dead again if the cause is not fixed. Operator-only (not a
+  // read by the operator plane's naming rule) and audited: refused when no
+  // audit sink is configured. An ingress source is refused (replay it in
+  // Ingress Studio). Replaying an item that is not dead is a no-op.
+  rpc ReplayDeadOutbox(ReplayDeadOutboxRequest) returns (ReplayDeadOutboxResponse);
+
   // ListEntities finds modelled entities by substring — the catalog the
   // explore surface browses. Names and counts only; VALUES are disclosed
   // exclusively through the query plane.
@@ -488,8 +504,45 @@ message OverviewResponse {
   // Evidence rows whose transformation failed on every attempt and was parked
   // dead (the evidence outbox's dead-letter state): never retried
   // automatically. An ingress's dead deliveries are listed by Ingress Studio's
-  // ListDeliveryFailures and re-queued by ReplayDeadDeliveries.
+  // ListDeliveryFailures and re-queued by ReplayDeadDeliveries; every source's
+  // are listed by ListDeadOutbox (and, outside an ingress, re-queued by
+  // ReplayDeadOutbox).
   int64 outbox_dead = 14;
+}
+
+message ListDeadOutboxRequest {
+  string source_id = 1; // empty = every source
+  int32 limit = 2;      // 0 = 100; at most 500
+}
+
+// DeadOutboxItem is one evidence-outbox item parked dead after its last
+// attempt failed.
+message DeadOutboxItem {
+  int64 outbox_id = 1;
+  string evidence_id = 2;
+  string source_id = 3;
+  int32 attempts = 4;
+  string last_error = 5;
+  google.protobuf.Timestamp dead_at = 6;
+  // replay_here is false for an Ingress Studio source: replay it there.
+  bool replay_here = 7;
+}
+
+message ListDeadOutboxResponse {
+  repeated DeadOutboxItem items = 1; // most recently dead first
+}
+
+message ReplayDeadOutboxRequest {
+  string source_id = 1;   // required: a replay is scoped to one source
+  string evidence_id = 2; // optional: just that delivery's item
+  string reason = 3;      // recorded in the audit entry
+}
+
+message ReplayDeadOutboxResponse {
+  bool ok = 1;
+  int32 replayed = 2; // items made pending again
+  string detail = 3;
+  string error = 4; // set when ok is false
 }
 
 message ListEntitiesRequest {

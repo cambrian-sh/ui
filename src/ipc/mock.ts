@@ -935,6 +935,8 @@ class MockIPC {
     lane_hint: '',
   };
 
+  private deadOutbox: t.DeadOutboxItem[] = [];
+
   private knowledgeOverviewData: t.SubstrateOverview = {
     evidence_count: 12,
     event_count: 4,
@@ -992,6 +994,27 @@ class MockIPC {
 
   knowledgeOverview(): Promise<t.SubstrateOverview> {
     return Promise.resolve(this.knowledgeOverviewData);
+  }
+
+  knowledgeDeadOutbox(sourceId = '', _limit = 0): Promise<t.DeadOutboxItem[]> {
+    return Promise.resolve(this.deadOutbox.filter((d) => !sourceId || d.source_id === sourceId));
+  }
+
+  knowledgeReplayDeadOutbox(sourceId: string, evidenceId = '', _reason = ''): Promise<t.DeadOutboxReplayAck> {
+    if (sourceId.startsWith('ingress:')) {
+      return Promise.resolve({ ok: false, error: `source "${sourceId}" is an Ingress Studio ingress: replay it there`, detail: '', replayed: 0 });
+    }
+    const hit = (d: t.DeadOutboxItem) => d.source_id === sourceId && (!evidenceId || d.evidence_id === evidenceId);
+    const replayed = this.deadOutbox.filter(hit).length;
+    this.deadOutbox = this.deadOutbox.filter((d) => !hit(d));
+    return Promise.resolve({
+      ok: true, error: '', replayed,
+      detail: replayed ? `replayed ${replayed} dead outbox item(s)` : 'nothing to replay',
+    });
+  }
+
+  __seedDeadOutbox(items: t.DeadOutboxItem[]) {
+    this.deadOutbox = items;
   }
 
   listKnowledgeEntities(_query: string, _limit = 50): Promise<t.KnowledgeEntity[]> {

@@ -104,7 +104,7 @@ function KnowledgeSurfaces() {
         className="pb-3"
       >
         {overviewQuery.data ? (
-          <OverviewStrip overview={overviewQuery.data} />
+          <OverviewStrip overview={overviewQuery.data} onDeadReplayed={() => void overviewQuery.refetch()} />
         ) : overviewQuery.isError ? (
           <ErrorState
             reason={`Holdings could not be read: ${overviewQuery.error?.message ?? 'the substrate lane did not answer'}.`}

@@ -27,6 +27,8 @@ vi.mock('@/ipc', () => ({
     knowledgeQuery: vi.fn(),
     knowledgeOverview: vi.fn(),
     listKnowledgeEntities: vi.fn(),
+    knowledgeDeadOutbox: vi.fn(),
+    knowledgeReplayDeadOutbox: vi.fn(),
   },
 }));
 
@@ -226,6 +228,54 @@ describe('the overview strip', () => {
     rerender(<OverviewStrip overview={overview({ outbox_pending: 2, outbox_dead: 3 })} />);
     expect(screen.getByText('2 materializing')).toBeInTheDocument();
     expect(screen.getByText('3 dead — not transformed')).toBeInTheDocument();
+  });
+
+  // ENG-1100: the dead badge opens the dead items of every source; a non-ingress
+  // source's are replayed there, an ingress's are pointed at Ingress Studio.
+  it('opens the dead items and replays a non-ingress source from the badge', async () => {
+    const item = (outbox_id: number, source_id: string, evidence_id: string) => ({
+      outbox_id, source_id, evidence_id, attempts: 5, last_error: 'no transformer accepted it',
+      dead_at: '2026-11-20T09:00:00Z', replay_here: !source_id.startsWith('ingress:'),
+    });
+    vi.mocked(ipc.knowledgeDeadOutbox).mockResolvedValue([
+      item(1, 'substrate:crm', 'ev-1'), item(2, 'substrate:crm', 'ev-3'), item(3, 'ingress:orders', 'ev-2'),
+    ]);
+    vi.mocked(ipc.knowledgeReplayDeadOutbox).mockResolvedValue({
+      ok: true, error: '', replayed: 1, detail: 'replayed 1 dead outbox item(s)',
+    });
+    const onReplayed = vi.fn();
+    const { container } = render(
+      <OverviewStrip overview={overview({ outbox_dead: 3 })} onDeadReplayed={onReplayed} />,
+    );
+    const badge = screen.getByRole('button', { name: '3 dead — not transformed' });
+    expect(badge).toHaveAttribute('aria-expanded', 'false');
+    fireEvent.click(badge);
+    expect(badge).toHaveAttribute('aria-expanded', 'true');
+    expect(await screen.findByText('ev-1')).toBeInTheDocument();
+    expect(screen.getByText(/replay it from the ingress's delivery failures/)).toBeInTheDocument();
+    // Only the non-ingress items carry a Replay action.
+    expect(screen.getByRole('button', { name: 'Replay ev-1' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Replay ev-2' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Replay all 2 dead items of substrate:crm' })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Replay ev-1' }));
+    expect(await screen.findByText('replayed 1 dead outbox item(s)')).toHaveAttribute('role', 'status');
+    expect(ipc.knowledgeReplayDeadOutbox).toHaveBeenCalledWith('substrate:crm', 'ev-1', 'replayed from the Knowledge console');
+    expect(onReplayed).toHaveBeenCalled();
+    expect(await axe(container)).toHaveNoViolations();
+  });
+
+  it('shows a refused replay with its reason', async () => {
+    vi.mocked(ipc.knowledgeDeadOutbox).mockResolvedValue([
+      { outbox_id: 1, source_id: 'substrate:crm', evidence_id: 'ev-9', attempts: 5, last_error: 'x', dead_at: '', replay_here: true },
+    ]);
+    vi.mocked(ipc.knowledgeReplayDeadOutbox).mockResolvedValue({
+      ok: false, error: 'replay unavailable: no audit sink', detail: '', replayed: 0,
+    });
+    render(<OverviewStrip overview={overview({ outbox_dead: 1 })} />);
+    fireEvent.click(screen.getByRole('button', { name: '1 dead — not transformed' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Replay ev-9' }));
+    expect(await screen.findByText('replay unavailable: no audit sink')).toHaveAttribute('role', 'status');
   });
 });
 

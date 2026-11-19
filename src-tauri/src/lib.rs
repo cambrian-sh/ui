@@ -1324,6 +1324,29 @@ async fn op_knowledge_overview(
 }
 
 #[tauri::command(rename_all = "snake_case")]
+async fn op_knowledge_dead_outbox(
+    transport: State<'_, Transport>,
+    source_id: Option<String>,
+    limit: Option<i32>,
+) -> Result<Vec<crate::substrate::DeadOutboxItem>, String> {
+    transport
+        .inner()
+        .clone()
+        .knowledge_dead_outbox(source_id.unwrap_or_default(), limit.unwrap_or(0))
+        .await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn op_knowledge_replay_dead_outbox(
+    transport: State<'_, Transport>,
+    source_id: String,
+    evidence_id: String,
+    reason: String,
+) -> Result<crate::substrate::DeadOutboxReplayAck, String> {
+    transport.inner().clone().knowledge_replay_dead_outbox(source_id, evidence_id, reason).await
+}
+
+#[tauri::command(rename_all = "snake_case")]
 async fn op_knowledge_entities(
     transport: State<'_, Transport>,
     query: Option<String>,
@@ -3136,6 +3159,8 @@ pub fn run() {
             op_knowledge_ask,
             op_knowledge_query,
             op_knowledge_overview,
+            op_knowledge_dead_outbox,
+            op_knowledge_replay_dead_outbox,
             op_knowledge_entities,
             op_get_ontology_draft,
             op_get_object,

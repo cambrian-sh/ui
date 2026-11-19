@@ -3047,6 +3047,26 @@ export interface KnowledgeKindCount {
  * What the substrate holds. Full-visibility numbers: the operator console
  * sees everything by design (ADR-0118 v1), classified material included.
  */
+/** One evidence-outbox item parked dead (ENG-1100). */
+export interface DeadOutboxItem {
+  outbox_id: number;
+  evidence_id: string;
+  source_id: string;
+  attempts: number;
+  last_error: string;
+  dead_at: string;
+  /** false for an Ingress Studio source: replay it from the ingress's failures. */
+  replay_here: boolean;
+}
+
+/** The answer of a dead-outbox replay (0 replayed = the idempotent no-op). */
+export interface DeadOutboxReplayAck {
+  ok: boolean;
+  error: string;
+  detail: string;
+  replayed: number;
+}
+
 export interface SubstrateOverview {
   evidence_count: number;
   event_count: number;
@@ -3059,7 +3079,8 @@ export interface SubstrateOverview {
    *  Excludes dead items (outbox_dead). */
   outbox_pending: number;
   /** Evidence whose transformation failed on every attempt and was parked
-   *  dead — never retried by itself; replayed from Ingress Studio's failures. */
+   *  dead — never retried by itself. Listed by knowledgeDeadOutbox; replayed
+   *  there (or, for an ingress, from Ingress Studio's failures). */
   outbox_dead: number;
   /** Entities whose current resolutions disagree across actors. */
   contradiction_count: number;

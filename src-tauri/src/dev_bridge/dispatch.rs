@@ -85,6 +85,8 @@ pub const COMMANDS: &[&str] = &[
     "op_knowledge_ask",
     "op_knowledge_query",
     "op_knowledge_overview",
+    "op_knowledge_dead_outbox",
+    "op_knowledge_replay_dead_outbox",
     "op_knowledge_entities",
     "op_get_ontology_draft",
     "op_get_object",
@@ -895,6 +897,28 @@ pub async fn dispatch(
         }
         "op_knowledge_overview" => {
             reply(super::super::op_knowledge_overview(app.state::<Transport>()).await)
+        }
+        "op_knowledge_dead_outbox" => {
+            #[derive(serde::Deserialize)]
+            struct A {
+                source_id: Option<String>,
+                limit: Option<i32>,
+            }
+            let a: A = parse(args)?;
+            reply(super::super::op_knowledge_dead_outbox(app.state::<Transport>(), a.source_id, a.limit).await)
+        }
+        "op_knowledge_replay_dead_outbox" => {
+            #[derive(serde::Deserialize)]
+            struct A {
+                source_id: String,
+                evidence_id: String,
+                reason: String,
+            }
+            let a: A = parse(args)?;
+            reply(
+                super::super::op_knowledge_replay_dead_outbox(app.state::<Transport>(), a.source_id, a.evidence_id, a.reason)
+                    .await,
+            )
         }
         "op_knowledge_entities" => {
             #[derive(serde::Deserialize)]

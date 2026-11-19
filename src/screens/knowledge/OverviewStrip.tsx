@@ -7,9 +7,19 @@
 // contributed what, and which scopes gate it. All numbers are full-visibility:
 // the operator console sees everything by design.
 
+import { useState } from 'react';
 import type { SubstrateOverview } from '@/ipc/types';
+import { DeadOutboxPanel } from './DeadOutboxPanel';
 
-export function OverviewStrip({ overview }: { overview: SubstrateOverview }) {
+export function OverviewStrip({
+  overview,
+  onDeadReplayed,
+}: {
+  overview: SubstrateOverview;
+  /** Called after a dead-outbox replay reset something (refresh the counts). */
+  onDeadReplayed?: () => void;
+}) {
+  const [deadOpen, setDeadOpen] = useState(false);
   const stats: Array<[string, number]> = [
     ['evidence', overview.evidence_count],
     ['events', overview.event_count],
@@ -35,8 +45,9 @@ export function OverviewStrip({ overview }: { overview: SubstrateOverview }) {
         ))}
         <ContradictionBadge count={overview.contradiction_count} />
         <OutboxBadge pending={overview.outbox_pending} />
-        <DeadBadge dead={overview.outbox_dead} />
+        <DeadBadge dead={overview.outbox_dead} open={deadOpen} onToggle={() => setDeadOpen((o) => !o)} />
       </div>
+      {deadOpen && overview.outbox_dead > 0 && <DeadOutboxPanel onReplayed={onDeadReplayed} />}
       {overview.sources.length > 0 && (
         <div className="flex flex-wrap gap-x-4 gap-y-1" aria-label="Holdings per source surface">
           {overview.sources.slice(0, 8).map((s) => (
@@ -108,19 +119,22 @@ function OutboxBadge({ pending }: { pending: number }) {
 /**
  * Evidence the outbox parked dead: its transformation failed on every attempt
  * and nothing retries it by itself. Separate from "materializing" because no
- * amount of waiting drains it — someone has to fix the cause and replay it
- * (Ingress Studio → an ingress's delivery failures). Silent at zero, a word
- * and a shape when not, never colour alone.
+ * amount of waiting drains it — someone has to fix the cause and replay it.
+ * The badge opens the list of dead items (DeadOutboxPanel, ENG-1100), where a
+ * non-ingress source's items are replayed; an ingress's are replayed from
+ * Ingress Studio. Silent at zero, a word and a shape when not, never colour alone.
  */
-function DeadBadge({ dead }: { dead: number }) {
+function DeadBadge({ dead, open, onToggle }: { dead: number; open: boolean; onToggle: () => void }) {
   if (!dead) return null;
   return (
-    <span
-      className="rounded-[5px] border border-dashed border-[var(--border-strong)] px-1.5 py-0.5 text-[11.5px] text-[var(--fg-secondary)]"
-      role="status"
-      title="Transformation failed on every attempt; not retried automatically. Replay it from Ingress Studio once the cause is fixed."
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-expanded={open}
+      className="rounded-[5px] border border-dashed border-[var(--border-strong)] px-1.5 py-0.5 text-[11.5px] text-[var(--fg-secondary)] hover:text-[var(--fg-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)]"
+      title="Transformation failed on every attempt; not retried automatically. Open the list to see why, and replay once the cause is fixed."
     >
       {dead.toLocaleString()} dead — not transformed
-    </span>
+    </button>
   );
 }

@@ -933,6 +933,20 @@ export const ipc = {
   knowledgeOverview: (): Promise<t.SubstrateOverview> =>
     invoke<t.SubstrateOverview>('op_knowledge_overview'),
 
+  /** The evidence-outbox items parked dead — what outbox_dead counts (ENG-1100). */
+  knowledgeDeadOutbox: (sourceId = '', limit = 0): Promise<t.DeadOutboxItem[]> =>
+    invoke<t.DeadOutboxItem[]>('op_knowledge_dead_outbox', { source_id: sourceId, limit }),
+
+  /**
+   * Re-queue a non-ingress source's dead outbox items once the cause is fixed:
+   * one (evidenceId) or every one of the source (''). Operator-only; audited
+   * server-side; an Ingress Studio source is refused (replay it there).
+   */
+  knowledgeReplayDeadOutbox: (sourceId: string, evidenceId = '', reason = ''): Promise<t.DeadOutboxReplayAck> =>
+    invoke<t.DeadOutboxReplayAck>('op_knowledge_replay_dead_outbox', {
+      source_id: sourceId, evidence_id: evidenceId, reason,
+    }),
+
   /** Browsable entities matching a substring; names and predicates only. */
   listKnowledgeEntities: (query: string, limit = 50): Promise<t.KnowledgeEntity[]> =>
     invoke<t.KnowledgeEntity[]>('op_knowledge_entities', { query, limit }),

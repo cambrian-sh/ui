@@ -199,6 +199,30 @@ pub struct SubstrateOverview {
     pub kinds: Vec<KindCount>,
 }
 
+/// One evidence-outbox item parked dead (ENG-1100): its transformation failed on
+/// every attempt. `replay_here` is false for an Ingress Studio source — replay
+/// that one from the ingress's delivery failures.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DeadOutboxItem {
+    pub outbox_id: i64,
+    pub evidence_id: String,
+    pub source_id: String,
+    pub attempts: i32,
+    pub last_error: String,
+    pub dead_at: String,
+    pub replay_here: bool,
+}
+
+/// The answer of a dead-outbox replay: how many items were made pending again
+/// (0 = the idempotent no-op), or why it was refused.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DeadOutboxReplayAck {
+    pub ok: bool,
+    pub error: String,
+    pub detail: String,
+    pub replayed: i32,
+}
+
 /// One browsable entity: names, predicates and counts only — VALUES are
 /// disclosed exclusively through the query plane.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -351,6 +375,55 @@ impl Transport {
                 })
                 .collect(),
         })
+    }
+
+    /// The evidence-outbox items parked dead, every source or one (ENG-1100):
+    /// what `outbox_dead` counts, by name.
+    pub async fn knowledge_dead_outbox(
+        &self,
+        source_id: String,
+        limit: i32,
+    ) -> Result<Vec<DeadOutboxItem>, String> {
+        let mut client = self.substrate_client().await?;
+        let r = client
+            .list_dead_outbox(Request::new(pb::substrate::ListDeadOutboxRequest { source_id, limit }))
+            .await
+            .map_err(map_status)?
+            .into_inner();
+        Ok(r.items
+            .into_iter()
+            .map(|d| DeadOutboxItem {
+                outbox_id: d.outbox_id,
+                evidence_id: d.evidence_id,
+                source_id: d.source_id,
+                attempts: d.attempts,
+                last_error: d.last_error,
+                dead_at: ts_iso(&d.dead_at),
+                replay_here: d.replay_here,
+            })
+            .collect())
+    }
+
+    /// Re-queue a non-ingress source's dead outbox items once their cause is
+    /// fixed: every one (`evidence_id` empty) or one. Operator-only, audited
+    /// server-side; an Ingress Studio source is refused (replay it there).
+    pub async fn knowledge_replay_dead_outbox(
+        &self,
+        source_id: String,
+        evidence_id: String,
+        reason: String,
+    ) -> Result<DeadOutboxReplayAck, String> {
+        let mut client = self.substrate_client().await?;
+        let r = client
+            .replay_dead_outbox(Request::new(pb::substrate::ReplayDeadOutboxRequest {
+                source_id,
+                evidence_id,
+                reason,
+            }))
+            .await
+            .map_err(map_status)?
+            .into_inner();
+        Ok(DeadOutboxReplayAck { ok: r.ok, error: r.error, detail: r.detail, replayed: r.replayed })
     }
 
     /// Browsable entities matching a substring; empty query = most recent.
