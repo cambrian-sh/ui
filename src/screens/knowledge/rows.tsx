@@ -6,6 +6,10 @@
 // honest renderer: it shows exactly what the store answered, never a schema
 // this build guessed at. The one interactive column is `evidence_id` — every
 // answer's receipt is one click away, which is the audit story of the page.
+//
+// A row marked `retired` (include_retired, ENG-1045/ENG-1753) is drawn muted
+// and named as retired in words — its retired_reason / retired_by /
+// retired_at columns say why — so it never reads as a current value.
 
 import { cn } from '@/design-system/lib/utils';
 
@@ -55,6 +59,14 @@ export function GuaranteeLabel({ guarantee }: { guarantee: string }) {
   );
 }
 
+/** The words a retired row carries: never a colour alone. */
+export function retiredTitle(row: KnowledgeRow): string {
+  const parts = [`Retired (${formatCell(row.retired_reason)})`];
+  if (row.retired_by) parts.push(`by ${formatCell(row.retired_by)}`);
+  if (row.retired_at) parts.push(`at ${formatCell(row.retired_at)}`);
+  return `${parts.join(' ')}: no longer counted in any answer.`;
+}
+
 export function RowTable({
   rows,
   onOpenReceipt,
@@ -88,7 +100,12 @@ export function RowTable({
           {rows.map((row, i) => (
             <tr
               key={i}
-              className={cn('border-b border-[var(--border-subtle)] last:border-b-0 align-top hover:bg-[var(--list-row-bg-hover)]')}
+              data-retired={row.retired === true ? 'true' : undefined}
+              title={row.retired === true ? retiredTitle(row) : undefined}
+              className={cn(
+                'border-b border-[var(--border-subtle)] last:border-b-0 align-top hover:bg-[var(--list-row-bg-hover)]',
+                row.retired === true && 'bg-[var(--bg-canvas)] [&_td]:text-[var(--fg-muted)]',
+              )}
             >
               {columns.map((c) => {
                 const v = row[c];

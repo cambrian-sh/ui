@@ -10,6 +10,12 @@
 // (point), participation (events), lineage, and the co-participant
 // neighborhood (traverse). Every value keeps its evidence_id, so the receipt
 // is one click from anything.
+//
+// "Show retired rows" (ENG-1753) asks the point and events reads for RETIRED
+// typed rows too (KnowledgeQuery.include_retired, ENG-1045, ADR-0147 D6): rows
+// a superseded mapping revision or a source deletion took out of every count,
+// each marked retired with its reason, by whom and when. Off by default; the
+// kernel serves it to the operator plane only, and the rows stay fenced.
 
 import { useMemo, useState } from 'react';
 import { ipc } from '@/ipc';
@@ -183,6 +189,9 @@ function QueryPlaneCard({
   onSelectEntity: (entityId: string) => void;
 }) {
   const window = useMemo(exploreWindow, []);
+  const [showRetired, setShowRetired] = useState(false);
+  // Sent only when asked: an absent flag is the kernel's default (retired rows hidden).
+  const retired = showRetired ? { include_retired: true } : {};
 
   // The card's own catalog row names the predicates; each gets a point lookup.
   const entityQuery = useKernelQuery(
@@ -193,11 +202,11 @@ function QueryPlaneCard({
   const predicates = entityQuery.data?.[0]?.predicates ?? [];
 
   const valuesQuery = useKernelQuery(
-    ['knowledge', 'values', entityId, predicates.join(',')],
+    ['knowledge', 'values', entityId, predicates.join(','), showRetired],
     async () => {
       const answers = await Promise.all(
         predicates.map((p) =>
-          ipc.knowledgeQuery({ kind: 'point', entity_id: entityId, predicate: p }),
+          ipc.knowledgeQuery({ kind: 'point', entity_id: entityId, predicate: p, ...retired }),
         ),
       );
       return {
@@ -209,8 +218,8 @@ function QueryPlaneCard({
   );
 
   const eventsQuery = useKernelQuery(
-    ['knowledge', 'events', entityId],
-    () => ipc.knowledgeQuery({ kind: 'events', entity_id: entityId, ...window }),
+    ['knowledge', 'events', entityId, showRetired],
+    () => ipc.knowledgeQuery({ kind: 'events', entity_id: entityId, ...window, ...retired }),
     { staleTime: 30_000 },
   );
 
@@ -222,7 +231,20 @@ function QueryPlaneCard({
 
   return (
     <div className="flex flex-col gap-5">
-      <h2 className="font-mono text-[15px] font-semibold text-[var(--fg-primary)]">{entityId}</h2>
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <h2 className="font-mono text-[15px] font-semibold text-[var(--fg-primary)]">{entityId}</h2>
+        <label
+          className="flex items-center gap-1.5 text-[12.5px] text-[var(--fg-secondary)]"
+          title="Also list values and events a superseded mapping revision or a source deletion retired, marked with why, by whom and when."
+        >
+          <input
+            type="checkbox"
+            checked={showRetired}
+            onChange={(e) => setShowRetired(e.target.checked)}
+          />
+          Show retired rows
+        </label>
+      </div>
 
       <section aria-label="Latest values" className="flex flex-col gap-2">
         <h3 className="type-section-title text-[var(--fg-primary)]">

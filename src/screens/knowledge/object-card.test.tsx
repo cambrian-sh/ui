@@ -153,6 +153,37 @@ describe('Explore card through GetObject', () => {
     expect(screen.queryByRole('table', { name: 'Properties' })).toBeNull();
   });
 
+  // ENG-1753: retired rows are asked for only when the operator ticks the box, on
+  // the point and events reads, and a retired row says so in words.
+  it('asks for retired rows only when "Show retired rows" is ticked, and marks them', async () => {
+    vi.mocked(ipc.getObject).mockResolvedValue(null);
+    vi.mocked(ipc.listKnowledgeEntities).mockResolvedValue([
+      { entity_id: 'camera/1', observation_count: 1, predicates: ['seen'], last_seen: '' },
+    ]);
+    vi.mocked(ipc.knowledgeQuery).mockImplementation(async (q) => ({
+      guarantee: 'g',
+      rows: q.include_retired && q.kind === 'point'
+        ? ['{"entity_id":"camera/1","predicate":"seen","value_number":3,"evidence_id":"ev-r","retired":true,"retired_reason":"source_deleted","retired_by":"source:cams","retired_at":"2026-11-10T09:00:00Z"}']
+        : [],
+    }));
+    const { container } = renderPane('camera/1');
+    await screen.findByRole('heading', { name: 'Latest values' });
+    await waitFor(() => expect(ipc.knowledgeQuery).toHaveBeenCalled());
+    // Default: no read carries the flag.
+    expect(vi.mocked(ipc.knowledgeQuery).mock.calls.every(([q]) => q.include_retired === undefined)).toBe(true);
+
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Show retired rows' }));
+    const values = await screen.findByRole('table', { name: 'Latest values' });
+    const asked = vi.mocked(ipc.knowledgeQuery).mock.calls.map(([q]) => q).filter((q) => q.include_retired);
+    expect(asked.map((q) => q.kind).sort()).toEqual(['events', 'point']);
+    // Traverse never asks: retirement is a property of typed rows only.
+    expect(vi.mocked(ipc.knowledgeQuery).mock.calls.some(([q]) => q.kind === 'traverse' && q.include_retired)).toBe(false);
+    const row = values.querySelector('tr[data-retired="true"]');
+    expect(row?.getAttribute('title')).toBe('Retired (source_deleted) by source:cams at 2026-11-10T09:00:00Z: no longer counted in any answer.');
+    expect(values.textContent).toContain('source_deleted');
+    expect(await axe(container)).toHaveNoViolations();
+  });
+
   it('reports a read failure as a failure, not as a missing object', async () => {
     vi.mocked(ipc.getObject).mockRejectedValue(new Error('Unavailable: down'));
     renderPane('order/O-1');

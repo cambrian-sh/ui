@@ -292,6 +292,17 @@ describe('row rendering', () => {
     expect(screen.getByText('not json at all')).toBeInTheDocument();
   });
 
+  it('draws a retired row muted and names why in words (ENG-1753)', () => {
+    const rows = parseRows([
+      '{"entity_id":"e","predicate":"p","value_number":1,"evidence_id":"ev-1"}',
+      '{"entity_id":"e","predicate":"p","value_number":2,"evidence_id":"ev-2","retired":true,"retired_reason":"superseded"}',
+    ]);
+    render(<RowTable rows={rows} ariaLabel="test rows" />);
+    const marked = screen.getByRole('table', { name: 'test rows' }).querySelectorAll('tr[data-retired="true"]');
+    expect(marked).toHaveLength(1);
+    expect(marked[0].getAttribute('title')).toBe('Retired (superseded): no longer counted in any answer.');
+  });
+
   it('renders zero rows as an answer, not an error', () => {
     render(<RowTable rows={[]} ariaLabel="test rows" />);
     expect(screen.getByText(/an answer, not an error/)).toBeInTheDocument();

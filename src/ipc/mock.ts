@@ -972,10 +972,21 @@ class MockIPC {
     return Promise.resolve(this.knowledgeAskOutcome);
   }
 
-  knowledgeQuery(_query: Partial<t.CompiledQuery>): Promise<t.KnowledgeAnswer> {
+  knowledgeQuery(query: Partial<t.CompiledQuery>): Promise<t.KnowledgeAnswer> {
+    // ENG-1753: with include_retired the mock adds one retired value, marked as
+    // the kernel marks it (retired, retired_reason, retired_by, retired_at).
+    const retired = query.include_retired
+      ? [
+          JSON.stringify({
+            entity_id: query.entity_id ?? 'purchase_order/PO-1', predicate: query.predicate ?? 'payment_terms_days',
+            value_number: 45, evidence_id: 'ev-retired-1', retired: true, retired_reason: 'superseded',
+            retired_by: 'mapping:erp-orders@r3', retired_at: '2026-11-10T09:00:00Z',
+          }),
+        ]
+      : [];
     return Promise.resolve({
       guarantee: this.knowledgeAskOutcome.guarantee,
-      rows: this.knowledgeAskOutcome.rows,
+      rows: [...this.knowledgeAskOutcome.rows, ...retired],
     });
   }
 
