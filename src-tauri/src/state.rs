@@ -2240,9 +2240,10 @@ pub struct ConfigWriteOutcome {
     /// effect == "shadowed". "Something pins this" leaves an operator hunting.
     pub shadowed_by: String,
     pub error: String,
-    /// ADR-0101 D8 (contract 0099): the config file the value was written INTO
-    /// (write-through; the store override for the key was removed). Empty
-    /// otherwise. `serde(default)` because an older kernel never sends it.
+    /// ADR-0101 D8 (contract 0099): the config file the value was MIRRORED into
+    /// (the value is stored, the store being authoritative since ENG-1417, and
+    /// also written into the writable file that sets the key). Empty otherwise.
+    /// `serde(default)` because an older kernel never sends it.
     #[serde(default)]
     pub written_to: String,
     /// The file layer the STORED value now overrides (the file sets the key but

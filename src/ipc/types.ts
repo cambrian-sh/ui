@@ -2069,9 +2069,10 @@ export interface ConfigWriteOutcome {
   shadowed_by: string;
   error: string;
   /**
-   * ADR-0101 D8 (contract 0099). The config file the value was written INTO
-   * (write-through: the file set the key and was writable, so it is now the
-   * value's one durable home). Empty otherwise; absent from an older kernel.
+   * ADR-0101 D8 (contract 0099). The config file the value was MIRRORED into:
+   * the file set the key and was writable, so the kernel stored the value (the
+   * store is authoritative, ENG-1417) and also wrote it into that file. The
+   * stored value remains. Empty otherwise; absent from an older kernel.
    */
   written_to?: string;
   /**

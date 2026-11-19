@@ -41,9 +41,12 @@ describe('ConfigFileFacts (ADR-0101 D8)', () => {
     asOperator();
   });
 
-  it('names the file a write-through went into', () => {
-    render(<ConfigFileFacts outcome={outcome({ written_to: 'configs/tuning.local.json' })} />);
+  it('names the file a stored write was mirrored into (ENG-1417: the store stays authoritative)', () => {
+    const { container } = render(<ConfigFileFacts outcome={outcome({ written_to: 'configs/tuning.local.json' })} />);
     expect(screen.getByText('configs/tuning.local.json')).toBeInTheDocument();
+    expect(container.textContent).toContain('Stored; mirrored into');
+    // ENG-1565: the old copy claimed no stored override remains — false since ENG-1417.
+    expect(container.textContent).not.toMatch(/no stored override/i);
     expect(screen.queryByRole('button', { name: /revert/i })).not.toBeInTheDocument();
   });
 

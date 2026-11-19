@@ -17,10 +17,10 @@ import { useStore } from '@/store/useStore';
  * contract 0099).
  *
  * `shadowed_by` (rendered by each caller) is one direction: a higher layer, an
- * env var, beats the store. These are the other: the write either went INTO the
- * file that sets the key (write-through — the file is now its one home), or it
- * was stored OVER a file the kernel could not write, so later edits of that file
- * are ignored until the stored value is removed. The second is the silent trap
+ * env var, beats the store. These are the other: the value is always stored
+ * (the store is authoritative, ENG-1417) and either MIRRORED into the file that
+ * sets the key (writable), or stored OVER a file the kernel could not write, so
+ * later edits of that file are ignored until the stored value is removed. The second is the silent trap
  * D8 exists to make loud, so it is a warning with its way out next to it.
  *
  * Renders nothing for a kernel that predates 0099 (the fields are absent).
@@ -29,8 +29,8 @@ export function ConfigFileFacts({ outcome }: { outcome: ConfigWriteOutcome }) {
   if (outcome.written_to) {
     return (
       <p className="text-[12px] leading-[1.5] text-[var(--fg-secondary)]">
-        Written to <code className="font-mono">{outcome.written_to}</code> — the file is this
-        value&rsquo;s home, and no stored override remains.
+        Stored; mirrored into <code className="font-mono">{outcome.written_to}</code>, so the
+        file and the stored value agree.
       </p>
     );
   }
