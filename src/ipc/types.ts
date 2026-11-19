@@ -2182,6 +2182,11 @@ export interface MCPServerConfig {
   /** The only credential facts on the wire. There is no token field. */
   token_configured: boolean;
   token_source: string;
+  /**
+   * Contract 0114 (ENG-1545): the ADR-0153 private-network opt-in — the endpoint
+   * may be a loopback, private or link-local address. Absent from an older kernel.
+   */
+  allow_private_network?: boolean;
 }
 
 export interface MCPServerTestResult {

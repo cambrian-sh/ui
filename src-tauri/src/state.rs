@@ -2361,6 +2361,10 @@ pub struct MCPServerConfigSpec {
     /// RPC that returns one.
     pub token_configured: bool,
     pub token_source: String,
+    /// Contract 0114 (ENG-1545): the ADR-0153 private-network opt-in — lets an
+    /// http/sse endpoint be a loopback/private/link-local address. Read from
+    /// ListMCPServers and always sent on save/test (the console decides).
+    pub allow_private_network: bool,
 }
 
 #[derive(Clone, Serialize, Default)]

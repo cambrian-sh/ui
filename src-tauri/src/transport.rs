@@ -2953,6 +2953,7 @@ impl Transport {
                 tool_count: s.tool_count,
                 token_configured: s.token_configured,
                 token_source: s.token_source,
+                allow_private_network: s.allow_private_network,
             })
             .collect())
     }
@@ -2966,6 +2967,9 @@ impl Transport {
             auth_type: server.auth_type.clone(),
             auth_header: server.auth_header.clone(),
             classification_tags: server.classification_tags.clone(),
+            // Contract 0114: always present — the editor shows the stored value
+            // and sends the operator's decision (absent is for older consoles).
+            allow_private_network: Some(server.allow_private_network),
         }
     }
 

@@ -70,6 +70,45 @@ describe('CustomServers (Integrations owns MCP server changes)', () => {
     expect(saved.id).toBe('files');
   });
 
+  // Contract 0114 (ENG-1545): the private-network opt-in is set from the console.
+  it('a new private server is saved with the private-network switch on', async () => {
+    seed('operator');
+    listMCPServerConfigs.mockResolvedValue([]);
+    saveMCPServer.mockResolvedValue({
+      command_id: 'c1', deduped: false,
+      outcomes: [{ key: 'mcp.servers', stored: true, effect: 'live', shadowed_by: '', error: '' }],
+    });
+    render(<CustomServers />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Add server' }));
+    fireEvent.change(screen.getByLabelText('Id'), { target: { value: 'lan' } });
+    fireEvent.change(screen.getByLabelText('Endpoint URL'), { target: { value: 'http://10.1.2.3:8080/mcp' } });
+    const toggle = screen.getByRole('checkbox', { name: 'Allow a private-network address' });
+    expect(toggle).not.toBeChecked();
+    fireEvent.click(toggle);
+    fireEvent.click(screen.getByRole('button', { name: 'Save & connect' }));
+    await waitFor(() => expect(saveMCPServer).toHaveBeenCalledTimes(1));
+    const [saved] = saveMCPServer.mock.calls[0] as [MCPServerConfig, string];
+    expect(saved.allow_private_network).toBe(true);
+  });
+
+  it('an existing server shows its stored opt-in, and a stdio server has no switch', async () => {
+    seed('operator');
+    listMCPServerConfigs.mockResolvedValue([{ ...server('lan'), allow_private_network: true }]);
+    const { unmount } = render(<CustomServers />);
+    await screen.findByText('lan');
+    fireEvent.click(screen.getByRole('button', { name: /Edit/ }));
+    expect(await screen.findByRole('checkbox', { name: 'Allow a private-network address' })).toBeChecked();
+    unmount();
+
+    queryClient.clear();
+    listMCPServerConfigs.mockResolvedValue([{ ...server('fs'), transport: 'stdio', endpoint: 'reference-fs-mcp' }]);
+    render(<CustomServers />);
+    await screen.findByText('fs');
+    fireEvent.click(screen.getByRole('button', { name: /Edit/ }));
+    await screen.findByRole('button', { name: 'Test this server' });
+    expect(screen.queryByRole('checkbox', { name: 'Allow a private-network address' })).toBeNull();
+  });
+
   it('a viewer can look but not add', async () => {
     seed('viewer');
     listMCPServerConfigs.mockResolvedValue([]);

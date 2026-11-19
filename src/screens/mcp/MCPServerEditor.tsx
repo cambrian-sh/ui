@@ -27,6 +27,7 @@ export function newServerDraft(): MCPServerConfig {
     tool_count: 0,
     token_configured: false,
     token_source: '',
+    allow_private_network: false,
   };
 }
 
@@ -212,6 +213,26 @@ export function MCPServerEditor({
           disabled={!canMutate}
           consequence="Applied to every tool this server advertises. Untagged tools are ones no access policy can restrict."
         />
+        {draft.transport !== 'stdio' && (
+          <div className="flex flex-col gap-1.5 sm:col-span-2">
+            <label className="flex items-center gap-2 text-[12px] text-[var(--fg-secondary)]">
+              <input
+                type="checkbox"
+                checked={Boolean(draft.allow_private_network)}
+                disabled={!canMutate}
+                onChange={(e) => setDraft((d) => ({ ...d, allow_private_network: e.target.checked }))}
+              />
+              Allow a private-network address
+            </label>
+            {/* A consequence, not a description (ADR-0153, ENG-1545). */}
+            <span className="text-[11px] leading-[1.5] text-[var(--fg-muted)]">
+              Lets this endpoint be on localhost, your private network or a link-local address
+              (e.g. a server on this machine). Off, the kernel refuses such an address, so a
+              typo or a redirect cannot reach internal services. Turn on only for a server you
+              run on your own network.
+            </span>
+          </div>
+        )}
       </section>
 
       <section className="flex flex-col gap-2.5 rounded-[var(--radius-lg)] bg-[var(--bg-surface)] p-3.5 shadow-[var(--elevation-1)]">

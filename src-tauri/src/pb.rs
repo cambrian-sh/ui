@@ -315,7 +315,12 @@ pub const RETENTION_FEED_CAPABILITY: &str = "retention-feed";
 ///   counters) and `RequeueDerivationJob`, capability `derivation-journal`. With the
 ///   capability the Memory screen shows a "Derivation jobs" panel with a requeue action
 ///   per dead job (`op_get_derivation_journal`, `op_requeue_derivation_job`).
-pub const PINNED_CONTRACT_VERSION: &str = "0113";
+/// - **0114** 2026-11-20, additive (ENG-1545): `MCPServerSpecOp.allow_private_network`
+///   (optional; absent keeps the stored opt-in) on `SaveMCPServer` / `TestMCPServer`
+///   and `MCPServerOp.allow_private_network` on `ListMCPServers`. The Integrations ›
+///   custom server editor shows an "Allow a private-network address" switch for
+///   http/sse servers and always sends it.
+pub const PINNED_CONTRACT_VERSION: &str = "0114";
 
 /// The plugin versions this console was BUILT against, by plugin id (ADR-0089).
 ///
