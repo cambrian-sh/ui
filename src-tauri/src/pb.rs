@@ -329,7 +329,11 @@ pub const RETENTION_FEED_CAPABILITY: &str = "retention-feed";
 ///   retrier registered); expired signals are delete-only. The Reactive screen's dead
 ///   letters panel offers Retry only on those (`op_retry_watch_dead_letter`) and Delete
 ///   with `watch-deadletter-delete` (`op_delete_watch_dead_letter`).
-pub const PINNED_CONTRACT_VERSION: &str = "0116";
+/// - **0117** 2026-11-20, additive (ENG-1634): `ListAgentInstances` (`AgentInstanceOp`) —
+///   the live agent processes with their OS pids, operator-only, capability
+///   `agent-instances`. The console renders no instance view yet; the bump keeps it off
+///   the skew banner.
+pub const PINNED_CONTRACT_VERSION: &str = "0117";
 
 /// The plugin versions this console was BUILT against, by plugin id (ADR-0089).
 ///
