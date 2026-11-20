@@ -660,6 +660,28 @@ async fn op_delete_watch_dead_letter(
     Ok(CommandAck { deduped })
 }
 
+/// List delivery intents (contract 0118, ENG-1657); empty states = ambiguous + failed.
+#[tauri::command(rename_all = "snake_case")]
+async fn op_list_delivery_intents(
+    transport: State<'_, Transport>,
+    states: Vec<String>,
+    limit: i32,
+) -> Result<Vec<crate::state::DeliveryIntent>, String> {
+    transport.inner().clone().list_delivery_intents(states, limit).await
+}
+
+/// Resolve one ambiguous delivery intent ("confirm" | "resend"). Operator-only.
+#[tauri::command(rename_all = "snake_case")]
+async fn op_resolve_delivery_intent(
+    transport: State<'_, Transport>,
+    key: String,
+    action: String,
+    reason: String,
+) -> Result<CommandAck, String> {
+    let deduped = transport.inner().clone().resolve_delivery_intent(key, action, reason).await?;
+    Ok(CommandAck { deduped })
+}
+
 /// Requeue one dead derivation job (contract 0113). Operator-only, with a reason.
 #[tauri::command(rename_all = "snake_case")]
 async fn op_requeue_derivation_job(
@@ -3141,6 +3163,8 @@ pub fn run() {
             op_requeue_derivation_job,
             op_retry_watch_dead_letter,
             op_delete_watch_dead_letter,
+            op_list_delivery_intents,
+            op_resolve_delivery_intent,
             op_stat_file,
             op_query_memory,
             op_answer_memory,

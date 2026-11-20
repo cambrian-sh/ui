@@ -25,6 +25,7 @@ const KERNEL_ADVERTISES = [
   'memory-ingest',
   // contract 0113 (ENG-2139)
   'derivation-journal',
+  'delivery-intents',
   'tool-exec',
   'tool-approvals',
   'memory-ingest-binary',

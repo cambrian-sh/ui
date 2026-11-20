@@ -31,6 +31,7 @@ use crate::state::{DuplicateEffectKey, NodeItem, NodeReads, PipelineDryRun, Pipe
     PlanProposal, PlanProposalResponse, PlanValidationIssue, PreviewCandidate, PreviewRanked,
     PreviewRouteResult, RoleAssignment, StateOfRecord, SubmitPlanResult, ToolSummary,
     WatchAction, WatchBacktestVerdict, WatchConfigFull, WatchConfigSummary, WatchDeadLetter,
+    DeliveryIntent,
     WatchMetrics,
 };
 
@@ -1710,6 +1711,51 @@ impl Transport {
                 dead_letter_id: id,
                 command_id: new_command_id(),
                 reason,
+            }))
+            .await
+            .map_err(map_status)?
+            .into_inner();
+        Ok(ack.deduped)
+    }
+
+    /// The delivery journal's intents (contract 0118, ENG-1657); empty states =
+    /// ambiguous and failed.
+    pub async fn list_delivery_intents(&self, states: Vec<String>, limit: i32) -> Result<Vec<DeliveryIntent>, String> {
+        let mut client = self.client().await?;
+        let resp = client
+            .list_delivery_intents(Request::new(pb::ListDeliveryIntentsOpRequest { states, limit }))
+            .await
+            .map_err(map_status)?
+            .into_inner();
+        Ok(resp
+            .intents
+            .into_iter()
+            .map(|i| DeliveryIntent {
+                key: i.key,
+                conversation_id: i.conversation_id,
+                txn_id: i.txn_id,
+                ingress_agent_id: i.ingress_agent_id,
+                external_id: i.external_id,
+                state: i.state,
+                attempts: i.attempts,
+                error: i.error,
+                text_chars: i.text_chars,
+                created_at_unix_ms: i.created_at_unix_ms,
+                updated_at_unix_ms: i.updated_at_unix_ms,
+            })
+            .collect())
+    }
+
+    /// Resolve one ambiguous delivery intent: "confirm" or "resend" (contract 0118).
+    /// Operator-only, with a reason; audited.
+    pub async fn resolve_delivery_intent(&self, key: String, action: String, reason: String) -> Result<bool, String> {
+        let mut client = self.client().await?;
+        let ack = client
+            .resolve_delivery_intent(Request::new(pb::ResolveDeliveryIntentOpRequest {
+                command_id: new_command_id(),
+                reason,
+                key,
+                action,
             }))
             .await
             .map_err(map_status)?

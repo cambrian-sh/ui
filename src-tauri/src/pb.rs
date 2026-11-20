@@ -333,7 +333,12 @@ pub const RETENTION_FEED_CAPABILITY: &str = "retention-feed";
 ///   the live agent processes with their OS pids, operator-only, capability
 ///   `agent-instances`. The console renders no instance view yet; the bump keeps it off
 ///   the skew banner.
-pub const PINNED_CONTRACT_VERSION: &str = "0117";
+/// - **0118** 2026-11-20, additive (ENG-1657): `ListDeliveryIntents` (default ambiguous +
+///   failed; identifiers, state, attempts, error, text length — never the text) and
+///   `ResolveDeliveryIntent` ("confirm" | "resend" an ambiguous intent, with a reason),
+///   capability `delivery-intents`. The Inbox shows an "Undelivered replies" section
+///   (`op_list_delivery_intents`, `op_resolve_delivery_intent`).
+pub const PINNED_CONTRACT_VERSION: &str = "0118";
 
 /// The plugin versions this console was BUILT against, by plugin id (ADR-0089).
 ///

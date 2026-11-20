@@ -113,6 +113,12 @@ const KNOWN: Record<string, Omit<CapabilitySurface, 'capability'>> = {
     consequence: 'the fact / KG / embed job backlog, dead jobs with their error, and requeue',
     gatesSurface: true,
   },
+  // contract 0118 (ENG-1657): ambiguous and failed outbound replies, and resolving one.
+  'delivery-intents': {
+    surface: 'Inbox › Undelivered replies',
+    consequence: 'replies whose delivery is unknown or failed, with confirm / resend',
+    gatesSurface: true,
+  },
   'memory-ingest-binary': {
     surface: 'Memory › Ingest',
     consequence:

@@ -928,6 +928,25 @@ export interface WatchMetrics {
   mean_condition_latency_ms: number;
 }
 
+/**
+ * One outbound delivery intent (contract 0118, ENG-1657; ADR-0090 D8.1). Identifiers,
+ * state, attempts and the last error — never the message text, only its length.
+ */
+export interface DeliveryIntent {
+  key: string;
+  conversation_id: string;
+  txn_id: string;
+  ingress_agent_id: string;
+  external_id: string;
+  /** prepared | dispatched | confirmed | ambiguous | failed */
+  state: string;
+  attempts: number;
+  error: string;
+  text_chars: number;
+  created_at_unix_ms: number;
+  updated_at_unix_ms: number;
+}
+
 export interface WatchDeadLetter {
   id: string;
   watch_id: string;

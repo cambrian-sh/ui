@@ -1143,6 +1143,33 @@ class MockIPC {
     this.deadLetters = this.deadLetters.filter((d) => d.id !== id);
     return this.ack();
   }
+  private deliveryIntents: t.DeliveryIntent[] = [
+    {
+      key: 'delivery:conv-tg-1:msg-41', conversation_id: 'conv-tg-1', txn_id: 'msg-41',
+      ingress_agent_id: 'telegram_ingress', external_id: 'tg:5512', state: 'ambiguous', attempts: 1,
+      error: 'connection reset mid-send', text_chars: 214, created_at_unix_ms: Date.now() - 40 * 60_000,
+      updated_at_unix_ms: Date.now() - 39 * 60_000,
+    },
+    {
+      key: 'delivery:conv-tg-2:msg-7', conversation_id: 'conv-tg-2', txn_id: 'msg-7',
+      ingress_agent_id: 'telegram_ingress', external_id: 'tg:9031', state: 'failed', attempts: 3,
+      error: 'permanent: bot was blocked by the user', text_chars: 88, created_at_unix_ms: Date.now() - 3 * 3_600_000,
+      updated_at_unix_ms: Date.now() - 3 * 3_600_000,
+    },
+  ];
+
+  async listDeliveryIntents(_states: string[] = [], _limit = 100): Promise<t.DeliveryIntent[]> {
+    return this.deliveryIntents.filter((d) => d.state === 'ambiguous' || d.state === 'failed');
+  }
+
+  async resolveDeliveryIntent(key: string, _action: 'confirm' | 'resend', _reason: string): Promise<t.CommandAck> {
+    const d = this.deliveryIntents.find((x) => x.key === key);
+    if (!d) throw new Error(`NotFound: no delivery intent "${key}"`);
+    if (d.state !== 'ambiguous') throw new Error('FailedPrecondition: the intent is not ambiguous');
+    d.state = 'confirmed';
+    return this.ack();
+  }
+
   async deleteWatchDeadLetter(id: string, _reason: string): Promise<t.CommandAck> {
     this.deadLetters = this.deadLetters.filter((d) => d.id !== id);
     return this.ack();

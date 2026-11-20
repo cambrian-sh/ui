@@ -307,6 +307,14 @@ export const ipc = {
     invoke<t.CommandAck>('op_retry_watch_dead_letter', { id, reason }),
 
   /** Remove one dead letter (ENG-472, capability `watch-deadletter-delete`). */
+  /** Delivery intents (contract 0118, capability `delivery-intents`); no states = ambiguous + failed. */
+  listDeliveryIntents: (states: string[] = [], limit = 100): Promise<t.DeliveryIntent[]> =>
+    invoke<t.DeliveryIntent[]>('op_list_delivery_intents', { states, limit }),
+
+  /** Resolve one ambiguous delivery intent: 'confirm' it arrived, or 'resend' it once. */
+  resolveDeliveryIntent: (key: string, action: 'confirm' | 'resend', reason: string): Promise<t.CommandAck> =>
+    invoke<t.CommandAck>('op_resolve_delivery_intent', { key, action, reason }),
+
   deleteWatchDeadLetter: (id: string, reason: string): Promise<t.CommandAck> =>
     invoke<t.CommandAck>('op_delete_watch_dead_letter', { id, reason }),
 

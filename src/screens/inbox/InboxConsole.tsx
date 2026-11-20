@@ -30,6 +30,7 @@ import { OntologyDraftPanel, ONTOLOGY_DRAFT_CAPABILITY } from './OntologyDraftPa
 import { AccountItem } from './AccountItem';
 import { AttentionItem } from './AttentionItem';
 import { UnroutedApprovals } from './UnroutedApprovals';
+import { DeliveryIntentsPanel } from './DeliveryIntentsPanel';
 import { EscalationChain } from './EscalationChain';
 import { describeRule, needsHierarchy } from '@/lib/approvalRules';
 
@@ -177,6 +178,9 @@ export function InboxConsole() {
       )}
 
       <UnroutedApprovals items={unrouted} />
+
+      {/* ENG-1657: replies whose delivery is unknown or failed (contract 0118). */}
+      {caps.includes('delivery-intents') && <DeliveryIntentsPanel />}
 
       {addressed && <StandingApprovals />}
         </div>

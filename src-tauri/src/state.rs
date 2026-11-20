@@ -559,6 +559,24 @@ pub struct WatchMetrics {
     pub mean_condition_latency_ms: f64,
 }
 
+/// One outbound delivery intent (contract 0118, ENG-1657; ADR-0090 D8.1). Identifiers,
+/// state, attempts and the last error — never the message text, only its length.
+#[derive(Clone, Serialize, Default)]
+pub struct DeliveryIntent {
+    pub key: String,
+    pub conversation_id: String,
+    pub txn_id: String,
+    pub ingress_agent_id: String,
+    pub external_id: String,
+    /// prepared | dispatched | confirmed | ambiguous | failed
+    pub state: String,
+    pub attempts: i32,
+    pub error: String,
+    pub text_chars: i32,
+    pub created_at_unix_ms: i64,
+    pub updated_at_unix_ms: i64,
+}
+
 #[derive(Clone, Serialize, Default)]
 pub struct WatchDeadLetter {
     pub id: String,
