@@ -320,7 +320,11 @@ pub const RETENTION_FEED_CAPABILITY: &str = "retention-feed";
 ///   and `MCPServerOp.allow_private_network` on `ListMCPServers`. The Integrations ›
 ///   custom server editor shows an "Allow a private-network address" switch for
 ///   http/sse servers and always sends it.
-pub const PINNED_CONTRACT_VERSION: &str = "0114";
+/// - **0115** 2026-11-20, additive, agent plane only (ENG-1768):
+///   `Orchestrator/RequestKnowledgeCommit` — ask for an existing knowledge candidate
+///   to be committed. `operator.proto` is unchanged; the bump keeps the console off
+///   the skew banner.
+pub const PINNED_CONTRACT_VERSION: &str = "0115";
 
 /// The plugin versions this console was BUILT against, by plugin id (ADR-0089).
 ///
