@@ -36,7 +36,8 @@ export type InboxKind =
   | 'machine_consent'
   | 'account_approval'
   | 'publish_approval'
-  | 'ontology_change';
+  | 'ontology_change'
+  | 'python_package';
 
 export interface InboxItem {
   /** Stable across re-reads: `<kind>:<source id>`. */
@@ -82,6 +83,7 @@ export const KIND_LABEL: Record<InboxKind, string> = {
   account_approval: 'Confirm connected account',
   publish_approval: 'Share to team',
   ontology_change: 'Ontology change',
+  python_package: 'Python package',
 };
 
 /** ADR-0142 D11: the inbox kind of a hub item, by its wire kind. */
@@ -95,7 +97,17 @@ const HUB_KIND: Record<string, InboxKind> = {
   // ADR-0149 D2: an agent-drafted change to the ontology declarations; the
   // object is the draft id (OntologyDraftPanel reads the full draft by it).
   ontology_change: 'ontology_change',
+  // ADR-0157 D7.8: install a Python package into one agent's own layer; the card's
+  // object lists every distribution with its pinned file hashes (Operator role).
+  python_package: 'python_package',
 };
+
+/** The `name==version` a `python_package` approval names ('' when not one). */
+export function pythonPackageOf(h: HITLIntervention): string {
+  if (h.kind !== 'python_package') return '';
+  const raw = (h.proposed_action?.tool_name as string | undefined) ?? '';
+  return raw.startsWith('python_package:') ? raw.slice('python_package:'.length) : raw;
+}
 
 /** The draft id an `ontology_change` approval names ('' when absent). */
 export function ontologyDraftIdOf(h: HITLIntervention): string {
@@ -130,6 +142,7 @@ export function buildInbox(input: {
     // (kernel capability "scheduled-tasks"); approving creates it, owned by them.
     const isSchedule = h.kind === 'schedule';
     const isOntology = h.kind === 'ontology_change';
+    const pyPackage = pythonPackageOf(h);
     if (isSkill) liveAccess.add(`${h.agent_id}\u0000${skillOfApproval(h)}`);
     // A pre-hub kernel sends no rule: every item was the operator's to answer.
     const answerable = !h.rule || h.answerable !== false;
@@ -146,7 +159,9 @@ export function buildInbox(input: {
           ? 'Set up a recurring task'
           : isOntology
             ? 'Change the ontology declarations'
-            : (h.proposed_action?.tool_name as string) || h.reason || 'Approval',
+            : pyPackage
+              ? `Install Python package ${pyPackage}`
+              : (h.proposed_action?.tool_name as string) || h.reason || 'Approval',
       agent_id: h.agent_id,
       since_ms: parseTime(h.raised_at),
       destructive: !isSkill && !isSchedule && h.nature === 'destructive_command',

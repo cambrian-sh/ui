@@ -119,6 +119,12 @@ const KNOWN: Record<string, Omit<CapabilitySurface, 'capability'>> = {
     consequence: 'replies whose delivery is unknown or failed, with confirm / resend',
     gatesSurface: true,
   },
+  // contract 0119 (ENG-2012, ADR-0157 D7.10/D7.12): the sandbox Python lifecycle.
+  'python-packages': {
+    surface: 'Agents › Packages',
+    consequence: 'per-agent Python packages with their audit trail, removal, retry and env cleanup',
+    gatesSurface: true,
+  },
   'memory-ingest-binary': {
     surface: 'Memory › Ingest',
     consequence:

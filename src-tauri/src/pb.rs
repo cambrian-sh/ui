@@ -338,7 +338,13 @@ pub const RETENTION_FEED_CAPABILITY: &str = "retention-feed";
 ///   `ResolveDeliveryIntent` ("confirm" | "resend" an ambiguous intent, with a reason),
 ///   capability `delivery-intents`. The Inbox shows an "Undelivered replies" section
 ///   (`op_list_delivery_intents`, `op_resolve_delivery_intent`).
-pub const PINNED_CONTRACT_VERSION: &str = "0118";
+/// - **0119** 2026-11-20, additive (ENG-2012, ADR-0157 D7.10/D7.12 P5): the sandbox
+///   Python lifecycle: `ListPythonPackages` (operator-only: package records with their
+///   audit trail, generations with sizes, last GC), `RemovePythonPackage`,
+///   `RetryPythonPackageInstall` and `PrunePythonEnv` (with a reason), capability
+///   `python-packages`. The agent page gets a Packages tab (`op_list_python_packages`,
+///   `op_remove_python_package`, `op_retry_python_package_install`, `op_prune_python_env`).
+pub const PINNED_CONTRACT_VERSION: &str = "0119";
 
 /// The plugin versions this console was BUILT against, by plugin id (ADR-0089).
 ///

@@ -31,6 +31,7 @@ import { AccountItem } from './AccountItem';
 import { AttentionItem } from './AttentionItem';
 import { UnroutedApprovals } from './UnroutedApprovals';
 import { DeliveryIntentsPanel } from './DeliveryIntentsPanel';
+import { PythonPackageCard } from './PythonPackageCard';
 import { EscalationChain } from './EscalationChain';
 import { describeRule, needsHierarchy } from '@/lib/approvalRules';
 
@@ -154,6 +155,7 @@ export function InboxConsole() {
                       )}
                       {standingToggle(item)}
                       {draftButton(item)}
+                      <PythonPackageCard hitl={item.hitl} />
                       <HITLInline
                         intervention={item.hitl}
                         disabledReason={gate ?? item.approve_blocked}
@@ -224,6 +226,7 @@ export function InboxConsole() {
               <SheetTitle className="sr-only">Decide {selected.title}</SheetTitle>
               {standingToggle(selected)}
               {draftButton(selected)}
+              <PythonPackageCard hitl={selected.hitl} />
               <HITLInline
                 intervention={selected.hitl}
                 disabledReason={gate ?? selected.approve_blocked}

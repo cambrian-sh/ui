@@ -32,8 +32,26 @@ use crate::state::{DuplicateEffectKey, NodeItem, NodeReads, PipelineDryRun, Pipe
     PreviewRouteResult, RoleAssignment, StateOfRecord, SubmitPlanResult, ToolSummary,
     WatchAction, WatchBacktestVerdict, WatchConfigFull, WatchConfigSummary, WatchDeadLetter,
     DeliveryIntent,
+    PythonBaseGeneration, PythonGcItem, PythonGcReport, PythonLayerGeneration, PythonPackage,
+    PythonPackageAck, PythonPackageEvent, PythonPackageListing,
     WatchMetrics,
 };
+
+/// `PythonGcReportOp` -> the console form (contract 0119).
+fn python_gc_report(r: Option<pb::PythonGcReportOp>) -> PythonGcReport {
+    let r = r.unwrap_or_default();
+    PythonGcReport {
+        removed: r
+            .removed
+            .into_iter()
+            .map(|i| PythonGcItem { kind: i.kind, path: i.path, agent: i.agent, bytes: i.bytes, reason: i.reason })
+            .collect(),
+        freed_bytes: r.freed_bytes,
+        errors: r.errors,
+        at_unix_ms: r.at_unix_ms,
+        kept: r.kept,
+    }
+}
 
 /// `WatchConfigOp` → the projection form, unabridged.
 fn watch_full_from_op(c: pb::WatchConfigOp) -> WatchConfigFull {
@@ -1761,6 +1779,128 @@ impl Transport {
             .map_err(map_status)?
             .into_inner();
         Ok(ack.deduped)
+    }
+
+    /// The sandbox Python lifecycle listing (contract 0119, ENG-2012); "" = every agent.
+    /// Operator-only on the kernel.
+    pub async fn list_python_packages(&self, target: String) -> Result<PythonPackageListing, String> {
+        let mut client = self.client().await?;
+        let r = client
+            .list_python_packages(Request::new(pb::ListPythonPackagesOpRequest { target }))
+            .await
+            .map_err(map_status)?
+            .into_inner();
+        Ok(PythonPackageListing {
+            packages: r
+                .packages
+                .into_iter()
+                .map(|p| PythonPackage {
+                    id: p.id,
+                    target: p.target,
+                    name: p.name,
+                    version: p.version,
+                    extras: p.extras,
+                    state: p.state,
+                    lock_sha256: p.lock_sha256,
+                    base_generation: p.base_generation,
+                    approval_id: p.approval_id,
+                    requested_by: p.requested_by,
+                    requested_at_unix_ms: p.requested_at_unix_ms,
+                    decided_by: p.decided_by,
+                    decided_at_unix_ms: p.decided_at_unix_ms,
+                    detail: p.detail,
+                    distributions: p.distributions,
+                    declared: p.declared,
+                    runtime: p.runtime,
+                    events: p
+                        .events
+                        .into_iter()
+                        .map(|e| PythonPackageEvent {
+                            seq: e.seq,
+                            action: e.action,
+                            actor: e.actor,
+                            detail: e.detail,
+                            generation: e.generation,
+                            at_unix_ms: e.at_unix_ms,
+                        })
+                        .collect(),
+                })
+                .collect(),
+            bases: r
+                .bases
+                .into_iter()
+                .map(|b| PythonBaseGeneration {
+                    dir: b.dir,
+                    current: b.current,
+                    healthy: b.healthy,
+                    built_at_unix_ms: b.built_at_unix_ms,
+                    source: b.source,
+                    bytes: b.bytes,
+                })
+                .collect(),
+            layers: r
+                .layers
+                .into_iter()
+                .map(|l| PythonLayerGeneration {
+                    agent: l.agent,
+                    dir: l.dir,
+                    base: l.base,
+                    healthy: l.healthy,
+                    built_at_unix_ms: l.built_at_unix_ms,
+                    distributions: l.distributions,
+                    bytes: l.bytes,
+                    current: l.current,
+                })
+                .collect(),
+            root: r.root,
+            total_bytes: r.total_bytes,
+            cache_bytes: r.cache_bytes,
+            downloads_bytes: r.downloads_bytes,
+            last_gc: python_gc_report(r.last_gc),
+        })
+    }
+
+    /// Remove a runtime-requested package from an agent's layer (contract 0119).
+    /// Operator-only, with a reason; audited.
+    pub async fn remove_python_package(&self, target: String, name: String, reason: String) -> Result<PythonPackageAck, String> {
+        let mut client = self.client().await?;
+        let ack = client
+            .remove_python_package(Request::new(pb::RemovePythonPackageOpRequest {
+                command_id: new_command_id(),
+                reason,
+                target,
+                name,
+            }))
+            .await
+            .map_err(map_status)?
+            .into_inner();
+        Ok(PythonPackageAck { deduped: ack.deduped, generation: ack.generation })
+    }
+
+    /// Re-run an agent's package check now (contract 0119). Operator-only, audited.
+    pub async fn retry_python_package_install(&self, target: String, reason: String) -> Result<PythonPackageAck, String> {
+        let mut client = self.client().await?;
+        let ack = client
+            .retry_python_package_install(Request::new(pb::RetryPythonPackageInstallOpRequest {
+                command_id: new_command_id(),
+                reason,
+                target,
+            }))
+            .await
+            .map_err(map_status)?
+            .into_inner();
+        Ok(PythonPackageAck { deduped: ack.deduped, generation: ack.generation })
+    }
+
+    /// One GC pass over the sandbox Python env root (contract 0119). Operator-only.
+    pub async fn prune_python_env(&self, reason: String) -> Result<PythonGcReport, String> {
+        let mut client = self.client().await?;
+        let resp = client
+            .prune_python_env(Request::new(pb::PrunePythonEnvOpRequest { command_id: new_command_id(), reason }))
+            .await
+            .map_err(map_status)?
+            .into_inner();
+        Ok(python_gc_report(resp.report))
     }
 
     pub async fn get_watch_metrics(&self) -> Result<Vec<WatchMetrics>, String> {

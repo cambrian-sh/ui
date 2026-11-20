@@ -682,6 +682,45 @@ async fn op_resolve_delivery_intent(
     Ok(CommandAck { deduped })
 }
 
+/// The sandbox Python lifecycle listing (contract 0119, ENG-2012); "" = every agent.
+#[tauri::command(rename_all = "snake_case")]
+async fn op_list_python_packages(
+    transport: State<'_, Transport>,
+    target: String,
+) -> Result<crate::state::PythonPackageListing, String> {
+    transport.inner().clone().list_python_packages(target).await
+}
+
+/// Remove a runtime-requested package from an agent's layer. Operator-only, with a reason.
+#[tauri::command(rename_all = "snake_case")]
+async fn op_remove_python_package(
+    transport: State<'_, Transport>,
+    target: String,
+    name: String,
+    reason: String,
+) -> Result<crate::state::PythonPackageAck, String> {
+    transport.inner().clone().remove_python_package(target, name, reason).await
+}
+
+/// Re-run an agent's package check now (retry a failed install). Operator-only.
+#[tauri::command(rename_all = "snake_case")]
+async fn op_retry_python_package_install(
+    transport: State<'_, Transport>,
+    target: String,
+    reason: String,
+) -> Result<crate::state::PythonPackageAck, String> {
+    transport.inner().clone().retry_python_package_install(target, reason).await
+}
+
+/// One GC pass over the sandbox Python env root. Operator-only, with a reason.
+#[tauri::command(rename_all = "snake_case")]
+async fn op_prune_python_env(
+    transport: State<'_, Transport>,
+    reason: String,
+) -> Result<crate::state::PythonGcReport, String> {
+    transport.inner().clone().prune_python_env(reason).await
+}
+
 /// Requeue one dead derivation job (contract 0113). Operator-only, with a reason.
 #[tauri::command(rename_all = "snake_case")]
 async fn op_requeue_derivation_job(
@@ -3165,6 +3204,10 @@ pub fn run() {
             op_delete_watch_dead_letter,
             op_list_delivery_intents,
             op_resolve_delivery_intent,
+            op_list_python_packages,
+            op_remove_python_package,
+            op_retry_python_package_install,
+            op_prune_python_env,
             op_stat_file,
             op_query_memory,
             op_answer_memory,

@@ -14,6 +14,7 @@ import {
 } from '@/design-system/components';
 import { relativeTime } from '@/lib/relativeTime';
 import { AgentTraitPill } from './AgentTraitPill';
+import { PythonPackagesPanel, PYTHON_PACKAGES_CAPABILITY } from './PythonPackagesPanel';
 
 interface AgentDetailProps {
   agentId: string;
@@ -28,6 +29,10 @@ export function AgentDetail({ agentId, role }: AgentDetailProps) {
   const isHydrating = useStore(projectionStore, (s) => s.state === null);
 
   const isOperator = role === 'operator';
+  // Contract 0119 (ENG-2012): the agent's sandbox Python packages, operator-only on
+  // the kernel (it shows the install layout).
+  const caps = useStore(projectionStore, (s) => s.state?.capabilities ?? []);
+  const showPackages = isOperator && caps.includes(PYTHON_PACKAGES_CAPABILITY);
 
   if (isHydrating) {
     return (
@@ -93,6 +98,7 @@ export function AgentDetail({ agentId, role }: AgentDetailProps) {
           <TabsTrigger value="genotype">Genotype</TabsTrigger>
           <TabsTrigger value="history">History</TabsTrigger>
           <TabsTrigger value="actions">Actions</TabsTrigger>
+          {showPackages && <TabsTrigger value="packages">Packages</TabsTrigger>}
         </TabsList>
 
         {/* Genotype tab */}
@@ -186,6 +192,16 @@ export function AgentDetail({ agentId, role }: AgentDetailProps) {
             </CardContent>
           </Card>
         </TabsContent>
+
+        {/* Packages tab (contract 0119, ADR-0157 D7.10/D7.12) */}
+        {showPackages && (
+          <TabsContent
+            value="packages"
+            className="flex-1 overflow-y-auto px-4 pb-4 focus-visible:outline-none"
+          >
+            <PythonPackagesPanel agentId={agent.id} />
+          </TabsContent>
+        )}
       </Tabs>
     </div>
   );

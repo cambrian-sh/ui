@@ -1170,6 +1170,52 @@ class MockIPC {
     return this.ack();
   }
 
+  private pythonPackages: t.PythonPackage[] = [
+    {
+      id: 'ppa-mock-1', target: 'analyst', name: 'polars', version: '1.9.0', extras: [], state: 'approved',
+      lock_sha256: 'f'.repeat(64), base_generation: '0123456789abcdef', approval_id: 'apr-mock-1',
+      requested_by: 'agent:analyst', requested_at_unix_ms: Date.now() - 2 * 3_600_000, decided_by: 'op-1',
+      decided_at_unix_ms: Date.now() - 2 * 3_600_000 + 60_000, detail: '', distributions: ['polars==1.9.0'],
+      declared: false, runtime: true,
+      events: [
+        { seq: 1, action: 'requested', actor: 'agent:analyst', detail: '', generation: '', at_unix_ms: Date.now() - 2 * 3_600_000 },
+        { seq: 2, action: 'approved', actor: 'op-1', detail: '', generation: '', at_unix_ms: Date.now() - 2 * 3_600_000 + 60_000 },
+        { seq: 3, action: 'installed', actor: 'system:kernel', detail: 'layer a1b2c3d4e5f60718 on base 0123456789abcdef', generation: 'a1b2c3d4e5f60718', at_unix_ms: Date.now() - 2 * 3_600_000 + 90_000 },
+      ],
+    },
+  ];
+
+  async listPythonPackages(target = ''): Promise<t.PythonPackageListing> {
+    const packages = this.pythonPackages.filter((p) => !target || p.target === target);
+    const installed = packages.some((p) => p.state === 'approved');
+    return {
+      packages,
+      bases: [{ dir: '0123456789abcdef', current: true, healthy: true, built_at_unix_ms: Date.now() - 86_400_000, source: 'release-lock', bytes: 1_200_000_000 }],
+      layers: installed && (!target || target === 'analyst')
+        ? [{ agent: 'analyst', dir: 'a1b2c3d4e5f60718', base: '0123456789abcdef', healthy: true, built_at_unix_ms: Date.now() - 2 * 3_600_000, distributions: ['polars==1.9.0'], bytes: 38_000_000, current: true }]
+        : [],
+      root: 'C:/cambrian/runtime/python', total_bytes: 1_400_000_000, cache_bytes: 150_000_000, downloads_bytes: 60_000_000,
+      last_gc: { removed: [], freed_bytes: 0, errors: [], at_unix_ms: 0, kept: 0 },
+    };
+  }
+
+  async removePythonPackage(target: string, name: string, _reason: string): Promise<t.PythonPackageAck> {
+    const p = this.pythonPackages.find((x) => x.target === target && x.name === name && x.state === 'approved');
+    if (!p) throw new Error(`NotFound: no installed runtime package ${name} for ${target}`);
+    if (p.declared) throw new Error(`FailedPrecondition: ${target}'s profile declares ${name}; remove it from python_packages`);
+    p.state = 'removed';
+    p.events.push({ seq: p.events.length + 1, action: 'removed', actor: 'op-1', detail: 'removed by operator command', generation: '', at_unix_ms: Date.now() });
+    return { deduped: false, generation: '' };
+  }
+
+  async retryPythonPackageInstall(_target: string, _reason: string): Promise<t.PythonPackageAck> {
+    return { deduped: false, generation: 'a1b2c3d4e5f60718' };
+  }
+
+  async prunePythonEnv(_reason: string): Promise<t.PythonGcReport> {
+    return { removed: [], freed_bytes: 0, errors: [], at_unix_ms: Date.now(), kept: 2 };
+  }
+
   async deleteWatchDeadLetter(id: string, _reason: string): Promise<t.CommandAck> {
     this.deadLetters = this.deadLetters.filter((d) => d.id !== id);
     return this.ack();

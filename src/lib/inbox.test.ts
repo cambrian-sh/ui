@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { HITLIntervention, SkillAccessRequest, SkillProposal } from '@/ipc/types';
-import { buildInbox, inboxCount, ontologyDraftIdOf } from './inbox';
+import { buildInbox, inboxCount, ontologyDraftIdOf, pythonPackageOf } from './inbox';
 
 describe('ontology_change approvals (ADR-0149 D2)', () => {
   const base: HITLIntervention = {
@@ -20,6 +20,23 @@ describe('ontology_change approvals (ADR-0149 D2)', () => {
   it('names no draft for another kind or a missing object', () => {
     expect(ontologyDraftIdOf({ ...base, proposed_action: { object: 'od_1' } })).toBe('');
     expect(ontologyDraftIdOf({ ...base, kind: 'ontology_change' })).toBe('');
+  });
+});
+
+describe('python_package approvals (ADR-0157 D7.8, ENG-2012)', () => {
+  const base: HITLIntervention = {
+    intervention_id: 'appr-p', plan_id: '', step_id: '', agent_id: 'analyst', nature: 'approval_request',
+    proposed_action: {}, intended_action: null, reason: 'python_package', raised_at: '2026-11-20T10:00:00Z',
+  };
+
+  it('is its own inbox kind, titled with the package, not a generic tool approval', () => {
+    const h = { ...base, kind: 'python_package', proposed_action: { tool_name: 'python_package:polars==1.9.0', object: 'target: agent analyst' } };
+    const [item] = buildInbox({ hitl: [h] });
+    expect(item.kind).toBe('python_package');
+    expect(item.title).toBe('Install Python package polars==1.9.0');
+    expect(item.destructive).toBe(false);
+    expect(pythonPackageOf(h)).toBe('polars==1.9.0');
+    expect(pythonPackageOf({ ...base, proposed_action: { tool_name: 'python_package:x==1' } })).toBe('');
   });
 });
 

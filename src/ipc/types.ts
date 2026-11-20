@@ -947,6 +947,98 @@ export interface DeliveryIntent {
   updated_at_unix_ms: number;
 }
 
+/** One audit row of a sandbox Python package record (contract 0119, ENG-2012). */
+export interface PythonPackageEvent {
+  seq: number;
+  /** requested | approved | denied | expired | installed | reinstalled | install_failed | removed */
+  action: string;
+  actor: string;
+  detail: string;
+  /** The layer generation an install or removal produced ('' = none). */
+  generation: string;
+  at_unix_ms: number;
+}
+
+/** One (agent, package, version, lock) approval record (ADR-0157 D7.8.4). */
+export interface PythonPackage {
+  id: string;
+  target: string;
+  name: string;
+  version: string;
+  extras: string[];
+  /** pending | approved | denied | expired | removed */
+  state: string;
+  lock_sha256: string;
+  base_generation: string;
+  approval_id: string;
+  /** 'profile:<agent>' (declared) or 'agent:<agent>' (requested at runtime). */
+  requested_by: string;
+  requested_at_unix_ms: number;
+  decided_by: string;
+  decided_at_unix_ms: number;
+  detail: string;
+  /** Every distribution of the lock as name==version. */
+  distributions: string[];
+  /** The agent's profile declares it: removal goes through the profile. */
+  declared: boolean;
+  runtime: boolean;
+  events: PythonPackageEvent[];
+}
+
+export interface PythonBaseGeneration {
+  dir: string;
+  current: boolean;
+  healthy: boolean;
+  built_at_unix_ms: number;
+  source: string;
+  bytes: number;
+}
+
+export interface PythonLayerGeneration {
+  agent: string;
+  dir: string;
+  base: string;
+  healthy: boolean;
+  built_at_unix_ms: number;
+  distributions: string[];
+  bytes: number;
+  current: boolean;
+}
+
+export interface PythonGcItem {
+  kind: string;
+  path: string;
+  agent: string;
+  bytes: number;
+  reason: string;
+}
+
+export interface PythonGcReport {
+  removed: PythonGcItem[];
+  freed_bytes: number;
+  errors: string[];
+  at_unix_ms: number;
+  kept: number;
+}
+
+/** The sandbox Python lifecycle listing (contract 0119, capability `python-packages`). */
+export interface PythonPackageListing {
+  packages: PythonPackage[];
+  bases: PythonBaseGeneration[];
+  layers: PythonLayerGeneration[];
+  root: string;
+  total_bytes: number;
+  cache_bytes: number;
+  downloads_bytes: number;
+  last_gc: PythonGcReport;
+}
+
+/** A package command's ack with the agent's resulting layer generation ('' = none). */
+export interface PythonPackageAck {
+  deduped: boolean;
+  generation: string;
+}
+
 export interface WatchDeadLetter {
   id: string;
   watch_id: string;

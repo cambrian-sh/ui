@@ -315,6 +315,22 @@ export const ipc = {
   resolveDeliveryIntent: (key: string, action: 'confirm' | 'resend', reason: string): Promise<t.CommandAck> =>
     invoke<t.CommandAck>('op_resolve_delivery_intent', { key, action, reason }),
 
+  /** Sandbox Python lifecycle (contract 0119, capability `python-packages`); '' = every agent. */
+  listPythonPackages: (target = ''): Promise<t.PythonPackageListing> =>
+    invoke<t.PythonPackageListing>('op_list_python_packages', { target }),
+
+  /** Remove a runtime-requested package from an agent's layer (a new generation, audited). */
+  removePythonPackage: (target: string, name: string, reason: string): Promise<t.PythonPackageAck> =>
+    invoke<t.PythonPackageAck>('op_remove_python_package', { target, name, reason }),
+
+  /** Re-run an agent's package check now (retries an install that failed after approval). */
+  retryPythonPackageInstall: (target: string, reason: string): Promise<t.PythonPackageAck> =>
+    invoke<t.PythonPackageAck>('op_retry_python_package_install', { target, reason }),
+
+  /** One GC pass over the sandbox Python env root. */
+  prunePythonEnv: (reason: string): Promise<t.PythonGcReport> =>
+    invoke<t.PythonGcReport>('op_prune_python_env', { reason }),
+
   deleteWatchDeadLetter: (id: string, reason: string): Promise<t.CommandAck> =>
     invoke<t.CommandAck>('op_delete_watch_dead_letter', { id, reason }),
 

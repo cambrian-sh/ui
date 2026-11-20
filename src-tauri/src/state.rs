@@ -577,6 +577,103 @@ pub struct DeliveryIntent {
     pub updated_at_unix_ms: i64,
 }
 
+/// One audit row of a sandbox Python package record (contract 0119, ENG-2012).
+#[derive(Clone, Serialize, Default)]
+pub struct PythonPackageEvent {
+    pub seq: i64,
+    /// requested | approved | denied | expired | installed | reinstalled | install_failed | removed
+    pub action: String,
+    pub actor: String,
+    pub detail: String,
+    pub generation: String,
+    pub at_unix_ms: i64,
+}
+
+/// One (agent, package, version, lock) approval record (ADR-0157 D7.8.4).
+#[derive(Clone, Serialize, Default)]
+pub struct PythonPackage {
+    pub id: String,
+    pub target: String,
+    pub name: String,
+    pub version: String,
+    pub extras: Vec<String>,
+    /// pending | approved | denied | expired | removed
+    pub state: String,
+    pub lock_sha256: String,
+    pub base_generation: String,
+    pub approval_id: String,
+    pub requested_by: String,
+    pub requested_at_unix_ms: i64,
+    pub decided_by: String,
+    pub decided_at_unix_ms: i64,
+    pub detail: String,
+    pub distributions: Vec<String>,
+    pub declared: bool,
+    pub runtime: bool,
+    pub events: Vec<PythonPackageEvent>,
+}
+
+#[derive(Clone, Serialize, Default)]
+pub struct PythonBaseGeneration {
+    pub dir: String,
+    pub current: bool,
+    pub healthy: bool,
+    pub built_at_unix_ms: i64,
+    pub source: String,
+    pub bytes: i64,
+}
+
+#[derive(Clone, Serialize, Default)]
+pub struct PythonLayerGeneration {
+    pub agent: String,
+    pub dir: String,
+    pub base: String,
+    pub healthy: bool,
+    pub built_at_unix_ms: i64,
+    pub distributions: Vec<String>,
+    pub bytes: i64,
+    pub current: bool,
+}
+
+#[derive(Clone, Serialize, Default)]
+pub struct PythonGcItem {
+    pub kind: String,
+    pub path: String,
+    pub agent: String,
+    pub bytes: i64,
+    pub reason: String,
+}
+
+#[derive(Clone, Serialize, Default)]
+pub struct PythonGcReport {
+    pub removed: Vec<PythonGcItem>,
+    pub freed_bytes: i64,
+    pub errors: Vec<String>,
+    pub at_unix_ms: i64,
+    pub kept: i32,
+}
+
+/// The sandbox Python lifecycle listing (contract 0119): package records with their
+/// audit trail, the env's generations with sizes and the last GC run.
+#[derive(Clone, Serialize, Default)]
+pub struct PythonPackageListing {
+    pub packages: Vec<PythonPackage>,
+    pub bases: Vec<PythonBaseGeneration>,
+    pub layers: Vec<PythonLayerGeneration>,
+    pub root: String,
+    pub total_bytes: i64,
+    pub cache_bytes: i64,
+    pub downloads_bytes: i64,
+    pub last_gc: PythonGcReport,
+}
+
+/// A package command's ack with the agent's resulting layer generation.
+#[derive(Clone, Serialize, Default)]
+pub struct PythonPackageAck {
+    pub deduped: bool,
+    pub generation: String,
+}
+
 #[derive(Clone, Serialize, Default)]
 pub struct WatchDeadLetter {
     pub id: String,

@@ -26,6 +26,7 @@ const KERNEL_ADVERTISES = [
   // contract 0113 (ENG-2139)
   'derivation-journal',
   'delivery-intents',
+  'python-packages',
   'tool-exec',
   'tool-approvals',
   'memory-ingest-binary',
