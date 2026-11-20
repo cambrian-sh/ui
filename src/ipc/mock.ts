@@ -1131,8 +1131,21 @@ class MockIPC {
     this.fx.watches = this.fx.watches.map((w) => (w.id === watchId ? { ...w, active } : w));
     return this.ack();
   }
+  private deadLetters: t.WatchDeadLetter[] = [...fx.watchDeadLetters];
+
   async listWatchDeadLetters(_limit = 0): Promise<t.WatchDeadLetter[]> {
-    return this.emptyPlanes ? [] : fx.watchDeadLetters;
+    return this.emptyPlanes ? [] : [...this.deadLetters];
+  }
+  async retryWatchDeadLetter(id: string, _reason: string): Promise<t.CommandAck> {
+    const dl = this.deadLetters.find((d) => d.id === id);
+    if (!dl) throw new Error(`NotFound: no dead letter "${id}"`);
+    if (!dl.retryable) throw new Error('FailedPrecondition: this dead letter is an expired signal: it can be deleted, not retried');
+    this.deadLetters = this.deadLetters.filter((d) => d.id !== id);
+    return this.ack();
+  }
+  async deleteWatchDeadLetter(id: string, _reason: string): Promise<t.CommandAck> {
+    this.deadLetters = this.deadLetters.filter((d) => d.id !== id);
+    return this.ack();
   }
   async getWatchMetrics(): Promise<t.WatchMetrics[]> {
     return this.emptyPlanes ? [] : fx.watchMetrics;

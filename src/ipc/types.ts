@@ -938,6 +938,11 @@ export interface WatchDeadLetter {
   signal_stream_id: string;
   signal_raw_text: string;
   failed_at_unix_ms: number;
+  /**
+   * Contract 0116 (ENG-1654): Retry can replay this entry — a failed delivery, on a
+   * kernel with a retrier. An expired signal is delete-only. Absent from an older kernel.
+   */
+  retryable?: boolean;
 }
 
 /** One replayed signal. A backtest never executes an arm. */

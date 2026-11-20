@@ -324,7 +324,12 @@ pub const RETENTION_FEED_CAPABILITY: &str = "retention-feed";
 ///   `Orchestrator/RequestKnowledgeCommit` — ask for an existing knowledge candidate
 ///   to be committed. `operator.proto` is unchanged; the bump keeps the console off
 ///   the skew banner.
-pub const PINNED_CONTRACT_VERSION: &str = "0115";
+/// - **0116** 2026-11-20, additive (ENG-1654): `WatchDeadLetterOp.retryable` — the kernel
+///   says which dead letters `RetryWatchDeadLetter` can replay (a failed delivery, with a
+///   retrier registered); expired signals are delete-only. The Reactive screen's dead
+///   letters panel offers Retry only on those (`op_retry_watch_dead_letter`) and Delete
+///   with `watch-deadletter-delete` (`op_delete_watch_dead_letter`).
+pub const PINNED_CONTRACT_VERSION: &str = "0116";
 
 /// The plugin versions this console was BUILT against, by plugin id (ADR-0089).
 ///

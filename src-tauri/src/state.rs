@@ -569,6 +569,9 @@ pub struct WatchDeadLetter {
     pub signal_stream_id: String,
     pub signal_raw_text: String,
     pub failed_at_unix_ms: i64,
+    /// Contract 0116 (ENG-1654): `RetryWatchDeadLetter` can replay this entry (a
+    /// failed delivery, on a kernel with a retrier). An expired signal is delete-only.
+    pub retryable: bool,
 }
 
 /// One replayed signal from `BacktestWatch`. Never executes an arm.

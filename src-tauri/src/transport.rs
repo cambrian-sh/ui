@@ -1680,8 +1680,41 @@ impl Transport {
                 signal_stream_id: e.signal_stream_id,
                 signal_raw_text: e.signal_raw_text,
                 failed_at_unix_ms: e.failed_at_unix_ms,
+                retryable: e.retryable,
             })
             .collect())
+    }
+
+    /// Replay one failed-delivery dead letter (contract 0116, ENG-1654). Operator-only,
+    /// with a reason; audited. Returns whether the command was deduped.
+    pub async fn retry_watch_dead_letter(&self, id: String, reason: String) -> Result<bool, String> {
+        let mut client = self.client().await?;
+        let ack = client
+            .retry_watch_dead_letter(Request::new(pb::RetryWatchDeadLetterOpRequest {
+                dead_letter_id: id,
+                command_id: new_command_id(),
+                reason,
+            }))
+            .await
+            .map_err(map_status)?
+            .into_inner();
+        Ok(ack.deduped)
+    }
+
+    /// Remove one dead letter an operator has dealt with (ENG-472). Operator-only,
+    /// with a reason; audited.
+    pub async fn delete_watch_dead_letter(&self, id: String, reason: String) -> Result<bool, String> {
+        let mut client = self.client().await?;
+        let ack = client
+            .delete_watch_dead_letter(Request::new(pb::DeleteWatchDeadLetterOpRequest {
+                dead_letter_id: id,
+                command_id: new_command_id(),
+                reason,
+            }))
+            .await
+            .map_err(map_status)?
+            .into_inner();
+        Ok(ack.deduped)
     }
 
     pub async fn get_watch_metrics(&self) -> Result<Vec<WatchMetrics>, String> {

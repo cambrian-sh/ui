@@ -638,6 +638,28 @@ async fn op_get_derivation_journal(
     transport.inner().clone().get_derivation_journal(dead_limit).await
 }
 
+/// Replay one failed-delivery dead letter (contract 0116, ENG-1654). Operator-only.
+#[tauri::command(rename_all = "snake_case")]
+async fn op_retry_watch_dead_letter(
+    transport: State<'_, Transport>,
+    id: String,
+    reason: String,
+) -> Result<CommandAck, String> {
+    let deduped = transport.inner().clone().retry_watch_dead_letter(id, reason).await?;
+    Ok(CommandAck { deduped })
+}
+
+/// Remove one dead letter (ENG-472). Operator-only, with a reason.
+#[tauri::command(rename_all = "snake_case")]
+async fn op_delete_watch_dead_letter(
+    transport: State<'_, Transport>,
+    id: String,
+    reason: String,
+) -> Result<CommandAck, String> {
+    let deduped = transport.inner().clone().delete_watch_dead_letter(id, reason).await?;
+    Ok(CommandAck { deduped })
+}
+
 /// Requeue one dead derivation job (contract 0113). Operator-only, with a reason.
 #[tauri::command(rename_all = "snake_case")]
 async fn op_requeue_derivation_job(
@@ -3110,6 +3132,8 @@ pub fn run() {
             op_get_ingest_status,
             op_get_derivation_journal,
             op_requeue_derivation_job,
+            op_retry_watch_dead_letter,
+            op_delete_watch_dead_letter,
             op_stat_file,
             op_query_memory,
             op_answer_memory,

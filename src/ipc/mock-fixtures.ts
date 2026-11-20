@@ -401,6 +401,7 @@ export const watchDeadLetters: t.WatchDeadLetter[] = [
     signal_stream_id: 'ingress:acme-webhook',
     signal_raw_text: '{"type":"refund","id":"R-90121","amount":742.10}',
     failed_at_unix_ms: agoMs(3 * HOUR),
+    retryable: true,
   },
   {
     id: 'dl-2',
@@ -411,6 +412,18 @@ export const watchDeadLetters: t.WatchDeadLetter[] = [
     signal_stream_id: 'ingress:acme-webhook',
     signal_raw_text: '{"type":"refund","id":"R-90188","amount":1210.00}',
     failed_at_unix_ms: agoMs(3 * HOUR - 4 * MIN),
+    retryable: true,
+  },
+  {
+    id: 'dl-3',
+    watch_id: 'watch-2',
+    action_type: 'plan',
+    key: '',
+    reason: 'expired_before_replay',
+    signal_stream_id: 'ingress:acme-webhook',
+    signal_raw_text: '{"type":"refund","id":"R-89990","amount":12.00}',
+    failed_at_unix_ms: agoMs(30 * HOUR),
+    retryable: false,
   },
 ];
 

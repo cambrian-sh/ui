@@ -302,6 +302,14 @@ export const ipc = {
   listWatchDeadLetters: (limit = 0): Promise<t.WatchDeadLetter[]> =>
     invoke<t.WatchDeadLetter[]>('op_list_watch_dead_letters', { limit }),
 
+  /** Replay one failed-delivery dead letter (contract 0116). Operator-only, with a reason. */
+  retryWatchDeadLetter: (id: string, reason: string): Promise<t.CommandAck> =>
+    invoke<t.CommandAck>('op_retry_watch_dead_letter', { id, reason }),
+
+  /** Remove one dead letter (ENG-472, capability `watch-deadletter-delete`). */
+  deleteWatchDeadLetter: (id: string, reason: string): Promise<t.CommandAck> =>
+    invoke<t.CommandAck>('op_delete_watch_dead_letter', { id, reason }),
+
   getWatchMetrics: (): Promise<t.WatchMetrics[]> =>
     invoke<t.WatchMetrics[]>('op_get_watch_metrics'),
 

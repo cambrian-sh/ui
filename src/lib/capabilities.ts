@@ -228,6 +228,11 @@ const KNOWN: Record<string, Omit<CapabilitySurface, 'capability'>> = {
     consequence: 'the dead-letter queue',
     gatesSurface: true,
   },
+  // ENG-472: the kernel's reactive journal can delete a dead letter an operator dealt with.
+  'watch-deadletter-delete': {
+    surface: 'Watch & Reactive',
+    consequence: 'deleting a dead letter',
+  },
   'watch-schedule': {
     surface: 'Watch & Reactive',
     consequence: 'schedule-driven watches',

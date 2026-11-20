@@ -63,6 +63,7 @@ const KERNEL_ADVERTISES = [
   'watches-read',
   'watches-crud',
   'watch-deadletter',
+  'watch-deadletter-delete',
   'reactive-backpressure',
   'watch-condition-guard',
   'watch-observability',

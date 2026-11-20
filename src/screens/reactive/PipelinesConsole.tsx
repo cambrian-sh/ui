@@ -24,6 +24,7 @@ import { DryRunPane } from "./DryRunPane";
 import { PipelineCanvas } from "./PipelineCanvas";
 import { PipelineTracePane } from "./PipelineTracePane";
 import { NewPipelineDialog } from "./NewPipelineDialog";
+import { DeadLettersPanel } from "./DeadLettersPanel";
 
 /**
  * Pipelines — the reactive plane.
@@ -185,6 +186,13 @@ export function PipelinesConsole() {
         </div>
 
         <PlaneBudget metrics={metrics.data} />
+
+        {/* ENG-1654: the dead-letter queue, with Retry where a replay can work. */}
+        {(projection.state?.capabilities ?? []).includes("watch-deadletter") && (
+          <DeadLettersPanel
+            canDelete={(projection.state?.capabilities ?? []).includes("watch-deadletter-delete")}
+          />
+        )}
 
         {pipelines.error ? (
           <ErrorState
