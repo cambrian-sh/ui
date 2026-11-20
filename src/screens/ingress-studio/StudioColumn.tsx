@@ -425,6 +425,9 @@ export function StudioColumn({
               <RevisionStage
                 ingressId={ingressId}
                 armedRevision={status?.armed_mapping_revision ?? 0}
+                latestRevision={status?.latest_mapping_revision ?? 0}
+                armedTransportRevision={status?.armed_transport_revision ?? 0}
+                armedHistoryTransportRevision={status?.armed_history_transport_revision ?? 0}
                 draftRevision={revising}
                 archived={samples}
                 onDiscard={() => onChanged()}

@@ -26,12 +26,20 @@ import { parsePreview, shadowNumbers } from "./shadowDiff";
 export function RevisionStage({
   ingressId,
   armedRevision,
+  latestRevision,
+  armedTransportRevision,
+  armedHistoryTransportRevision,
   draftRevision,
   archived,
   onDiscard,
 }: {
   ingressId: string;
   armedRevision: number;
+  /** The newest stored mapping revision: ConfirmMapping confirms THIS one. */
+  latestRevision: number;
+  /** The armed release's transport revision and history lane (0 = none). */
+  armedTransportRevision: number;
+  armedHistoryTransportRevision: number;
   draftRevision: number;
   /** How many deliveries the shadow run has to replay against. */
   archived: number;
@@ -135,7 +143,12 @@ export function RevisionStage({
       <Promotion
         ingressId={ingressId}
         draftRevision={draftRevision}
+        armedRevision={armedRevision}
+        latestRevision={latestRevision}
+        armedTransportRevision={armedTransportRevision}
+        armedHistoryTransportRevision={armedHistoryTransportRevision}
         affected={n.changed}
+        archived={archived}
         ready={!shadow.isLoading && !shadow.error}
       />
 
@@ -205,24 +218,56 @@ function Finding({
  * here rather than a dialog: a promotion without a reason is refused, and
  * discovering that in a modal after deciding is worse than typing it now.
  */
+/**
+ * The two things a reviewed revision can be used for (ENG-1722, owner decision
+ * 2026-11-20, option C), side by side, each saying exactly what it calls:
+ *
+ *  - REPAIR STORED RECORDS — IngressStudioAdmin.PromoteRepair: a background job
+ *    re-projects EVERY preserved delivery under the candidate revision and retires
+ *    the rows the old one wrote. Stored records change; what new arrivals use does
+ *    not (the armed release is untouched).
+ *  - RELEASE FOR NEW ARRIVALS — the kernel's own path for changing a live
+ *    ingress's mapping, run step by step with the operator's reason: pause →
+ *    confirm the mapping (PAUSED → MAPPED builds the candidate's pipeline) → start
+ *    the dry run → arm a new release (the armed transport, this mapping, the armed
+ *    history lane kept). Stored records do not change. It stops at the first
+ *    refusal and says where the ingress was left.
+ *
+ * Until ENG-1722 the one button here called PromoteRepair while its copy promised
+ * the release ("fixes what arrives next… does not fix what is already stored").
+ */
 function Promotion({
   ingressId,
   draftRevision,
+  armedRevision,
+  latestRevision,
+  armedTransportRevision,
+  armedHistoryTransportRevision,
   affected,
+  archived,
   ready,
 }: {
   ingressId: string;
   draftRevision: number;
+  armedRevision: number;
+  latestRevision: number;
+  armedTransportRevision: number;
+  armedHistoryTransportRevision: number;
   affected: number;
+  archived: number;
   ready: boolean;
 }) {
   const [reason, setReason] = useState("");
   const [notice, setNotice] = useState("");
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState<"" | "repair" | "release">("");
   const [started, setStarted] = useState(false);
+  const reasonMissing = reason.trim() === "";
+  // ConfirmMapping confirms the LATEST stored revision, so the release can only
+  // carry this candidate while it is the latest.
+  const releasable = draftRevision === latestRevision && armedTransportRevision > 0;
 
-  const promote = async () => {
-    setBusy(true);
+  const repair = async () => {
+    setBusy("repair");
     try {
       const res = await ipc.studioPromoteRepair(ingressId, draftRevision, reason);
       // The kernel's own words: PromoteRepair STARTS a background job that
@@ -236,7 +281,38 @@ function Promotion({
     } catch (e) {
       setNotice(String(e));
     } finally {
-      setBusy(false);
+      setBusy("");
+    }
+  };
+
+  const release = async () => {
+    setBusy("release");
+    // Each step is one audited kernel call; the first refusal stops the chain,
+    // and the notice says where the ingress was left.
+    const steps: { label: string; leftIn: string; run: () => Promise<{ ok: boolean; error: string; detail: string }> }[] = [
+      { label: "pause", leftIn: `still armed on r${armedRevision}`, run: () => ipc.studioLifecycle("pause", ingressId, reason) },
+      { label: "confirm the mapping", leftIn: "paused — resume it to go back to r" + armedRevision, run: () => ipc.studioLifecycle("confirm_mapping", ingressId, reason) },
+      { label: "start the dry run", leftIn: `mapped on r${draftRevision}, not receiving — start the dry run and arm from the lifecycle controls`, run: () => ipc.studioLifecycle("start_dry_run", ingressId, reason) },
+      {
+        label: "arm the new release",
+        leftIn: `in dry run on r${draftRevision}, not receiving — arm it from the lifecycle controls`,
+        run: () => ipc.studioArm(ingressId, armedTransportRevision, draftRevision, reason, armedHistoryTransportRevision),
+      },
+    ];
+    try {
+      for (const step of steps) {
+        const res = await step.run();
+        if (!res.ok) {
+          setNotice(`Could not ${step.label}: ${res.error || "refused"}. The ingress is ${step.leftIn}.`);
+          return;
+        }
+      }
+      setNotice(`Released r${draftRevision} for new arrivals. Stored records are unchanged.`);
+    } catch (e) {
+      setNotice(String(e));
+    } finally {
+      setBusy("");
+      void queryClient.invalidateQueries({ queryKey: ["studio", "status", ingressId] });
     }
   };
 
@@ -246,60 +322,58 @@ function Promotion({
       style={{ "--tint": "var(--status-warn)" } as React.CSSProperties}
     >
       <div className="mb-1.5 flex items-center gap-2">
-        <RotateCcw
-          aria-hidden="true"
-          size={13}
-          className="flex-none text-[var(--status-warn)]"
-        />
+        <RotateCcw aria-hidden="true" size={13} className="flex-none text-[var(--status-warn)]" />
         <span className="text-[12.5px] font-medium">
-          Promoting r{draftRevision} fixes what arrives next. It does not fix
-          what is already stored.
+          Two separate things r{draftRevision} can do. Choose one, or both in turn.
         </span>
       </div>
-      <p className="mb-2.5 text-[11.5px] leading-[1.65] text-[var(--fg-secondary)]">
-        {affected.toLocaleString()}{" "}
-        {affected === 1 ? "record carries" : "records carry"} the old result
-        today. Backfilling re-derives every downstream fact that read them, so it
-        is a separate, explicit act rather than something promotion does quietly.
-      </p>
 
       <input
         value={reason}
         onChange={(e) => setReason(e.target.value)}
-        aria-label="Why are you promoting this revision?"
-        placeholder="Why are you promoting this? (required — it is recorded)"
-        className="mb-2 w-full rounded-[var(--radius-md)] bg-[var(--bg-base)] px-2.5 py-1.5 text-[11.5px] text-[var(--fg-primary)] placeholder:text-[var(--fg-muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)]"
+        aria-label="Why are you doing this?"
+        placeholder="Why? (required — it is recorded with each call)"
+        className="mb-2.5 w-full rounded-[var(--radius-md)] bg-[var(--bg-base)] px-2.5 py-1.5 text-[11.5px] text-[var(--fg-primary)] placeholder:text-[var(--fg-muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)]"
       />
 
-      <div className="flex flex-wrap items-center gap-2">
-        <Button
-          size="sm"
-          variant="secondary"
-          disabled
-          title="Backfill is not a separate call in this kernel yet — promoting rewrites current projections but does not re-derive downstream facts"
-        >
-          Promote and backfill all {affected.toLocaleString()}
-        </Button>
-        <Button
-          size="sm"
-          variant="ghost"
-          onClick={promote}
-          disabled={!ready || busy || reason.trim() === ""}
-        >
-          {busy ? "Promoting…" : "Promote only — leave history as it is"}
-        </Button>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <section aria-label="Repair stored records" className="flex flex-col gap-1.5">
+          <p className="text-[11.5px] leading-[1.6] text-[var(--fg-secondary)]">
+            Re-projects all {archived.toLocaleString()} preserved deliveries under r{draftRevision} and
+            retires the rows r{armedRevision} wrote — {affected.toLocaleString()}{" "}
+            {affected === 1 ? "record changes" : "records change"}. Runs in the background. New
+            arrivals keep using r{armedRevision}.
+          </p>
+          <Button size="sm" variant="secondary" onClick={repair} disabled={!ready || busy !== "" || reasonMissing}>
+            {busy === "repair" ? "Starting…" : "Repair stored records"}
+          </Button>
+        </section>
+        <section aria-label="Release for new arrivals" className="flex flex-col gap-1.5">
+          <p className="text-[11.5px] leading-[1.6] text-[var(--fg-secondary)]">
+            Pauses this ingress, confirms r{draftRevision}, runs it through the dry run and arms it as a
+            new release. Deliveries that arrive while it is paused wait at the source. Stored records
+            are not changed.
+          </p>
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={release}
+            disabled={!ready || busy !== "" || reasonMissing || !releasable}
+            title={
+              releasable
+                ? undefined
+                : draftRevision !== latestRevision
+                  ? `r${latestRevision} is newer: confirming a mapping confirms the latest revision`
+                  : "No armed release to carry the transport from"
+            }
+          >
+            {busy === "release" ? "Releasing…" : `Release r${draftRevision} for new arrivals`}
+          </Button>
+        </section>
       </div>
-      {/* Named, not omitted. The design asks for two buttons and this kernel can
-          honestly offer one; saying which is missing beats shipping a button
-          that silently does the other thing. */}
-      <p className="mt-2 text-[11px] leading-[1.5] text-[var(--fg-muted)]">
-        Backfill is disabled because this kernel has no separate backfill call —
-        promotion rewrites what the ingress projects from here, and re-deriving
-        the downstream facts that read the old values is not yet something it can
-        be asked to do.
-      </p>
+
       {notice !== "" && (
-        <p className="mt-2 text-[11.5px] leading-[1.55] text-[var(--fg-secondary)]">
+        <p role="status" className="mt-2 text-[11.5px] leading-[1.55] text-[var(--fg-secondary)]">
           {notice}
         </p>
       )}

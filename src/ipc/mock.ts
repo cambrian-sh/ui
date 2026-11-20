@@ -1491,7 +1491,7 @@ class MockIPC {
   async studioLifecycle(_verb: string, _ingressId: string, _reason = ''): Promise<t.StudioAck> {
     return this.okAck();
   }
-  async studioArm(_ingressId: string, _t: number, _m: number, _reason: string): Promise<t.StudioAck> {
+  async studioArm(_ingressId: string, _t: number, _m: number, _reason: string, _history = 0): Promise<t.StudioAck> {
     return this.okAck('Armed. New deliveries use these revisions.');
   }
   async studioRollback(_ingressId: string, _releaseId: string, _reason: string, _resume: boolean): Promise<t.StudioAck> {

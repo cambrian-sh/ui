@@ -556,6 +556,7 @@ impl Transport {
         ingress_id: String,
         transport_revision: i32,
         mapping_revision: i32,
+        history_transport_revision: i32,
         reason: String,
     ) -> Result<StudioAck, String> {
         let mut client = self.studio_client().await?;
@@ -564,10 +565,10 @@ impl Transport {
                 ingress_id,
                 transport_revision,
                 mapping_revision,
-                // History-lane field newly vendored by the proto sync; 0 is the
-                // wire default (no history transport pinned) — the console does
-                // not arm history transports yet.
-                history_transport_revision: 0,
+                // ENG-1722: Arm pins exactly what it names, so a re-arm that must
+                // keep the ingress's history lane passes it; 0 = none (every
+                // first arm, and the lifecycle pane's arm, as before).
+                history_transport_revision,
                 reason,
             }))
             .await

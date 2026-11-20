@@ -572,11 +572,18 @@ export const ipc = {
    *  The kernel's state machine decides legality; refusals come back named. */
   studioLifecycle: (verb: string, ingressId: string, reason = ''): Promise<t.StudioAck> =>
     invoke<t.StudioAck>('op_studio_lifecycle', { verb, ingress_id: ingressId, reason }),
-  /** Mints an immutable release and arms it — the one action a model can never take. */
-  studioArm: (ingressId: string, transportRevision: number, mappingRevision: number, reason: string): Promise<t.StudioAck> =>
+  /** Mints an immutable release and arms it — the one action a model can never take.
+   *  Arm pins exactly what it names: pass the history lane to keep it (ENG-1722); 0 = none. */
+  studioArm: (
+    ingressId: string,
+    transportRevision: number,
+    mappingRevision: number,
+    reason: string,
+    historyTransportRevision = 0,
+  ): Promise<t.StudioAck> =>
     invoke<t.StudioAck>('op_studio_arm', {
       ingress_id: ingressId, transport_revision: transportRevision,
-      mapping_revision: mappingRevision, reason,
+      mapping_revision: mappingRevision, history_transport_revision: historyTransportRevision, reason,
     }),
   /** Re-pins an EXISTING release while paused. Reason is mandatory. */
   studioRollback: (ingressId: string, releaseId: string, reason: string, resume: boolean): Promise<t.StudioAck> =>

@@ -1482,12 +1482,19 @@ async fn op_studio_arm(
     ingress_id: String,
     transport_revision: i32,
     mapping_revision: i32,
+    history_transport_revision: Option<i32>,
     reason: String,
 ) -> Result<crate::ingress_studio::StudioAck, String> {
     transport
         .inner()
         .clone()
-        .studio_arm(ingress_id, transport_revision, mapping_revision, reason)
+        .studio_arm(
+            ingress_id,
+            transport_revision,
+            mapping_revision,
+            history_transport_revision.unwrap_or(0),
+            reason,
+        )
         .await
 }
 
